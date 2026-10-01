@@ -8,7 +8,7 @@ on:
 jobs:
   build-ios:
     name: Build Unsigned iOS .ipa (for Sideloadly / AltStore)
-    runs-on: macos-latest
+    runs-on: macos-15-intel
 
     steps:
       - name: Checkout repository
@@ -26,9 +26,6 @@ jobs:
       - name: Build Web Assets & Sync Capacitor iOS
         run: |
           npx vite build
-          if [ ! -d "ios" ]; then
-            npx cap add ios
-          fi
           npx cap sync ios
 
       - name: Configure iOS Camera Permission for Barcode Scanner
