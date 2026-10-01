@@ -1,0 +1,64 @@
+name: Build iOS IPA (Smart POS Pro)
+
+on:
+  push:
+    branches: [ main, master ]
+  workflow_dispatch:
+
+jobs:
+  build-ios:
+    name: Build Unsigned iOS .ipa (for Sideloadly / AltStore)
+    runs-on: macos-latest
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+          cache: 'npm'
+
+      - name: Install dependencies
+        run: npm install
+
+      - name: Build Web Assets & Sync Capacitor iOS
+        run: |
+          npx vite build
+          if [ ! -d "ios" ]; then
+            npx cap add ios
+          fi
+          npx cap sync ios
+
+      - name: Configure iOS Camera Permission for Barcode Scanner
+        run: |
+          PLIST="ios/App/App/Info.plist"
+          /usr/libexec/PlistBuddy -c "Add :NSCameraUsageDescription string 'يحتاج التطبيق إلى الكاميرا لمسح الباركود ورموز QR للمنتجات'" "$PLIST" || \
+          /usr/libexec/PlistBuddy -c "Set :NSCameraUsageDescription 'يحتاج التطبيق إلى الكاميرا لمسح الباركود ورموز QR للمنتجات'" "$PLIST"
+
+      - name: Build Xcode Project (Unsigned for Sideloading)
+        run: |
+          cd ios/App
+          xcodebuild clean build \
+            -project App.xcodeproj \
+            -scheme App \
+            -configuration Release \
+            -sdk iphoneos \
+            -derivedDataPath build \
+            CODE_SIGN_IDENTITY="" \
+            CODE_SIGNING_REQUIRED=NO \
+            CODE_SIGNING_ALLOWED=NO
+
+      - name: Package .app into SmartPOS-Pro.ipa
+        run: |
+          mkdir -p Payload
+          cp -r ios/App/build/Build/Products/Release-iphoneos/App.app Payload/
+          zip -r SmartPOS-Pro-iOS.ipa Payload
+
+      - name: Upload SmartPOS-Pro-iOS.ipa Artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: SmartPOS-Pro-iOS-IPA
+          path: SmartPOS-Pro-iOS.ipa
+          retention-days: 30

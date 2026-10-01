@@ -1,0 +1,2047 @@
+/**
+ * @license
+ * SPDX-License-Identifier: Apache-2.0
+ */
+
+import React, { useState, useEffect } from 'react';
+import { Product, Customer, Supplier, Purchase, Invoice, InvoiceReturnItem, StoreConfig, Language, ActiveTab, PaymentStatus, Employee, ActivityLog, RepairOrder, Expense, CommercialDocument, CommercialDocType } from './types';
+import { getStoredData, saveStoredData, resetStoredToDefaults } from './dataStore';
+import { languages } from './languages';
+import POS from './components/POS';
+import Inventory from './components/Inventory';
+import Customers from './components/Customers';
+import Suppliers from './components/Suppliers';
+import Purchases from './components/Purchases';
+import Invoices from './components/Invoices';
+import Expenses from './components/Expenses';
+import Dashboard from './components/Dashboard';
+import Settings from './components/Settings';
+import UsersManagement from './components/UsersManagement';
+import RepairsManagement from './components/RepairsManagement';
+import ActivityLogs from './components/ActivityLogs';
+import LoginScreen from './components/LoginScreen';
+import Home from './components/Home';
+import PurchaseEntry from './components/PurchaseEntry';
+import CommercialDocuments from './components/CommercialDocuments';
+import BackupManagement from './components/BackupManagement';
+import MobileAndCloudSync from './components/MobileAndCloudSync';
+import { getCloudSyncConfig, saveCloudSyncConfig, pushDataToCloud, pullDataFromCloud, mergeStoreDatasets, decodePairingCode } from './utils/cloudSync';
+import { Pin, ChevronLeft, ChevronRight, Home as SmartHome, LayoutDashboard, ShoppingCart, Receipt, Package, Users, Truck, ShoppingBag, Settings as SettingsIcon, Globe, PhoneCall, Shield, LogOut, ClipboardList, PenTool, ReceiptText, Moon, Sun, FileText, ScrollText, CheckSquare, FileSpreadsheet, Database, Smartphone, Menu, X, RefreshCw, Cloud } from 'lucide-react';
+
+export default function App() {
+  // Load database once on mount
+  const [data, setData] = useState<{
+    products: Product[];
+    customers: Customer[];
+    suppliers: Supplier[];
+    purchases: Purchase[];
+    invoices: Invoice[];
+    config: StoreConfig;
+    employees: Employee[];
+    logs: ActivityLog[];
+    repairs: RepairOrder[];
+    expenses?: Expense[];
+    commercialDocuments?: CommercialDocument[];
+  } | null>(null);
+
+  const [lang, setLang] = useState<Language>('ar'); // default is Arabic, matching Arabic query primary intent
+  const [activeTab, setActiveTab] = useState<ActiveTab>('home');
+  const [isSidebarHovered, setIsSidebarHovered] = useState(false);
+  const [isSidebarPinned, setIsSidebarPinned] = useState(true);
+  const [isMobileMenuOpen, setIsMobileMenuOpen] = useState(false);
+  const [deferredInstallPrompt, setDeferredInstallPrompt] = useState<any>(null);
+  const [isCloudSyncing, setIsCloudSyncing] = useState(false);
+  const [syncNotice, setSyncNotice] = useState<string | null>(null);
+  const sidebarHoverTimeout = React.useRef<any>(null);
+
+  const selectTab = (tab: ActiveTab) => {
+    setActiveTab(tab);
+    setIsMobileMenuOpen(false);
+  };
+
+  // Capture PWA Install Prompt for 1-click Android / Desktop installation
+  useEffect(() => {
+    const handler = (e: Event) => {
+      e.preventDefault();
+      setDeferredInstallPrompt(e);
+    };
+    window.addEventListener('beforeinstallprompt', handler);
+    return () => window.removeEventListener('beforeinstallprompt', handler);
+  }, []);
+
+  const handleTriggerPwaInstall = async () => {
+    if (!deferredInstallPrompt) return;
+    deferredInstallPrompt.prompt();
+    await deferredInstallPrompt.userChoice.catch(() => {});
+    setDeferredInstallPrompt(null);
+  };
+
+  const handleSidebarMouseEnter = () => {
+    if (sidebarHoverTimeout.current) {
+      clearTimeout(sidebarHoverTimeout.current);
+      sidebarHoverTimeout.current = null;
+    }
+    setIsSidebarHovered(true);
+  };
+
+  const handleSidebarMouseLeave = () => {
+    sidebarHoverTimeout.current = setTimeout(() => {
+      setIsSidebarHovered(false);
+    }, 280);
+  };
+
+  const isSidebarOpen = isSidebarPinned || isSidebarHovered;
+
+  const [currentUser, setCurrentUser] = useState<Employee | null>(() => {
+    if (typeof window !== 'undefined') {
+      const saved = localStorage.getItem('sales_app_current_user');
+      if (saved) {
+        try {
+          const parsed = JSON.parse(saved) as Employee;
+          if (parsed) {
+            if (!parsed.allowedTabs.includes('home')) {
+              parsed.allowedTabs = ['home', ...parsed.allowedTabs];
+            }
+            ['devis', 'bon-commande', 'bon-livraison', 'commercial-documents', 'backup', 'mobile-sync'].forEach((tab: any) => {
+              if (!parsed.allowedTabs.includes(tab)) {
+                parsed.allowedTabs.push(tab);
+              }
+            });
+            if (parsed.role === 'admin') {
+              if (!parsed.allowedTabs.includes('repairs')) {
+                parsed.allowedTabs.push('repairs');
+              }
+              if (!parsed.allowedTabs.includes('logs')) {
+                parsed.allowedTabs.push('logs');
+              }
+              if (!parsed.allowedTabs.includes('expenses')) {
+                parsed.allowedTabs.push('expenses');
+              }
+              if (!parsed.allowedTabs.includes('purchase-entry')) {
+                parsed.allowedTabs.push('purchase-entry');
+              }
+            }
+          }
+          return parsed;
+        } catch (e) {
+          return null;
+        }
+      }
+    }
+    return null;
+  });
+
+  // Auto-detect ?pair=... or ?tab=... in URL on smartphone launch
+  useEffect(() => {
+    if (typeof window === 'undefined') return;
+    const params = new URLSearchParams(window.location.search);
+    const pairParam = params.get('pair');
+    const tabParam = params.get('tab') as ActiveTab | null;
+
+    if (tabParam) {
+      setActiveTab(tabParam);
+    }
+
+    if (pairParam) {
+      const decoded = decodePairingCode(pairParam);
+      if (decoded) {
+        saveCloudSyncConfig(decoded);
+        setSyncNotice('🔗 تم ربط الهاتف تلقائياً ومزامنة بيانات المتجر!');
+        setTimeout(() => setSyncNotice(null), 5000);
+        // Clean URL query param without reloading
+        const cleanUrl = window.location.pathname;
+        window.history.replaceState({}, '', cleanUrl);
+      }
+    }
+  }, []);
+
+  // Load from SQLite database / local storage / Cloud on mount
+  useEffect(() => {
+    const cloudCfg = getCloudSyncConfig();
+    const apiBase = cloudCfg.provider === 'server' && cloudCfg.serverUrl ? cloudCfg.serverUrl.replace(/\/+$/, '') : '';
+
+    fetch(`${apiBase}/api/data`)
+      .then((res) => {
+        if (!res.ok) throw new Error('Failed to fetch stats');
+        return res.json();
+      })
+      .then(async (loaded) => {
+        if (loaded?.config?.logoUrl?.includes('images.unsplash.com')) {
+          loaded.config.logoUrl = '';
+        }
+        let finalData = loaded;
+        if (cloudCfg.enabled) {
+          const cloudRes = await pullDataFromCloud(cloudCfg).catch(() => null);
+          if (cloudRes?.ok && cloudRes.payload?.data) {
+            const { merged } = mergeStoreDatasets(loaded, cloudRes.payload.data, true);
+            finalData = merged;
+          }
+        }
+        saveStoredData(finalData);
+        setData(finalData);
+      })
+      .catch(async (err) => {
+        console.warn('Database load fallback to local storage / cloud:', err);
+        let loaded = getStoredData();
+        if (loaded?.config?.logoUrl?.includes('images.unsplash.com')) {
+          loaded.config.logoUrl = '';
+        }
+        if (cloudCfg.enabled) {
+          const cloudRes = await pullDataFromCloud(cloudCfg).catch(() => null);
+          if (cloudRes?.ok && cloudRes.payload?.data) {
+            const { merged } = mergeStoreDatasets(loaded, cloudRes.payload.data, true);
+            loaded = merged;
+            saveStoredData(loaded);
+          }
+        }
+        setData(loaded);
+      });
+  }, []);
+
+  // Sync to local storage, SQLite, and Cloud whenever datasets change
+  const updateDataState = (updater: (prev: typeof data) => typeof data) => {
+    setData((old) => {
+      const next = updater(old);
+      if (next) {
+        saveStoredData(next);
+        const cloudCfg = getCloudSyncConfig();
+        const apiBase = cloudCfg.provider === 'server' && cloudCfg.serverUrl ? cloudCfg.serverUrl.replace(/\/+$/, '') : '';
+
+        fetch(`${apiBase}/api/save`, {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json',
+          },
+          body: JSON.stringify(next),
+        }).catch(() => {});
+
+        if (cloudCfg.enabled && cloudCfg.autoSync) {
+          pushDataToCloud(next, cloudCfg).catch(() => {});
+        }
+      }
+      return next;
+    });
+  };
+
+  // Manual or background Cloud/Server Sync trigger
+  const triggerSyncCycle = async (showFeedback = false) => {
+    const cloudCfg = getCloudSyncConfig();
+    if (!cloudCfg.enabled) {
+      if (showFeedback) {
+        selectTab('mobile-sync');
+      }
+      return;
+    }
+    setIsCloudSyncing(true);
+    try {
+      const res = await pullDataFromCloud(cloudCfg);
+      if (res.ok && res.payload && res.payload.data) {
+        setData((prev) => {
+          if (!prev) return prev;
+          const { merged, hasNewFromCloud } = mergeStoreDatasets(prev, res.payload.data, true);
+          if (hasNewFromCloud || showFeedback) {
+            saveStoredData(merged);
+            fetch('/api/save', {
+              method: 'POST',
+              headers: { 'Content-Type': 'application/json' },
+              body: JSON.stringify(merged),
+            }).catch(() => {});
+            pushDataToCloud(merged, cloudCfg).catch(() => {});
+            if (showFeedback) {
+              setSyncNotice('✓ تمت مزامنة البيانات مع السحابة والهواتف بنجاح!');
+              setTimeout(() => setSyncNotice(null), 3500);
+            }
+            return merged;
+          }
+          return prev;
+        });
+      } else if (showFeedback && data) {
+        await pushDataToCloud(data, cloudCfg);
+        setSyncNotice('✓ تم رفع البيانات إلى السحابة بنجاح!');
+        setTimeout(() => setSyncNotice(null), 3500);
+      }
+    } finally {
+      setIsCloudSyncing(false);
+    }
+  };
+
+  // Periodic background Cloud Pull & Merge + Instant wake/online sync for Android & iPhone
+  useEffect(() => {
+    const interval = setInterval(() => {
+      const cloudCfg = getCloudSyncConfig();
+      if (cloudCfg.enabled && cloudCfg.autoSync) {
+        triggerSyncCycle(false);
+      }
+    }, 8000);
+
+    const handleWakeOrOnline = () => {
+      if (document.visibilityState === 'visible' || navigator.onLine) {
+        const cloudCfg = getCloudSyncConfig();
+        if (cloudCfg.enabled && cloudCfg.autoSync) {
+          triggerSyncCycle(false);
+        }
+      }
+    };
+
+    window.addEventListener('online', handleWakeOrOnline);
+    document.addEventListener('visibilitychange', handleWakeOrOnline);
+
+    return () => {
+      clearInterval(interval);
+      window.removeEventListener('online', handleWakeOrOnline);
+      document.removeEventListener('visibilitychange', handleWakeOrOnline);
+    };
+  }, []);
+
+  const addLogMessage = (action: string, details: string) => {
+    updateDataState((prev) => {
+      if (!prev) return prev;
+      const newLog: ActivityLog = {
+        id: 'log_' + Date.now() + '_' + Math.random().toString(36).slice(2, 6),
+        timestamp: new Date().toISOString(),
+        userId: currentUser?.id || 'system',
+        userName: currentUser?.name || 'System',
+        action,
+        details
+      };
+      return {
+        ...prev,
+        logs: [newLog, ...prev.logs].slice(0, 800) // Keep up to 800 logs
+      };
+    });
+  };
+
+  const handleLogin = (employee: Employee) => {
+    let finalEmp = { ...employee };
+    if (!finalEmp.allowedTabs.includes('home')) {
+      finalEmp.allowedTabs = ['home', ...finalEmp.allowedTabs];
+    }
+    ['devis', 'bon-commande', 'bon-livraison', 'commercial-documents', 'backup', 'mobile-sync'].forEach((tab: any) => {
+      if (!finalEmp.allowedTabs.includes(tab)) {
+        finalEmp.allowedTabs.push(tab);
+      }
+    });
+    if (finalEmp.role === 'admin') {
+      if (!finalEmp.allowedTabs.includes('repairs')) {
+        finalEmp.allowedTabs = [...finalEmp.allowedTabs, 'repairs'];
+      }
+      if (!finalEmp.allowedTabs.includes('logs')) {
+        finalEmp.allowedTabs = [...finalEmp.allowedTabs, 'logs'];
+      }
+      if (!finalEmp.allowedTabs.includes('expenses')) {
+        finalEmp.allowedTabs = [...finalEmp.allowedTabs, 'expenses'];
+      }
+      if (!finalEmp.allowedTabs.includes('purchase-entry')) {
+        finalEmp.allowedTabs = [...finalEmp.allowedTabs, 'purchase-entry'];
+      }
+    }
+    setCurrentUser(finalEmp);
+    localStorage.setItem('sales_app_current_user', JSON.stringify(finalEmp));
+    if (finalEmp.allowedTabs && finalEmp.allowedTabs.length > 0) {
+      setActiveTab(finalEmp.allowedTabs[0]);
+    }
+    // We can deferred log slightly or write log
+    setTimeout(() => {
+      addLogMessage('login', `Employee ${finalEmp.name} logged in successfully`);
+    }, 100);
+  };
+
+  const handleLogout = () => {
+    if (currentUser) {
+      addLogMessage('logout', `Employee ${currentUser.name} signed out`);
+    }
+    setCurrentUser(null);
+    localStorage.removeItem('sales_app_current_user');
+  };
+
+  // Redirect if current activeTab is not in allowedTabs
+  useEffect(() => {
+    if (currentUser && currentUser.allowedTabs && !currentUser.allowedTabs.includes(activeTab)) {
+      if (currentUser.allowedTabs.length > 0) {
+        setActiveTab(currentUser.allowedTabs[0]);
+      }
+    }
+  }, [currentUser, activeTab]);
+
+  const handleSaveEmployee = (emp: Employee) => {
+    updateDataState((prev) => {
+      if (!prev) return prev;
+      const idx = prev.employees.findIndex((e) => e.id === emp.id);
+      const nextEmps = [...prev.employees];
+      if (idx > -1) {
+        nextEmps[idx] = emp;
+      } else {
+        nextEmps.push(emp);
+      }
+      // Keep session updated if editing current user
+      if (currentUser && emp.id === currentUser.id) {
+        setCurrentUser(emp);
+        localStorage.setItem('sales_app_current_user', JSON.stringify(emp));
+      }
+      return { ...prev, employees: nextEmps };
+    });
+  };
+
+  const handleDeleteEmployee = (id: string) => {
+    updateDataState((prev) => {
+      if (!prev) return prev;
+      return {
+        ...prev,
+        employees: prev.employees.filter((e) => e.id !== id),
+      };
+    });
+  };
+
+  const handleSaveRepair = (repair: RepairOrder) => {
+    updateDataState((prev) => {
+      if (!prev) return prev;
+      const idx = prev.repairs.findIndex((r) => r.id === repair.id);
+      const nextRepairs = [...prev.repairs];
+      let details = '';
+      if (idx > -1) {
+        nextRepairs[idx] = repair;
+        details = `Updated SAV ticket ${repair.orderNumber} for ${repair.customerName} (${repair.itemName}) to status ${repair.status}`;
+      } else {
+        nextRepairs.push(repair);
+        details = `Created SAV ticket ${repair.orderNumber} for ${repair.customerName} (${repair.itemName})`;
+      }
+
+      // Add log
+      const newLog: ActivityLog = {
+        id: 'log_' + Date.now() + '_' + Math.random().toString(36).slice(2, 6),
+        timestamp: new Date().toISOString(),
+        userId: currentUser?.id || 'system',
+        userName: currentUser?.name || 'System',
+        action: 'repair_saved',
+        details
+      };
+
+      return {
+        ...prev,
+        repairs: nextRepairs,
+        logs: [newLog, ...prev.logs].slice(0, 800)
+      };
+    });
+  };
+
+  const handleDeleteRepair = (id: string) => {
+    updateDataState((prev) => {
+      if (!prev) return prev;
+      const toDelete = prev.repairs.find((r) => r.id === id);
+      const nextRepairs = prev.repairs.filter((r) => r.id !== id);
+
+      const newLog: ActivityLog = {
+        id: 'log_' + Date.now() + '_' + Math.random().toString(36).slice(2, 6),
+        timestamp: new Date().toISOString(),
+        userId: currentUser?.id || 'system',
+        userName: currentUser?.name || 'System',
+        action: 'repair_deleted',
+        details: lang === 'ar'
+          ? `تم حذف أمر الصيانة رقم ${toDelete?.orderNumber || id} للعميل "${toDelete?.customerName || 'غير معروف'}"`
+          : `Deleted SAV ticket ${toDelete?.orderNumber || id} for ${toDelete?.customerName || 'Unknown'}`
+      };
+
+      return {
+        ...prev,
+        repairs: nextRepairs,
+        logs: [newLog, ...prev.logs].slice(0, 800)
+      };
+    });
+  };
+
+  const handleClearLogs = () => {
+    updateDataState((prev) => {
+      if (!prev) return prev;
+      return {
+        ...prev,
+        logs: [],
+      };
+    });
+  };
+
+  const handleDeleteSingleLog = (id: string) => {
+    updateDataState((prev) => {
+      if (!prev) return prev;
+      return {
+        ...prev,
+        logs: prev.logs.filter((l) => l.id !== id),
+      };
+    });
+  };
+
+  if (!data) {
+    return (
+      <div className="flex items-center justify-center min-h-screen bg-slate-50">
+        <div className="flex flex-col items-center gap-2">
+          <div className="w-8 h-8 border-4 border-indigo-600 border-t-transparent rounded-full animate-spin"></div>
+          <p className="text-slate-500 font-bold">Please wait, launching databases...</p>
+        </div>
+      </div>
+    );
+  }
+
+  // Intercept and prompt authentications
+  if (currentUser === null) {
+    return (
+      <LoginScreen
+        employees={data.employees}
+        onLogin={handleLogin}
+        lang={lang}
+        onSetLang={setLang}
+      />
+    );
+  }
+
+  const { products, customers, suppliers, purchases, invoices, config, employees, logs, repairs } = data;
+  const expenses = data.expenses || [];
+  const commercialDocuments = data.commercialDocuments || [];
+  const t = languages[lang];
+  const isRTL = t.direction === 'rtl';
+
+  // Commercial Documents handlers
+  const handleSaveCommercialDoc = (doc: CommercialDocument) => {
+    updateDataState((prev) => {
+      if (!prev) return prev;
+      const docs = prev.commercialDocuments || [];
+      const idx = docs.findIndex((d) => d.id === doc.id);
+      let nextDocs = [...docs];
+      let details = '';
+      if (idx > -1) {
+        nextDocs[idx] = doc;
+        details = lang === 'ar' 
+          ? `تم تحديث وثيقة تجارية ${doc.docNumber} (${doc.docType}) للزبون ${doc.customerName}`
+          : `Updated commercial document ${doc.docNumber} (${doc.docType}) for ${doc.customerName}`;
+      } else {
+        nextDocs.unshift(doc);
+        details = lang === 'ar'
+          ? `تم إنشاء وثيقة تجارية جديدة ${doc.docNumber} (${doc.docType}) للزبون ${doc.customerName}`
+          : `Created commercial document ${doc.docNumber} (${doc.docType}) for ${doc.customerName}`;
+      }
+
+      const newLog: ActivityLog = {
+        id: 'log_' + Date.now() + '_' + Math.random().toString(36).slice(2, 6),
+        timestamp: new Date().toISOString(),
+        userId: currentUser?.id || 'system',
+        userName: currentUser?.name || 'System',
+        action: 'commercial_doc_saved',
+        details
+      };
+
+      return {
+        ...prev,
+        commercialDocuments: nextDocs,
+        logs: [newLog, ...prev.logs].slice(0, 800)
+      };
+    });
+  };
+
+  const handleDeleteCommercialDoc = (id: string) => {
+    updateDataState((prev) => {
+      if (!prev) return prev;
+      const docs = prev.commercialDocuments || [];
+      const target = docs.find((d) => d.id === id);
+      const nextDocs = docs.filter((d) => d.id !== id);
+
+      const newLog: ActivityLog = {
+        id: 'log_' + Date.now() + '_' + Math.random().toString(36).slice(2, 6),
+        timestamp: new Date().toISOString(),
+        userId: currentUser?.id || 'system',
+        userName: currentUser?.name || 'System',
+        action: 'commercial_doc_deleted',
+        details: target 
+          ? (lang === 'ar' ? `تم حذف وثيقة ${target.docNumber} للزبون ${target.customerName}` : `Deleted document ${target.docNumber} for ${target.customerName}`)
+          : 'Deleted commercial document'
+      };
+
+      return {
+        ...prev,
+        commercialDocuments: nextDocs,
+        logs: [newLog, ...prev.logs].slice(0, 800)
+      };
+    });
+  };
+
+  const handleCommercialDocConvertToInvoice = (doc: CommercialDocument) => {
+    // Generate new official sales invoice from commercial doc
+    const invoiceNum = `INV-${new Date().getFullYear()}-${String((invoices.length || 0) + 1).padStart(3, '0')}`;
+    const newInvoice: Invoice = {
+      id: 'inv_' + Date.now() + '_' + Math.random().toString(36).slice(2, 6),
+      invoiceNumber: invoiceNum,
+      date: new Date().toISOString(),
+      customerId: doc.customerId || 'walk-in',
+      customerName: doc.customerName || (lang === 'ar' ? 'زبون عام' : 'Client Comptoir'),
+      items: doc.items.map((it) => ({
+        productId: it.productId,
+        productName: it.productName,
+        quantity: it.quantity,
+        sellingPrice: it.sellingPrice,
+        purchasePrice: it.purchasePrice || 0,
+        discount: it.discount || 0,
+        tax: it.tax || 0,
+        total: it.total
+      })),
+      subtotal: doc.subtotal,
+      discount: doc.discount,
+      tax: doc.tax,
+      total: doc.total,
+      amountPaid: doc.total,
+      paymentMethod: 'cash',
+      status: 'paid',
+      notes: `${lang === 'ar' ? 'تم التحويل من وثيقة' : 'Converted from'} ${doc.docNumber} (${doc.docType})`
+    };
+
+    // Add to invoices & update document status to invoiced
+    handleAddTransaction(newInvoice);
+
+    // Also update commercial doc status to invoiced
+    updateDataState((prev) => {
+      if (!prev) return prev;
+      const docs = prev.commercialDocuments || [];
+      const updatedDocs = docs.map((d) => d.id === doc.id ? { ...d, status: 'invoiced' as const } : d);
+      return {
+        ...prev,
+        commercialDocuments: updatedDocs
+      };
+    });
+  };
+
+  // State handlers
+
+  const handleSaveExpense = (expense: Expense) => {
+    updateDataState((prev) => {
+      if (!prev) return prev;
+      const prevExpenses = prev.expenses || [];
+      const idx = prevExpenses.findIndex((e) => e.id === expense.id);
+      let nextExpenses = [...prevExpenses];
+      if (idx > -1) {
+        nextExpenses[idx] = expense;
+      } else {
+        nextExpenses.unshift(expense);
+      }
+
+      const newLog: ActivityLog = {
+        id: 'log_' + Date.now() + '_' + Math.random().toString(36).slice(2, 6),
+        timestamp: new Date().toISOString(),
+        userId: currentUser?.id || 'system',
+        userName: currentUser?.name || 'System',
+        action: 'expense_saved',
+        details: lang === 'ar'
+          ? `تم تسجيل مصروف: "${expense.title}" بقيمة ${expense.amount} ${prev.config.currency}`
+          : `Recorded expense "${expense.title}" for ${expense.amount} ${prev.config.currency}`
+      };
+
+      return {
+        ...prev,
+        expenses: nextExpenses,
+        logs: [newLog, ...prev.logs].slice(0, 800)
+      };
+    });
+  };
+
+  const handleDeleteExpense = (id: string) => {
+    updateDataState((prev) => {
+      if (!prev) return prev;
+      const prevExpenses = prev.expenses || [];
+      const target = prevExpenses.find((e) => e.id === id);
+      const nextExpenses = prevExpenses.filter((e) => e.id !== id);
+
+      const newLog: ActivityLog = {
+        id: 'log_' + Date.now() + '_' + Math.random().toString(36).slice(2, 6),
+        timestamp: new Date().toISOString(),
+        userId: currentUser?.id || 'system',
+        userName: currentUser?.name || 'System',
+        action: 'expense_deleted',
+        details: target 
+          ? (lang === 'ar' ? `تم حذف المصروف: "${target.title}"` : `Deleted expense "${target.title}"`)
+          : 'Deleted expense'
+      };
+
+      return {
+        ...prev,
+        expenses: nextExpenses,
+        logs: [newLog, ...prev.logs].slice(0, 800)
+      };
+    });
+  };
+
+  const handleSaveSupplier = (supplier: Supplier) => {
+    updateDataState((prev) => {
+      if (!prev) return prev;
+      const idx = prev.suppliers.findIndex((s) => s.id === supplier.id);
+      let nextSupps = [...prev.suppliers];
+      if (idx > -1) {
+        nextSupps[idx] = supplier;
+      } else {
+        nextSupps.unshift(supplier);
+      }
+      return { ...prev, suppliers: nextSupps };
+    });
+  };
+
+  const handleDeleteSupplier = (id: string) => {
+    updateDataState((prev) => {
+      if (!prev) return prev;
+      return {
+        ...prev,
+        suppliers: prev.suppliers.filter((s) => s.id !== id),
+      };
+    });
+  };
+
+  const handleSavePurchase = (purchase: Purchase) => {
+    updateDataState((prev) => {
+      if (!prev) return prev;
+      
+      const debtAdjustment = purchase.total - purchase.amountPaid;
+      
+      const nextSupps = prev.suppliers.map((s) => {
+        if (s.id === purchase.supplierId) {
+          return { ...s, debt: (s.debt || 0) + debtAdjustment };
+        }
+        return s;
+      });
+
+      const nextProds = prev.products.map((p) => {
+        const boughtItem = purchase.items.find((item) => item.productId === p.id);
+        if (boughtItem) {
+          const oldStock = p.stock || 0;
+          const oldPrice = p.purchasePrice || 0;
+          const boughtQty = boughtItem.quantity;
+          const boughtPrice = boughtItem.purchasePrice;
+          
+          const newStock = oldStock + boughtQty;
+          let newAvgPrice = oldPrice;
+          if (newStock > 0) {
+            newAvgPrice = ((oldStock * oldPrice) + (boughtQty * boughtPrice)) / newStock;
+            newAvgPrice = Math.round(newAvgPrice * 100) / 100;
+          }
+
+          return { 
+            ...p, 
+            stock: newStock,
+            purchasePrice: newAvgPrice
+          };
+        }
+        return p;
+      });
+
+      // Maintain initial downpayment log if applicable
+      const purchaseWithPaymentArray: Purchase = {
+        ...purchase,
+        payments: purchase.payments || (purchase.amountPaid > 0 ? [{
+          id: 'pay_' + Date.now(),
+          date: purchase.date,
+          amount: purchase.amountPaid,
+          notes: lang === 'ar' ? 'الدفعة الأولى المقدمة' : lang === 'fr' ? 'Acompte initial' : 'Initial down payment'
+        }] : [])
+      };
+
+      const nextPurchases = [purchaseWithPaymentArray, ...prev.purchases];
+
+      return {
+        ...prev,
+        suppliers: nextSupps,
+        products: nextProds,
+        purchases: nextPurchases,
+      };
+    });
+  };
+
+  const handleDeletePurchase = (id: string) => {
+    updateDataState((prev) => {
+      if (!prev) return prev;
+      const targetPurchase = prev.purchases.find((p) => p.id === id);
+      if (!targetPurchase) return prev;
+
+      const debtToDeduct = targetPurchase.total - targetPurchase.amountPaid;
+      
+      const nextSupps = prev.suppliers.map((s) => {
+        if (s.id === targetPurchase.supplierId) {
+          return { ...s, debt: Math.max(0, (s.debt || 0) - debtToDeduct) };
+        }
+        return s;
+      });
+
+      const nextProds = prev.products.map((p) => {
+        const boughtItem = targetPurchase.items.find((item) => item.productId === p.id);
+        if (boughtItem) {
+          const oldStock = p.stock || 0;
+          const boughtQty = boughtItem.quantity;
+          const boughtPrice = boughtItem.purchasePrice;
+          
+          const newStock = Math.max(0, oldStock - boughtQty);
+          let revertedPrice = p.purchasePrice || 0;
+          
+          // Revert Weighted Average Cost if possible
+          if (newStock > 0 && oldStock > boughtQty) {
+            const originalTotalPrice = (oldStock * (p.purchasePrice || 0)) - (boughtQty * boughtPrice);
+            revertedPrice = Math.max(0, originalTotalPrice / newStock);
+            revertedPrice = Math.round(revertedPrice * 100) / 100;
+          }
+
+          return { 
+            ...p, 
+            stock: newStock,
+            purchasePrice: revertedPrice
+          };
+        }
+        return p;
+      });
+
+      const nextPurchases = prev.purchases.filter((p) => p.id !== id);
+
+      const supplierObj = prev.suppliers.find(s => s.id === targetPurchase.supplierId);
+      const supplierName = supplierObj ? supplierObj.name : (targetPurchase.supplierId || 'Unknown');
+
+      const newLog: ActivityLog = {
+        id: 'log_' + Date.now() + '_' + Math.random().toString(36).slice(2, 6),
+        timestamp: new Date().toISOString(),
+        userId: currentUser?.id || 'system',
+        userName: currentUser?.name || 'System',
+        action: 'purchase_deleted',
+        details: lang === 'ar'
+          ? `تم حذف فاتورة الشراء رقم ${targetPurchase.purchaseNumber || id} للمورد "${supplierName}". إجمالي الفاتورة: ${targetPurchase.total}`
+          : `Deleted purchase invoice ${targetPurchase.purchaseNumber || id} from supplier "${supplierName}". Invoice Total was: ${targetPurchase.total}`
+      };
+
+      return {
+        ...prev,
+        suppliers: nextSupps,
+        products: nextProds,
+        purchases: nextPurchases,
+        logs: [newLog, ...prev.logs].slice(0, 800)
+      };
+    });
+  };
+
+  const handleSettleSupplierDebt = (supplierId: string, amount: number, paymentNotes?: string) => {
+    updateDataState((prev) => {
+      if (!prev) return prev;
+      
+      let remainingPayment = amount;
+      
+      // Update supplier's overall debt
+      const nextSupps = prev.suppliers.map((s) => {
+        if (s.id === supplierId) {
+          return { ...s, debt: Math.max(0, (s.debt || 0) - amount) };
+        }
+        return s;
+      });
+
+      // Distribute payment among this supplier's outstanding purchase bills (oldest first)
+      const supplierPurchases = prev.purchases
+        .filter((p) => p.supplierId === supplierId)
+        .slice()
+        .reverse(); // Make a copy and reverse to get oldest-first (since they are newest-first in the array)
+
+      const updatedSuppPurchasesMap = new Map<string, Purchase>();
+
+      for (const p of supplierPurchases) {
+        if (remainingPayment <= 0) break;
+        
+        const unpaidForBill = p.total - p.amountPaid;
+        if (unpaidForBill > 0) {
+          const paymentForThisBill = Math.min(remainingPayment, unpaidForBill);
+          remainingPayment -= paymentForThisBill;
+
+          const newAmountPaid = p.amountPaid + paymentForThisBill;
+          let newStatus: PaymentStatus = 'partial';
+          if (newAmountPaid >= p.total) {
+            newStatus = 'paid';
+          }
+
+          const newPaymentRecord = {
+            id: 'pay_' + Date.now() + '_' + Math.floor(Math.random() * 1000),
+            date: new Date().toISOString(),
+            amount: paymentForThisBill,
+            notes: paymentNotes || (lang === 'ar' ? 'دفعة جزئية لتسوية الحساب' : lang === 'fr' ? 'Versement partiel' : 'Partial repayment installment')
+          };
+
+          const oldPaymentsArr = p.payments || [];
+          updatedSuppPurchasesMap.set(p.id, {
+            ...p,
+            amountPaid: newAmountPaid,
+            status: newStatus,
+            payments: [...oldPaymentsArr, newPaymentRecord]
+          });
+        }
+      }
+
+      // Reassemble purchases
+      const nextPurchases = prev.purchases.map((p) => {
+        if (updatedSuppPurchasesMap.has(p.id)) {
+          return updatedSuppPurchasesMap.get(p.id)!;
+        }
+        return p;
+      });
+
+      return {
+        ...prev,
+        suppliers: nextSupps,
+        purchases: nextPurchases
+      };
+    });
+  };
+
+  const handleSaveProduct = (product: Product) => {
+    updateDataState((prev) => {
+      if (!prev) return prev;
+      const idx = prev.products.findIndex((p) => p.id === product.id);
+      let nextProds = [...prev.products];
+      if (idx > -1) {
+        nextProds[idx] = product;
+      } else {
+        nextProds.unshift(product);
+      }
+      return { ...prev, products: nextProds };
+    });
+  };
+
+  const handleDeleteProduct = (id: string) => {
+    updateDataState((prev) => {
+      if (!prev) return prev;
+      return {
+        ...prev,
+        products: prev.products.filter((p) => p.id !== id),
+      };
+    });
+  };
+
+  const handleSaveCustomer = (customer: Customer) => {
+    updateDataState((prev) => {
+      if (!prev) return prev;
+      const idx = prev.customers.findIndex((c) => c.id === customer.id);
+      let nextCusts = [...prev.customers];
+      if (idx > -1) {
+        nextCusts[idx] = customer;
+      } else {
+        nextCusts.unshift(customer);
+      }
+      return { ...prev, customers: nextCusts };
+    });
+  };
+
+  const handleDeleteCustomer = (id: string) => {
+    updateDataState((prev) => {
+      if (!prev) return prev;
+      return {
+        ...prev,
+        customers: prev.customers.filter((c) => c.id !== id),
+      };
+    });
+  };
+
+  const handleDeleteInvoice = (id: string) => {
+    updateDataState((prev) => {
+      if (!prev) return prev;
+      const targetInvoice = prev.invoices.find((inv) => inv.id === id);
+      if (!targetInvoice) return prev;
+
+      // 1. Revert product stocks (add back quantites sold)
+      const restoredProds = prev.products.map((p) => {
+        const itemInInvoice = targetInvoice.items.find((it) => it.productId === p.id);
+        if (itemInInvoice) {
+          return { ...p, stock: p.stock + itemInInvoice.quantity };
+        }
+        return p;
+      });
+
+      // 2. Revert client profile debt balance (subtract invoice outstanding debt credit value)
+      const restoredCusts = prev.customers.map((c) => {
+        if (c.id === targetInvoice.customerId) {
+          const unpaidRemainder = targetInvoice.total - targetInvoice.amountPaid;
+          if (unpaidRemainder > 0) {
+            return { ...c, debt: Math.max(0, c.debt - unpaidRemainder) };
+          }
+        }
+        return c;
+      });
+
+      // 3. Atomically add System Log in appropriate language
+      const newLog: ActivityLog = {
+        id: 'log_' + Date.now() + '_' + Math.random().toString(36).slice(2, 6),
+        timestamp: new Date().toISOString(),
+        userId: currentUser?.id || 'system',
+        userName: currentUser?.name || 'System',
+        action: 'invoice_deleted',
+        details: lang === 'ar'
+          ? `تم حذف فاتورة المبيعات رقم ${targetInvoice.invoiceNumber} للعميل "${targetInvoice.customerName}". إجمالي الفاتورة: ${targetInvoice.total} ${prev.config.currency}`
+          : `Deleted sales invoice ${targetInvoice.invoiceNumber} for customer "${targetInvoice.customerName}". Total was: ${targetInvoice.total} ${prev.config.currency}`
+      };
+
+      const nextInvoices = prev.invoices.filter((inv) => inv.id !== id);
+
+      return {
+        ...prev,
+        invoices: nextInvoices,
+        products: restoredProds,
+        customers: restoredCusts,
+        logs: [newLog, ...prev.logs].slice(0, 800)
+      };
+    });
+  };
+
+  // Repay customer debt ledger balance and distribute chronologically to outstanding invoices
+  const handleSettleDebt = (customerId: string, amount: number) => {
+    updateDataState((prev) => {
+      if (!prev) return prev;
+
+      // 1. Update customer's overall debt
+      const updatedCusts = prev.customers.map((c) => {
+        if (c.id === customerId) {
+          return { ...c, debt: Math.max(0, c.debt - amount) };
+        }
+        return c;
+      });
+
+      // 2. Identify candidate invoices for this customer that are currently unpaid or partially paid
+      const candidateInvoices = prev.invoices
+        .filter((inv) => inv.customerId === customerId && (inv.status === 'unpaid' || inv.status === 'partial' || inv.total > inv.amountPaid))
+        .sort((a, b) => {
+          const tA = a.date ? new Date(a.date).getTime() : 0;
+          const tB = b.date ? new Date(b.date).getTime() : 0;
+          return tA - tB;
+        });
+
+      // 3. Chronologically distribute payment across these candidate invoices
+      let remainingPayment = amount;
+      const updatedInvs = prev.invoices.map((inv) => {
+        const isCandidate = candidateInvoices.some((cand) => cand.id === inv.id);
+        if (isCandidate && remainingPayment > 0) {
+          const unpaidForInv = inv.total - inv.amountPaid;
+          if (unpaidForInv > 0) {
+            const paymentForThisInv = Math.min(remainingPayment, unpaidForInv);
+            remainingPayment -= paymentForThisInv;
+            const newAmountPaid = inv.amountPaid + paymentForThisInv;
+            const remains = inv.total - newAmountPaid;
+            return {
+              ...inv,
+              amountPaid: newAmountPaid,
+              status: (remains <= 0.01 ? 'paid' : 'partial') as PaymentStatus
+            };
+          }
+        }
+        return inv;
+      });
+
+      // 4. Record audit log
+      const targetCustomer = prev.customers.find((c) => c.id === customerId);
+      const newLog: ActivityLog = {
+        id: 'log_' + Date.now() + '_' + Math.random().toString(36).slice(2, 6),
+        timestamp: new Date().toISOString(),
+        userId: currentUser?.id || 'system',
+        userName: currentUser?.name || 'System',
+        action: 'customer_debt_settled',
+        details: lang === 'ar'
+          ? `تم تسوية دفعة ديون بقيمة ${amount} ${prev.config.currency} للعميل "${targetCustomer?.name || 'غير معروف'}".`
+          : `Settled a debt payment of ${amount} ${prev.config.currency} for customer "${targetCustomer?.name || 'Unknown'}".`
+      };
+
+      return {
+        ...prev,
+        customers: updatedCusts,
+        invoices: updatedInvs,
+        logs: [newLog, ...prev.logs].slice(0, 800)
+      };
+    });
+  };
+
+  // Settle outstanding partial bill balance
+  const handlePayInvoiceBalance = (invoiceId: string, amountPaid: number) => {
+    updateDataState((prev) => {
+      if (!prev) return prev;
+      
+      const invIdx = prev.invoices.findIndex((inv) => inv.id === invoiceId);
+      if (invIdx === -1) return prev;
+
+      const updatedInvs = [...prev.invoices];
+      const targetInv = updatedInvs[invIdx];
+      const newPaidVal = targetInv.amountPaid + amountPaid;
+      const remains = targetInv.total - newPaidVal;
+      
+      updatedInvs[invIdx] = {
+        ...targetInv,
+        amountPaid: newPaidVal,
+        status: remains <= 0.01 ? 'paid' : 'partial',
+      };
+
+      // Also reduce client corresponding debt
+      const updatedCusts = prev.customers.map((c) => {
+        if (c.id === targetInv.customerId) {
+          return { ...c, debt: Math.max(0, c.debt - amountPaid) };
+        }
+        return c;
+      });
+
+      return {
+        ...prev,
+        invoices: updatedInvs,
+        customers: updatedCusts,
+      };
+    });
+  };
+
+  // Return items from an invoice (Sales Return / رجوع المبيعات)
+  const handleReturnInvoiceItems = (
+    invoiceId: string, 
+    returnList: { productId: string; quantity: number; unitPrice: number }[],
+    notes?: string
+  ) => {
+    updateDataState((prev) => {
+      if (!prev) return prev;
+      const targetInvoice = prev.invoices.find((inv) => inv.id === invoiceId);
+      if (!targetInvoice) return prev;
+
+      // 1. Calculate return total
+      const returnTotal = returnList.reduce((acc, it) => acc + (it.unitPrice * it.quantity), 0);
+
+      // 2. Increment stock back for each returned item
+      const updatedProds = prev.products.map((p) => {
+        const retItem = returnList.find((it) => it.productId === p.id);
+        if (retItem) {
+          return { ...p, stock: p.stock + retItem.quantity };
+        }
+        return p;
+      });
+
+      // 3. Adjust customer balance if debt exists
+      const updatedCusts = prev.customers.map((c) => {
+        if (c.id === targetInvoice.customerId) {
+          const unpaidForInv = targetInvoice.total - targetInvoice.amountPaid;
+          if (unpaidForInv > 0) {
+            const debtDeduction = Math.min(unpaidForInv, returnTotal);
+            return { ...c, debt: Math.max(0, c.debt - debtDeduction) };
+          }
+        }
+        return c;
+      });
+
+      // 4. Construct return records
+      const newReturnRecords: InvoiceReturnItem[] = returnList.map((it) => {
+        const itemObj = targetInvoice.items.find((i) => i.productId === it.productId);
+        return {
+          productId: it.productId,
+          productName: itemObj ? itemObj.productName : it.productId,
+          quantity: it.quantity,
+          unitPrice: it.unitPrice,
+          refundAmount: it.unitPrice * it.quantity,
+          date: new Date().toISOString(),
+          notes: notes || (lang === 'ar' ? 'إرجاع مبيعات' : 'Sales return')
+        };
+      });
+
+      const existingReturns = targetInvoice.returnedItems || [];
+      const combinedReturns = [...existingReturns, ...newReturnRecords];
+
+      // Check if all items in invoice are now fully returned
+      const totalSoldQty = targetInvoice.items.reduce((sum, it) => sum + it.quantity, 0);
+      const totalReturnedQty = combinedReturns.reduce((sum, it) => sum + it.quantity, 0);
+      const newStatus = totalReturnedQty >= totalSoldQty ? 'refunded' : targetInvoice.status;
+
+      const updatedInvoice: Invoice = {
+        ...targetInvoice,
+        status: newStatus as Invoice['status'],
+        returnedItems: combinedReturns,
+        notes: targetInvoice.notes 
+          ? `${targetInvoice.notes} | [${lang === 'ar' ? 'مرتجع بقيمة' : 'Return'}: ${returnTotal.toFixed(2)} ${prev.config.currency}]`
+          : `[${lang === 'ar' ? 'مرتجع بقيمة' : 'Return'}: ${returnTotal.toFixed(2)} ${prev.config.currency}]`
+      };
+
+      const updatedInvoices = prev.invoices.map((inv) => inv.id === invoiceId ? updatedInvoice : inv);
+
+      // 5. Add audit log
+      const newLog: ActivityLog = {
+        id: 'log_' + Date.now() + '_' + Math.random().toString(36).slice(2, 6),
+        timestamp: new Date().toISOString(),
+        userId: currentUser?.id || 'system',
+        userName: currentUser?.name || 'System',
+        action: 'sale_return',
+        details: lang === 'ar'
+          ? `إرجاع مبيعات من الفاتورة رقم ${targetInvoice.invoiceNumber} للعميل "${targetInvoice.customerName}" بقيمة ${returnTotal.toFixed(2)} ${prev.config.currency}`
+          : `Sales return for invoice ${targetInvoice.invoiceNumber} (${targetInvoice.customerName}) worth ${returnTotal.toFixed(2)} ${prev.config.currency}`
+      };
+
+      return {
+        ...prev,
+        invoices: updatedInvoices,
+        products: updatedProds,
+        customers: updatedCusts,
+        logs: [newLog, ...prev.logs].slice(0, 800)
+      };
+    });
+  };
+
+  // Add POS Invoiced sale transaction
+  const handleAddTransaction = (invoice: Invoice) => {
+    updateDataState((prev) => {
+      if (!prev) return prev;
+
+      // Stamp cashier on receipt
+      const sellerInvoice: Invoice = {
+        ...invoice,
+        sellerId: invoice.sellerId || currentUser?.id,
+        sellerName: invoice.sellerName || currentUser?.name
+      };
+
+      // 1. Reduce corresponding stock count
+      const updatedProds = prev.products.map((p) => {
+        const itemInInvoice = sellerInvoice.items.find((it) => it.productId === p.id);
+        if (itemInInvoice) {
+          return { ...p, stock: p.stock - itemInInvoice.quantity };
+        }
+        return p;
+      });
+
+      // 2. Increment client profile debt balance if paid deferred 'debt' mode or incomplete payment
+      const updatedCusts = prev.customers.map((c) => {
+        if (c.id === sellerInvoice.customerId) {
+          const unpaidRemainder = sellerInvoice.total - sellerInvoice.amountPaid;
+          if (unpaidRemainder > 0) {
+            return { ...c, debt: c.debt + unpaidRemainder };
+          }
+        }
+        return c;
+      });
+
+      // 3. Atomically add System Log
+      const newLog: ActivityLog = {
+        id: 'log_' + Date.now() + '_' + Math.random().toString(36).slice(2, 6),
+        timestamp: new Date().toISOString(),
+        userId: currentUser?.id || 'system',
+        userName: currentUser?.name || 'System',
+        action: 'sale_created',
+        details: `Created invoice ${sellerInvoice.invoiceNumber} for ${sellerInvoice.customerName} - Total: ${sellerInvoice.total} ${prev.config.currency}`
+      };
+
+      return {
+        ...prev,
+        invoices: [sellerInvoice, ...prev.invoices],
+        products: updatedProds,
+        customers: updatedCusts,
+        logs: [newLog, ...prev.logs].slice(0, 800)
+      };
+    });
+  };
+
+  const handleSaveConfig = (storeConfig: StoreConfig) => {
+    updateDataState((prev) => {
+      if (!prev) return prev;
+      return { ...prev, config: storeConfig };
+    });
+  };
+
+  const handleImportBackup = (imported: typeof data) => {
+    setData(imported);
+    saveStoredData(imported);
+  };
+
+  const handleExportBackup = () => {
+    const dataStr = 'data:text/json;charset=utf-8,' + encodeURIComponent(JSON.stringify(data));
+    const downloadAnchor = document.createElement('a');
+    downloadAnchor.setAttribute('href', dataStr);
+    downloadAnchor.setAttribute('download', 'SmartPos.json');
+    document.body.appendChild(downloadAnchor);
+    downloadAnchor.click();
+    downloadAnchor.remove();
+  };
+
+  const activeTheme = (!config.themeColor || config.themeColor === 'slate' || config.themeColor === 'navy') ? 'indigo' : config.themeColor;
+  const themeClass = `theme-${activeTheme}`;
+
+  const getSidebarStatusTheme = (theme?: string) => {
+    switch (theme) {
+      case 'sky':
+        return {
+          badge: 'bg-sky-500/20 text-sky-300 border-sky-500/30',
+          dot: 'bg-sky-400'
+        };
+      case 'emerald':
+        return {
+          badge: 'bg-emerald-500/20 text-emerald-300 border-emerald-500/30',
+          dot: 'bg-emerald-400'
+        };
+      case 'rose':
+        return {
+          badge: 'bg-rose-500/20 text-rose-300 border-rose-500/30',
+          dot: 'bg-rose-400'
+        };
+      case 'amber':
+        return {
+          badge: 'bg-amber-500/20 text-amber-300 border-amber-500/30',
+          dot: 'bg-amber-400'
+        };
+      case 'purple':
+      case 'indigo':
+      default:
+        return {
+          badge: 'bg-indigo-500/20 text-indigo-300 border-indigo-500/30',
+          dot: 'bg-indigo-400'
+        };
+    }
+  };
+  const statusTheme = getSidebarStatusTheme(activeTheme);
+
+  return (
+    <div
+      dir={isRTL ? 'rtl' : 'ltr'}
+      className={`flex h-screen w-full font-sans overflow-hidden antialiased select-none bg-slate-100 text-slate-800 ${themeClass}`}
+      id="root-viewport-wrap"
+    >
+      {/* Floating Sync Notice Toast */}
+      {syncNotice && (
+        <div className="fixed top-4 left-1/2 -translate-x-1/2 z-50 px-4 py-2.5 rounded-2xl bg-slate-900 text-emerald-400 border border-emerald-500/40 shadow-2xl text-xs font-black flex items-center gap-2 animate-fade-in">
+          <Cloud className="w-4 h-4 shrink-0" />
+          <span>{syncNotice}</span>
+        </div>
+      )}
+
+      {/* Mobile Drawer Backdrop Overlay (< lg) */}
+      {isMobileMenuOpen && (
+        <div
+          onClick={() => setIsMobileMenuOpen(false)}
+          className="fixed inset-0 bg-slate-950/60 backdrop-blur-xs z-40 lg:hidden animate-fade-in"
+        />
+      )}
+
+      {/* Sidebar - Pinned on Desktop (lg+), Slide-over Drawer on Android & iPhone (< lg) */}
+      <aside
+        id="app-sidebar-panel"
+        className={`w-64 bg-slate-900 text-white flex flex-col shrink-0 ltr:border-r rtl:border-l border-slate-800 z-50 lg:z-30 fixed lg:static inset-y-0 ${
+          isRTL ? 'right-0' : 'left-0'
+        } transition-transform duration-200 ease-in-out select-none ${
+          isMobileMenuOpen
+            ? 'translate-x-0 shadow-2xl'
+            : isRTL
+            ? 'translate-x-full lg:translate-x-0'
+            : '-translate-x-full lg:translate-x-0'
+        }`}
+      >
+        <div className="p-3.5 flex items-center justify-between gap-3 border-b border-slate-800 shrink-0">
+          <div className="flex items-center gap-3 min-w-0 flex-1">
+            {config.logoUrl ? (
+              <img
+                src={config.logoUrl}
+                alt={config.name}
+                className="w-10 h-10 rounded-xl object-cover shrink-0 shadow-md border border-slate-700/60"
+              />
+            ) : (
+              <div className="w-10 h-10 bg-gradient-to-tr from-indigo-600 to-indigo-500 rounded-xl flex items-center justify-center font-black text-white text-base shrink-0 shadow-md">
+                {config.name?.charAt(0) || 'S'}
+              </div>
+            )}
+            <div className="min-w-0 flex-1">
+              <span className="font-black text-white tracking-tight block truncate text-sm uppercase text-start">
+                {config.name}
+              </span>
+              <span className="text-[10px] text-slate-400 font-semibold block truncate text-start">
+                {config.registrationNumber ? `VAT: ${config.registrationNumber}` : 'Smart POS Pro'}
+              </span>
+            </div>
+          </div>
+
+          <button
+            type="button"
+            onClick={() => setIsMobileMenuOpen(false)}
+            className="lg:hidden p-1.5 rounded-lg bg-slate-800 text-slate-300 hover:text-white cursor-pointer"
+          >
+            <X className="w-4 h-4" />
+          </button>
+        </div>
+
+        {/* Sidebar Nav links */}
+        <nav className="flex-1 py-2.5 overflow-y-auto space-y-1 px-2 no-scrollbar">
+          <div className="px-3 py-1 text-[11px] font-bold text-slate-400 uppercase tracking-wider text-start">
+            {isRTL ? 'لوحة التحكم' : 'Main Console'}
+          </div>
+
+          {/* Home Tab */}
+          {currentUser.allowedTabs.includes('home') && (
+            <button
+              id="sidebar-tab-home"
+              onClick={() => selectTab('home')}
+              className={`w-full flex items-center px-3 py-2 rounded-lg text-[13px] font-medium transition-all cursor-pointer text-start ${
+                activeTab === 'home'
+                  ? 'text-white font-bold bg-white/[0.08] rounded-lg'
+                  : 'text-slate-300 hover:text-white hover:bg-white/[0.04] rounded-lg'
+              }`}
+            >
+              <SmartHome className="w-4.5 h-4.5 mr-2.5 rtl:mr-0 rtl:ml-2.5 shrink-0 opacity-90" />
+              <span className="truncate">{t.nav.home}</span>
+            </button>
+          )}
+
+          {/* POS Tab */}
+          {currentUser.allowedTabs.includes('pos') && (
+            <button
+              id="sidebar-tab-pos"
+              onClick={() => selectTab('pos')}
+              className={`w-full flex items-center px-3 py-2 rounded-lg text-[13px] font-medium transition-all cursor-pointer text-start ${
+                activeTab === 'pos'
+                  ? 'text-white font-bold bg-white/[0.08] rounded-lg'
+                  : 'text-slate-300 hover:text-white hover:bg-white/[0.04] rounded-lg'
+              }`}
+            >
+              <ShoppingCart className="w-4.5 h-4.5 mr-2.5 rtl:mr-0 rtl:ml-2.5 shrink-0 opacity-90" />
+              <span className="truncate">{t.nav.pos}</span>
+            </button>
+          )}
+
+          {/* Invoices Tab */}
+          {currentUser.allowedTabs.includes('invoices') && (
+            <button
+              id="sidebar-tab-invoices"
+              onClick={() => selectTab('invoices')}
+              className={`w-full flex items-center px-3 py-2 rounded-lg text-[13px] font-medium transition-all cursor-pointer text-start ${
+                activeTab === 'invoices'
+                  ? 'text-white font-bold bg-white/[0.08] rounded-lg'
+                  : 'text-slate-300 hover:text-white hover:bg-white/[0.04] rounded-lg'
+              }`}
+            >
+              <Receipt className="w-4.5 h-4.5 mr-2.5 rtl:mr-0 rtl:ml-2.5 shrink-0 opacity-90" />
+              <span className="truncate">{t.nav.invoices}</span>
+            </button>
+          )}
+
+          {/* Commercial Documents Tab (إدارة الوثائق التجارية) */}
+          {(currentUser.allowedTabs.includes('commercial-documents') || currentUser.allowedTabs.includes('devis') || currentUser.allowedTabs.includes('bon-commande') || currentUser.allowedTabs.includes('bon-livraison')) && (
+            <button
+              id="sidebar-tab-commercial-documents"
+              onClick={() => selectTab('commercial-documents')}
+              className={`w-full flex items-center px-3 py-2 rounded-lg text-[13px] font-medium transition-all cursor-pointer text-start ${
+                activeTab === 'commercial-documents' || activeTab === 'devis' || activeTab === 'bon-commande' || activeTab === 'bon-livraison'
+                  ? 'text-white font-bold bg-white/[0.08] rounded-lg'
+                  : 'text-slate-300 hover:text-white hover:bg-white/[0.04] rounded-lg'
+              }`}
+            >
+              <FileSpreadsheet className="w-4.5 h-4.5 mr-2.5 rtl:mr-0 rtl:ml-2.5 shrink-0 opacity-90" />
+              <span className="truncate">{t.nav.commercialDocuments}</span>
+            </button>
+          )}
+
+          {/* Purchase Entry Tab (فاتورة المشتريات) */}
+          {currentUser.allowedTabs.includes('purchase-entry') && (
+            <button
+              id="sidebar-tab-purchase-entry"
+              onClick={() => selectTab('purchase-entry')}
+              className={`w-full flex items-center px-3 py-2 rounded-lg text-[13px] font-medium transition-all cursor-pointer text-start ${
+                activeTab === 'purchase-entry'
+                  ? 'text-white font-bold bg-white/[0.08] rounded-lg'
+                  : 'text-slate-300 hover:text-white hover:bg-white/[0.04] rounded-lg'
+              }`}
+            >
+              <ShoppingBag className="w-4.5 h-4.5 mr-2.5 rtl:mr-0 rtl:ml-2.5 shrink-0 opacity-90" />
+              <span className="truncate">{t.nav.purchaseEntry}</span>
+            </button>
+          )}
+
+          {/* Purchases Management Tab (إدارة فواتير المشتريات والديون) */}
+          {currentUser.allowedTabs.includes('purchases') && (
+            <button
+              id="sidebar-tab-purchases"
+              onClick={() => selectTab('purchases')}
+              className={`w-full flex items-center px-3 py-2 rounded-lg text-[13px] font-medium transition-all cursor-pointer text-start ${
+                activeTab === 'purchases'
+                  ? 'text-white font-bold bg-white/[0.08] rounded-lg'
+                  : 'text-slate-300 hover:text-white hover:bg-white/[0.04] rounded-lg'
+              }`}
+            >
+              <ClipboardList className="w-4.5 h-4.5 mr-2.5 rtl:mr-0 rtl:ml-2.5 shrink-0 opacity-90" />
+              <span className="truncate">{t.nav.purchases}</span>
+            </button>
+          )}
+
+          {/* Inventory Tab */}
+          {currentUser.allowedTabs.includes('inventory') && (
+            <button
+              id="sidebar-tab-inventory"
+              onClick={() => selectTab('inventory')}
+              className={`w-full flex items-center px-3 py-2 rounded-lg text-[13px] font-medium transition-all cursor-pointer text-start ${
+                activeTab === 'inventory'
+                  ? 'text-white font-bold bg-white/[0.08] rounded-lg'
+                  : 'text-slate-300 hover:text-white hover:bg-white/[0.04] rounded-lg'
+              }`}
+            >
+              <Package className="w-4.5 h-4.5 mr-2.5 rtl:mr-0 rtl:ml-2.5 shrink-0 opacity-90" />
+              <span className="truncate">{t.nav.inventory}</span>
+            </button>
+          )}
+
+          {/* Customers Tab */}
+          {currentUser.allowedTabs.includes('customers') && (
+            <button
+              id="sidebar-tab-customers"
+              onClick={() => selectTab('customers')}
+              className={`w-full flex items-center px-3 py-2 rounded-lg text-[13px] font-medium transition-all cursor-pointer text-start ${
+                activeTab === 'customers'
+                  ? 'text-white font-bold bg-white/[0.08] rounded-lg'
+                  : 'text-slate-300 hover:text-white hover:bg-white/[0.04] rounded-lg'
+              }`}
+            >
+              <Users className="w-4.5 h-4.5 mr-2.5 rtl:mr-0 rtl:ml-2.5 shrink-0 opacity-90" />
+              <span className="truncate">{t.nav.customers}</span>
+            </button>
+          )}
+
+          {/* Suppliers Tab */}
+          {currentUser.allowedTabs.includes('suppliers') && (
+            <button
+              id="sidebar-tab-suppliers"
+              onClick={() => selectTab('suppliers')}
+              className={`w-full flex items-center px-3 py-2 rounded-lg text-[13px] font-medium transition-all cursor-pointer text-start ${
+                activeTab === 'suppliers'
+                  ? 'text-white font-bold bg-white/[0.08] rounded-lg'
+                  : 'text-slate-300 hover:text-white hover:bg-white/[0.04] rounded-lg'
+              }`}
+            >
+              <Truck className="w-4.5 h-4.5 mr-2.5 rtl:mr-0 rtl:ml-2.5 shrink-0 opacity-90" />
+              <span className="truncate">{t.nav.suppliers}</span>
+            </button>
+          )}
+
+          {/* Expenses Tab */}
+          {currentUser.allowedTabs.includes('expenses') && (
+            <button
+              id="sidebar-tab-expenses"
+              onClick={() => selectTab('expenses')}
+              className={`w-full flex items-center px-3 py-2 rounded-lg text-[13px] font-medium transition-all cursor-pointer text-start ${
+                activeTab === 'expenses'
+                  ? 'text-white font-bold bg-white/[0.08] rounded-lg'
+                  : 'text-slate-300 hover:text-white hover:bg-white/[0.04] rounded-lg'
+              }`}
+            >
+              <ReceiptText className="w-4.5 h-4.5 mr-2.5 rtl:mr-0 rtl:ml-2.5 shrink-0 opacity-90" />
+              <span className="truncate">{t.nav.expenses}</span>
+            </button>
+          )}
+
+          {/* Reports Tab */}
+          {currentUser.allowedTabs.includes('reports') && (
+            <button
+              id="sidebar-tab-reports"
+              onClick={() => selectTab('reports')}
+              className={`w-full flex items-center px-3 py-2 rounded-lg text-[13px] font-medium transition-all cursor-pointer text-start ${
+                activeTab === 'reports'
+                  ? 'text-white font-bold bg-white/[0.08] rounded-lg'
+                  : 'text-slate-300 hover:text-white hover:bg-white/[0.04] rounded-lg'
+              }`}
+            >
+              <LayoutDashboard className="w-4.5 h-4.5 mr-2.5 rtl:mr-0 rtl:ml-2.5 shrink-0 opacity-90" />
+              <span className="truncate">{t.nav.reports}</span>
+            </button>
+          )}
+
+          {/* Settings Tab */}
+          {currentUser.allowedTabs.includes('settings') && (
+            <button
+              id="sidebar-tab-settings"
+              onClick={() => selectTab('settings')}
+              className={`w-full flex items-center px-3 py-2 rounded-lg text-[13px] font-medium transition-all cursor-pointer text-start ${
+                activeTab === 'settings'
+                  ? 'text-white font-bold bg-white/[0.08] rounded-lg'
+                  : 'text-slate-300 hover:text-white hover:bg-white/[0.04] rounded-lg'
+              }`}
+            >
+              <SettingsIcon className="w-4.5 h-4.5 mr-2.5 rtl:mr-0 rtl:ml-2.5 shrink-0 opacity-90" />
+              <span className="truncate">{t.nav.settings}</span>
+            </button>
+          )}
+
+          {/* Team Management Tab */}
+          {currentUser.allowedTabs.includes('users') && (
+            <button
+              id="sidebar-tab-users"
+              onClick={() => selectTab('users')}
+              className={`w-full flex items-center px-3 py-2 rounded-lg text-[13px] font-medium transition-all cursor-pointer text-start ${
+                activeTab === 'users'
+                  ? 'text-white font-bold bg-white/[0.08] rounded-lg'
+                  : 'text-slate-300 hover:text-white hover:bg-white/[0.04] rounded-lg'
+              }`}
+            >
+              <Shield className="w-4.5 h-4.5 mr-2.5 rtl:mr-0 rtl:ml-2.5 shrink-0 opacity-90" />
+              <span className="truncate">{t.nav.users}</span>
+            </button>
+          )}
+
+          {/* Repairs Tab */}
+          {currentUser.allowedTabs.includes('repairs') && (
+            <button
+              id="sidebar-tab-repairs"
+              onClick={() => selectTab('repairs')}
+              className={`w-full flex items-center px-3 py-2 rounded-lg text-[13px] font-medium transition-all cursor-pointer text-start ${
+                activeTab === 'repairs'
+                  ? 'text-white font-bold bg-white/[0.08] rounded-lg'
+                  : 'text-slate-300 hover:text-white hover:bg-white/[0.04] rounded-lg'
+              }`}
+            >
+              <PenTool className="w-4.5 h-4.5 mr-2.5 rtl:mr-0 rtl:ml-2.5 shrink-0 opacity-90" />
+              <span className="truncate">{t.nav.repairs}</span>
+            </button>
+          )}
+
+          {/* Logs Tab */}
+          {currentUser.allowedTabs.includes('logs') && (
+            <button
+              id="sidebar-tab-logs"
+              onClick={() => selectTab('logs')}
+              className={`w-full flex items-center px-3 py-2 rounded-lg text-[13px] font-medium transition-all cursor-pointer text-start ${
+                activeTab === 'logs'
+                  ? 'text-white font-bold bg-white/[0.08] rounded-lg'
+                  : 'text-slate-300 hover:text-white hover:bg-white/[0.04] rounded-lg'
+              }`}
+            >
+              <ClipboardList className="w-4.5 h-4.5 mr-2.5 rtl:mr-0 rtl:ml-2.5 shrink-0 opacity-90" />
+              <span className="truncate">{t.nav.logs}</span>
+            </button>
+          )}
+
+          {/* Backup & Data Management Tab (إدارة البيانات والنسخ الاحتياطي) */}
+          {(currentUser.allowedTabs.includes('backup') || currentUser.allowedTabs.includes('settings')) && (
+            <button
+              id="sidebar-tab-backup"
+              onClick={() => selectTab('backup')}
+              className={`w-full flex items-center px-3 py-2 rounded-lg text-[13px] font-medium transition-all cursor-pointer text-start ${
+                activeTab === 'backup'
+                  ? 'text-white font-bold bg-white/[0.08] rounded-lg'
+                  : 'text-slate-300 hover:text-white hover:bg-white/[0.04] rounded-lg'
+              }`}
+            >
+              <Database className="w-4.5 h-4.5 mr-2.5 rtl:mr-0 rtl:ml-2.5 shrink-0 opacity-90" />
+              <span className="truncate">{t.nav.backup}</span>
+            </button>
+          )}
+
+          {/* Mobile App & Cloud Sync Tab (تطبيق الهاتف والمزامنة السحابية) */}
+          <button
+            id="sidebar-tab-mobile-sync"
+            onClick={() => selectTab('mobile-sync')}
+            className={`w-full flex items-center px-3 py-2 rounded-lg text-[13px] font-medium transition-all cursor-pointer text-start ${
+              activeTab === 'mobile-sync'
+                ? 'text-emerald-300 font-bold bg-emerald-500/15 border border-emerald-500/30 rounded-lg'
+                : 'text-emerald-300/90 hover:text-white hover:bg-white/[0.04] rounded-lg'
+            }`}
+          >
+            <Smartphone className="w-4.5 h-4.5 mr-2.5 rtl:mr-0 rtl:ml-2.5 shrink-0 opacity-90" />
+            <span className="truncate">{lang === 'ar' ? 'تطبيق الهاتف والمزامنة' : 'Mobile & Cloud Sync'}</span>
+          </button>
+        </nav>
+
+        {/* System bottom details card */}
+        <div className="p-3 border-t border-slate-800 text-[10px] shrink-0 bg-slate-950/40">
+          <div className="flex justify-between items-center opacity-60 mb-1.5 font-mono text-[9px] uppercase tracking-wider text-slate-300">
+            <span>Cloud + Mobile Sync</span>
+            <span>v5.0</span>
+          </div>
+          <div id="sidebar-online-status" className={`${statusTheme.badge} p-1.5 rounded-lg border font-bold text-center text-[10px] tracking-wide uppercase flex items-center justify-center gap-1.5 transition-colors duration-200`}>
+            <span className={`w-2 h-2 rounded-full ${statusTheme.dot} animate-pulse shrink-0`}></span>
+            <span>{isRTL ? 'الحالة: متصل بالكامل' : 'Status: Full Online'}</span>
+          </div>
+        </div>
+      </aside>
+
+      {/* Main Content Area */}
+      <main className="flex-1 flex flex-col min-w-0 bg-slate-50 relative h-screen overflow-hidden">
+        {/* Top Header Row */}
+        <header className="h-14 bg-white border-b border-slate-200 flex items-center justify-between px-3 sm:px-6 shrink-0 z-20 shadow-xs">
+          <div className="flex items-center gap-2 sm:gap-3 min-w-0">
+            {/* Mobile Hamburger Button (< lg) */}
+            <button
+              type="button"
+              onClick={() => setIsMobileMenuOpen(true)}
+              className="lg:hidden p-2 rounded-xl bg-slate-100 hover:bg-slate-200 text-slate-700 cursor-pointer shrink-0"
+              title={lang === 'ar' ? 'القائمة الرئيسية' : 'Menu'}
+            >
+              <Menu className="w-5 h-5" />
+            </button>
+
+            <span className="hidden sm:inline-block text-[10px] font-black bg-slate-100 px-2.5 py-1 rounded text-indigo-600 uppercase tracking-widest shrink-0">
+              {activeTab}
+            </span>
+            <h2 className="text-xs sm:text-sm font-bold text-slate-850 tracking-tight truncate">
+              {activeTab === 'home' && t.nav.home}
+              {activeTab === 'pos' && t.nav.pos}
+              {activeTab === 'invoices' && t.nav.invoices}
+              {(activeTab === 'commercial-documents' || activeTab === 'devis' || activeTab === 'bon-commande' || activeTab === 'bon-livraison') && t.nav.commercialDocuments}
+              {activeTab === 'purchase-entry' && t.nav.purchaseEntry}
+              {activeTab === 'inventory' && t.nav.inventory}
+              {activeTab === 'customers' && t.nav.customers}
+              {activeTab === 'suppliers' && t.nav.suppliers}
+              {activeTab === 'purchases' && t.nav.purchases}
+              {activeTab === 'reports' && t.nav.reports}
+              {activeTab === 'settings' && t.nav.settings}
+              {activeTab === 'users' && t.nav.users}
+              {activeTab === 'repairs' && t.nav.repairs}
+              {activeTab === 'logs' && t.nav.logs}
+              {activeTab === 'backup' && t.nav.backup}
+              {activeTab === 'mobile-sync' && (lang === 'ar' ? 'تطبيق الهاتف والمزامنة السحابية' : 'Mobile App & Cloud Sync')}
+            </h2>
+          </div>
+
+          <div className="flex items-center gap-1.5 sm:gap-3 shrink-0">
+            {/* Instant Cloud/Phone Sync Status & Action Button */}
+            <button
+              type="button"
+              onClick={() => triggerSyncCycle(true)}
+              className="px-2.5 py-1.5 rounded-xl bg-emerald-50 hover:bg-emerald-100 border border-emerald-200 text-emerald-700 text-[10px] sm:text-xs font-black flex items-center gap-1.5 cursor-pointer transition"
+              title={lang === 'ar' ? 'مزامنة البيانات الآن بين الهاتف والحاسوب' : 'Sync Now'}
+            >
+              <RefreshCw className={`w-3.5 h-3.5 text-emerald-600 ${isCloudSyncing ? 'animate-spin' : ''}`} />
+              <span className="hidden md:inline">{lang === 'ar' ? 'مزامنة فورية' : 'Sync'}</span>
+            </button>
+
+            {/* 1-Click PWA Install Button if installable */}
+            {deferredInstallPrompt && (
+              <button
+                type="button"
+                onClick={handleTriggerPwaInstall}
+                className="px-2.5 py-1.5 rounded-xl bg-indigo-600 hover:bg-indigo-700 text-white text-[10px] sm:text-xs font-black flex items-center gap-1 cursor-pointer shadow-2xs transition"
+              >
+                <Smartphone className="w-3.5 h-3.5" />
+                <span>{lang === 'ar' ? 'تثبيت التطبيق' : 'Install'}</span>
+              </button>
+            )}
+
+            {/* High density language switcher selection */}
+            <div className="flex bg-slate-100 rounded-lg p-0.5 text-[10px] font-bold border border-slate-200">
+              <button
+                id="btn-lang-ar"
+                onClick={() => setLang('ar')}
+                className={`px-2 sm:px-3 py-1 sm:py-1.5 rounded transition cursor-pointer font-bold ${
+                  lang === 'ar' ? 'bg-white shadow-xs text-indigo-600' : 'text-slate-500 hover:text-slate-800'
+                }`}
+              >
+                AR
+              </button>
+              <button
+                id="btn-lang-fr"
+                onClick={() => setLang('fr')}
+                className={`px-2 sm:px-3 py-1 sm:py-1.5 rounded transition cursor-pointer font-bold ${
+                  lang === 'fr' ? 'bg-white shadow-xs text-indigo-600' : 'text-slate-500 hover:text-slate-800'
+                }`}
+              >
+                FR
+              </button>
+              <button
+                id="btn-lang-en"
+                onClick={() => setLang('en')}
+                className={`px-2 sm:px-3 py-1 sm:py-1.5 rounded transition cursor-pointer font-bold ${
+                  lang === 'en' ? 'bg-white shadow-xs text-indigo-600' : 'text-slate-500 hover:text-slate-800'
+                }`}
+              >
+                EN
+              </button>
+            </div>
+
+            {/* Admin User Badge */}
+            <div className="flex items-center gap-2 sm:gap-3 border-l border-slate-200 pl-2 sm:pl-4 pr-1 sm:pr-4 rtl:border-l-0 rtl:border-r rtl:pr-2 sm:rtl:pr-4 rtl:pl-1 sm:rtl:pl-4 shrink-0">
+              <div className="hidden sm:block text-right">
+                <p className="text-[11.5px] font-black leading-none text-slate-800">{currentUser.name}</p>
+                <p className="text-[9px] text-indigo-600 font-extrabold uppercase tracking-wider mt-0.5">
+                  {currentUser.role === 'admin' ? (lang === 'ar' ? 'مدير عام الصلاحيات' : 'Admin') : (lang === 'ar' ? 'موظف مبيعات' : 'Staff')}
+                </p>
+              </div>
+              {currentUser.photoUrl ? (
+                <img src={currentUser.photoUrl} alt={currentUser.name} className="w-7 h-7 sm:w-8 sm:h-8 rounded-full object-cover border border-slate-200" />
+              ) : (
+                <div className="w-7 h-7 sm:w-8 sm:h-8 rounded-full bg-slate-100 border border-slate-200 flex items-center justify-center font-black text-xs text-slate-700 uppercase">
+                  {currentUser.name.slice(0, 2)}
+                </div>
+              )}
+
+              {/* Functional Log out */}
+              <button
+                onClick={handleLogout}
+                title={lang === 'ar' ? 'تسجيل الخروج' : 'Log Out'}
+                className="p-1.5 bg-slate-50 hover:bg-rose-50 text-slate-450 hover:text-rose-600 rounded-lg border border-slate-200 hover:border-rose-100 transition duration-150 cursor-pointer"
+              >
+                <LogOut className="w-4 h-4" />
+              </button>
+            </div>
+          </div>
+        </header>
+
+        {/* Dynamic Inner Active Section Viewport */}
+        <div className="p-3 sm:p-6 pb-20 lg:pb-6 flex-1 overflow-y-auto min-h-0 bg-slate-50/70 no-scrollbar" id="main-content-display">
+          {activeTab === 'home' && (
+            <Home
+              invoices={invoices}
+              products={products}
+              customers={customers}
+              suppliers={suppliers}
+              logs={logs}
+              config={config}
+              lang={lang}
+              currentUser={currentUser}
+              onNavigate={selectTab}
+            />
+          )}
+
+          {activeTab === 'pos' && (
+            <POS
+              products={products}
+              customers={customers}
+              config={config}
+              onAddTransaction={handleAddTransaction}
+              onReturnInvoice={handleReturnInvoiceItems}
+              invoices={invoices}
+              expenses={expenses}
+              lang={lang}
+              currentUser={currentUser}
+            />
+          )}
+
+          {activeTab === 'invoices' && (
+            <Invoices
+              invoices={invoices}
+              customers={customers}
+              config={config}
+              onPayInvoiceBalance={handlePayInvoiceBalance}
+              onDeleteInvoice={handleDeleteInvoice}
+              onReturnInvoice={handleReturnInvoiceItems}
+              lang={lang}
+            />
+          )}
+
+          {(activeTab === 'commercial-documents' || activeTab === 'devis' || activeTab === 'bon-commande' || activeTab === 'bon-livraison') && (
+            <CommercialDocuments
+              initialType={
+                activeTab === 'bon-commande' ? 'bon_commande' :
+                activeTab === 'bon-livraison' ? 'bon_livraison' :
+                'devis'
+              }
+              documents={commercialDocuments}
+              products={products}
+              customers={customers}
+              config={config}
+              onSaveDocument={handleSaveCommercialDoc}
+              onDeleteDocument={handleDeleteCommercialDoc}
+              onConvertToInvoice={handleCommercialDocConvertToInvoice}
+              lang={lang}
+            />
+          )}
+
+          {activeTab === 'purchase-entry' && (
+            <PurchaseEntry
+              suppliers={suppliers}
+              products={products}
+              config={config}
+              purchasesCount={purchases.length}
+              onSavePurchase={handleSavePurchase}
+              onNavigate={selectTab}
+              lang={lang}
+              currentUser={currentUser}
+            />
+          )}
+
+          {activeTab === 'inventory' && (
+            <Inventory
+              products={products}
+              config={config}
+              onSaveProduct={handleSaveProduct}
+              onDeleteProduct={handleDeleteProduct}
+              lang={lang}
+            />
+          )}
+
+          {activeTab === 'customers' && (
+            <Customers
+              customers={customers}
+              invoices={invoices}
+              onSaveCustomer={handleSaveCustomer}
+              onDeleteCustomer={handleDeleteCustomer}
+              onSettleDebt={handleSettleDebt}
+              lang={lang}
+              config={config}
+              logs={logs}
+            />
+          )}
+
+          {activeTab === 'suppliers' && (
+            <Suppliers
+              suppliers={suppliers}
+              onSaveSupplier={handleSaveSupplier}
+              onDeleteSupplier={handleDeleteSupplier}
+              lang={lang}
+            />
+          )}
+
+          {activeTab === 'purchases' && (
+            <Purchases
+              purchases={purchases || []}
+              suppliers={suppliers}
+              products={products}
+              config={config}
+              onSavePurchase={handleSavePurchase}
+              onDeletePurchase={handleDeletePurchase}
+              onSettleSupplierDebt={handleSettleSupplierDebt}
+              lang={lang}
+            />
+          )}
+
+          {activeTab === 'expenses' && (
+            <Expenses
+              expenses={expenses}
+              config={config}
+              onSaveExpense={handleSaveExpense}
+              onDeleteExpense={handleDeleteExpense}
+              lang={lang}
+              currentUserName={currentUser?.name}
+            />
+          )}
+
+          {activeTab === 'reports' && (
+            <Dashboard
+              invoices={invoices}
+              products={products}
+              customers={customers}
+              suppliers={suppliers}
+              expenses={expenses}
+              config={config}
+              lang={lang}
+            />
+          )}
+
+          {activeTab === 'settings' && (
+            <Settings
+              config={config}
+              onSaveConfig={handleSaveConfig}
+              lang={lang}
+              logs={logs}
+              currentUser={currentUser}
+            />
+          )}
+
+          {activeTab === 'backup' && (
+            <BackupManagement
+              onImportBackup={handleImportBackup}
+              onExportBackup={handleExportBackup}
+              onResetToDefaults={resetStoredToDefaults}
+              lang={lang}
+              logs={logs}
+              productsCount={products.length}
+              invoicesCount={invoices.length}
+              customersCount={customers.length}
+              suppliersCount={suppliers.length}
+            />
+          )}
+
+          {activeTab === 'users' && (
+            <UsersManagement
+              currentUser={currentUser}
+              employees={employees}
+              onSaveEmployee={handleSaveEmployee}
+              onDeleteEmployee={handleDeleteEmployee}
+              lang={lang}
+            />
+          )}
+
+          {activeTab === 'repairs' && (
+            <RepairsManagement
+              repairs={repairs}
+              config={config}
+              onSaveRepair={handleSaveRepair}
+              onDeleteRepair={handleDeleteRepair}
+              lang={lang}
+            />
+          )}
+
+          {activeTab === 'logs' && (
+            <ActivityLogs
+              logs={logs}
+              config={config}
+              onClearLogs={handleClearLogs}
+              onDeleteSingleLog={handleDeleteSingleLog}
+              lang={lang}
+            />
+          )}
+
+          {activeTab === 'mobile-sync' && (
+            <MobileAndCloudSync
+              allData={data}
+              onUpdateAllData={(merged) => {
+                setData(merged);
+                saveStoredData(merged);
+                fetch('/api/save', {
+                  method: 'POST',
+                  headers: { 'Content-Type': 'application/json' },
+                  body: JSON.stringify(merged),
+                }).catch(() => {});
+              }}
+              config={config}
+              lang={lang}
+              deferredInstallPrompt={deferredInstallPrompt}
+              onTriggerInstall={handleTriggerPwaInstall}
+            />
+          )}
+        </div>
+
+        {/* Native Smartphone Bottom Navigation Bar (< lg) for Android & iPhone */}
+        <nav
+          id="mobile-bottom-nav"
+          className="lg:hidden fixed bottom-0 left-0 right-0 bg-white/95 backdrop-blur-md border-t border-slate-200 grid grid-cols-5 z-30 shadow-lg"
+          style={{ paddingBottom: 'env(safe-area-inset-bottom, 0px)' }}
+        >
+          <button
+            type="button"
+            onClick={() => selectTab('home')}
+            className={`py-2 flex flex-col items-center justify-center gap-0.5 text-[10px] font-black cursor-pointer transition ${
+              activeTab === 'home' ? 'text-indigo-600' : 'text-slate-500'
+            }`}
+          >
+            <SmartHome className="w-5 h-5" />
+            <span>{lang === 'ar' ? 'الرئيسية' : 'Home'}</span>
+          </button>
+
+          <button
+            type="button"
+            onClick={() => selectTab('pos')}
+            className={`py-2 flex flex-col items-center justify-center gap-0.5 text-[10px] font-black cursor-pointer transition ${
+              activeTab === 'pos' ? 'text-indigo-600' : 'text-slate-500'
+            }`}
+          >
+            <ShoppingCart className="w-5 h-5" />
+            <span>{lang === 'ar' ? 'نقطة البيع' : 'POS'}</span>
+          </button>
+
+          <button
+            type="button"
+            onClick={() => selectTab('invoices')}
+            className={`py-2 flex flex-col items-center justify-center gap-0.5 text-[10px] font-black cursor-pointer transition ${
+              activeTab === 'invoices' ? 'text-indigo-600' : 'text-slate-500'
+            }`}
+          >
+            <Receipt className="w-5 h-5" />
+            <span>{lang === 'ar' ? 'الفواتير' : 'Invoices'}</span>
+          </button>
+
+          <button
+            type="button"
+            onClick={() => selectTab('inventory')}
+            className={`py-2 flex flex-col items-center justify-center gap-0.5 text-[10px] font-black cursor-pointer transition ${
+              activeTab === 'inventory' ? 'text-indigo-600' : 'text-slate-500'
+            }`}
+          >
+            <Package className="w-5 h-5" />
+            <span>{lang === 'ar' ? 'المخزون' : 'Stock'}</span>
+          </button>
+
+          <button
+            type="button"
+            onClick={() => setIsMobileMenuOpen(true)}
+            className={`py-2 flex flex-col items-center justify-center gap-0.5 text-[10px] font-black cursor-pointer transition ${
+              isMobileMenuOpen ? 'text-indigo-600' : 'text-slate-500'
+            }`}
+          >
+            <Menu className="w-5 h-5" />
+            <span>{lang === 'ar' ? 'كل الأقسام' : 'More'}</span>
+          </button>
+        </nav>
+
+        {/* Small humble footer pinned at the bottom panel on Desktop */}
+        <footer className="hidden lg:flex h-8 bg-white border-t border-slate-200 items-center justify-between px-6 text-[10px] text-slate-400 font-semibold shrink-0">
+          <span>{config.name} © 2026</span>
+          <span className="font-mono text-[9px]">{isRTL ? 'البيانات مخزنة ومؤمنة محلياً وسحابياً' : 'All multilingual data secured locally & in cloud'}</span>
+        </footer>
+      </main>
+    </div>
+  );
+}

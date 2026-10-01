@@ -1,0 +1,1190 @@
+<!DOCTYPE html>
+<html lang="ar" dir="rtl">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no" />
+  <meta name="theme-color" content="#0f172a" />
+  <meta name="apple-mobile-web-app-capable" content="yes" />
+  <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent" />
+  <title>تطبيق الهاتف الذكي - نظام المبيعات والفوترة</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Cairo:wght@500;600;700;800;900&display=swap" rel="stylesheet">
+  <script src="https://unpkg.com/html5-qrcode@2.3.8/html5-qrcode.min.js"></script>
+  <style>
+    :root {
+      --primary: #4f46e5;
+      --primary-dark: #4338ca;
+      --slate-900: #0f172a;
+      --slate-800: #1e293b;
+      --slate-700: #334155;
+      --slate-500: #64748b;
+      --slate-200: #e2e8f0;
+      --slate-100: #f1f5f9;
+      --emerald: #10b981;
+      --amber: #f59e0b;
+      --rose: #f43f5e;
+    }
+    * {
+      box-sizing: border-box;
+      margin: 0;
+      padding: 0;
+      -webkit-tap-highlight-color: transparent;
+      font-family: 'Cairo', system-ui, -apple-system, sans-serif;
+    }
+    body {
+      background: #f8fafc;
+      color: #0f172a;
+      padding-bottom: 78px;
+      min-height: 100vh;
+      overflow-x: hidden;
+    }
+    .header {
+      background: linear-gradient(135deg, #0f172a 0%, #1e1b4b 100%);
+      color: #fff;
+      padding: 14px 16px;
+      position: sticky;
+      top: 0;
+      z-index: 40;
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      box-shadow: 0 4px 15px rgba(0,0,0,0.12);
+    }
+    .header-title {
+      font-size: 15px;
+      font-weight: 900;
+      display: flex;
+      align-items: center;
+      gap: 8px;
+    }
+    .sync-badge {
+      font-size: 11px;
+      font-weight: 700;
+      padding: 4px 10px;
+      border-radius: 999px;
+      display: inline-flex;
+      align-items: center;
+      gap: 6px;
+      background: rgba(255,255,255,0.12);
+      border: 1px solid rgba(255,255,255,0.18);
+      cursor: pointer;
+    }
+    .dot {
+      width: 8px;
+      height: 8px;
+      border-radius: 50%;
+      background: #10b981;
+    }
+    .dot.offline { background: #f59e0b; }
+    .container {
+      padding: 14px;
+      max-width: 600px;
+      margin: 0 auto;
+    }
+    .card {
+      background: #fff;
+      border-radius: 18px;
+      padding: 14px;
+      border: 1px solid #e2e8f0;
+      box-shadow: 0 2px 6px rgba(15,23,42,0.03);
+      margin-bottom: 12px;
+    }
+    .stats-grid {
+      display: grid;
+      grid-template-columns: 1fr 1fr;
+      gap: 10px;
+      margin-bottom: 12px;
+    }
+    .stat-box {
+      background: #fff;
+      border-radius: 16px;
+      padding: 12px;
+      border: 1px solid #e2e8f0;
+    }
+    .stat-label {
+      font-size: 11px;
+      color: #64748b;
+      font-weight: 700;
+    }
+    .stat-val {
+      font-size: 18px;
+      font-weight: 900;
+      margin-top: 4px;
+      font-family: Arial, sans-serif;
+    }
+    .btn {
+      border: none;
+      border-radius: 12px;
+      padding: 10px 14px;
+      font-size: 13px;
+      font-weight: 800;
+      cursor: pointer;
+      display: inline-flex;
+      align-items: center;
+      justify-content: center;
+      gap: 6px;
+      transition: 0.15s;
+    }
+    .btn:active { transform: scale(0.97); }
+    .btn-primary { background: #4f46e5; color: #fff; }
+    .btn-emerald { background: #10b981; color: #fff; }
+    .btn-amber { background: #f59e0b; color: #fff; }
+    .btn-rose { background: #f43f5e; color: #fff; }
+    .btn-outline { background: #f1f5f9; color: #1e293b; border: 1px solid #cbd5e1; }
+    .btn-block { width: 100%; }
+    input, select, textarea {
+      width: 100%;
+      padding: 10px 12px;
+      border-radius: 12px;
+      border: 1px solid #cbd5e1;
+      background: #f8fafc;
+      font-size: 13px;
+      font-weight: 700;
+      color: #0f172a;
+      outline: none;
+    }
+    input:focus, select:focus {
+      border-color: #4f46e5;
+      background: #fff;
+    }
+    .bottom-nav {
+      position: fixed;
+      bottom: 0;
+      left: 0;
+      right: 0;
+      background: #fff;
+      border-top: 1px solid #e2e8f0;
+      display: grid;
+      grid-template-columns: repeat(5, 1fr);
+      padding: 6px 4px 10px;
+      z-index: 50;
+      box-shadow: 0 -4px 16px rgba(0,0,0,0.06);
+    }
+    .nav-item {
+      border: none;
+      background: transparent;
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      gap: 2px;
+      color: #64748b;
+      font-size: 10px;
+      font-weight: 800;
+      padding: 4px 2px;
+      cursor: pointer;
+      border-radius: 10px;
+    }
+    .nav-item.active {
+      color: #4f46e5;
+      background: #eef2ff;
+    }
+    .nav-icon { font-size: 18px; line-height: 1.1; }
+    .product-item {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      padding: 10px 12px;
+      border-bottom: 1px solid #f1f5f9;
+      gap: 8px;
+    }
+    .product-item:last-child { border-bottom: none; }
+    .badge {
+      font-size: 10px;
+      font-weight: 800;
+      padding: 2px 8px;
+      border-radius: 99px;
+    }
+    .badge-ok { background: #dcfce7; color: #15803d; }
+    .badge-low { background: #fef3c7; color: #b45309; }
+    .badge-out { background: #ffe4e6; color: #be123c; }
+    .toast {
+      position: fixed;
+      top: 66px;
+      left: 16px;
+      right: 16px;
+      z-index: 100;
+      background: #0f172a;
+      color: #fff;
+      padding: 12px 14px;
+      border-radius: 14px;
+      font-size: 12px;
+      font-weight: 800;
+      box-shadow: 0 10px 25px rgba(0,0,0,0.25);
+      display: none;
+      align-items: center;
+      gap: 8px;
+    }
+    .toast.warn {
+      background: #451a03;
+      color: #fde68a;
+      border: 1px solid #f59e0b;
+    }
+    .warn-inline {
+      margin-top: 6px;
+      padding: 6px 10px;
+      background: #fffbeb;
+      border: 1px solid #fcd34d;
+      border-radius: 8px;
+      color: #92400e;
+      font-size: 11px;
+      font-weight: 800;
+    }
+    #scanner-box {
+      width: 100%;
+      border-radius: 14px;
+      overflow: hidden;
+      background: #000;
+      margin-bottom: 10px;
+    }
+    .hidden { display: none !important; }
+  </style>
+</head>
+<body>
+
+  <!-- Top Bar -->
+  <div class="header">
+    <div class="header-title">
+      <span>📱</span>
+      <span id="store-title">Smart POS Mobile</span>
+    </div>
+    <div style="display:flex; align-items:center; gap:6px;">
+      <a href="/" style="text-decoration:none; font-size:11px; font-weight:800; padding:4px 10px; border-radius:999px; background:#4f46e5; color:#fff; border:1px solid rgba(255,255,255,0.25);">
+        🚀 النسخة الكاملة
+      </a>
+      <div class="sync-badge" onclick="syncAllData(true)" title="اضغط للمزامنة الفورية">
+        <span class="dot" id="sync-dot"></span>
+        <span id="sync-status-label">متصل ومتزامن</span>
+        <span>🔄</span>
+      </div>
+    </div>
+  </div>
+
+  <!-- Toast Alert -->
+  <div id="app-toast" class="toast"></div>
+
+  <div class="container">
+    <!-- TAB 1: DASHBOARD -->
+    <div id="tab-dashboard" class="tab-view">
+      <div class="card" style="background: linear-gradient(135deg, #4f46e5 0%, #3730a3 100%); color: #fff; border: none;">
+        <div style="display:flex; justify-content:space-between; align-items:center;">
+          <div>
+            <div style="font-size:11px; opacity:0.85; font-weight:700;">مبيعات اليوم</div>
+            <div id="stat-today-sales" style="font-size:24px; font-weight:900; font-family:Arial;">0.00</div>
+          </div>
+          <button class="btn" style="background:rgba(255,255,255,0.2); color:#fff; font-size:11px;" onclick="syncAllData(true)">
+            🔄 تحديث الآن
+          </button>
+        </div>
+        <div style="margin-top:10px; padding-top:10px; border-top:1px solid rgba(255,255,255,0.15); display:flex; justify-content:space-between; font-size:12px;">
+          <span>أرباح اليوم الصافية: <b id="stat-today-profit" style="font-family:Arial;">0.00</b></span>
+          <span>فواتير اليوم: <b id="stat-today-count">0</b></span>
+        </div>
+      </div>
+
+      <div class="stats-grid">
+        <div class="stat-box">
+          <div class="stat-label">إجمالي المبيعات الكلي</div>
+          <div class="stat-val" id="stat-total-sales" style="color:#4f46e5;">0.00</div>
+        </div>
+        <div class="stat-box">
+          <div class="stat-label">صافي الأرباح الكلي</div>
+          <div class="stat-val" id="stat-total-profit" style="color:#10b981;">0.00</div>
+        </div>
+        <div class="stat-box">
+          <div class="stat-label">ديون الزبائن المستحقة</div>
+          <div class="stat-val" id="stat-total-debt" style="color:#f43f5e;">0.00</div>
+        </div>
+        <div class="stat-box">
+          <div class="stat-label">منتجات أوشكت على النفاذ</div>
+          <div class="stat-val" id="stat-low-stock" style="color:#f59e0b;">0</div>
+        </div>
+      </div>
+
+      <div class="card">
+        <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:10px;">
+          <h3 style="font-size:14px; font-weight:900;">⚡ إجراءات سريعة من الهاتف</h3>
+        </div>
+        <div style="display:grid; grid-template-columns:1fr 1fr; gap:8px;">
+          <button class="btn btn-primary" onclick="switchTab('pos')">🛒 بيع فاتورة جديدة</button>
+          <button class="btn btn-emerald" onclick="switchTab('scanner')">📷 قارئ باركود للكمبيوتر</button>
+          <button class="btn btn-outline" onclick="switchTab('inventory')">📦 فحص وإدارة المخزون</button>
+          <button class="btn btn-outline" onclick="switchTab('invoices')">🧾 الفواتير والديون</button>
+        </div>
+      </div>
+
+      <div class="card">
+        <h3 style="font-size:14px; font-weight:900; margin-bottom:8px;">🕒 آخر الفواتير المسجلة</h3>
+        <div id="recent-invoices-list"></div>
+      </div>
+    </div>
+
+    <!-- TAB 2: MOBILE POS (بيع + باركود كاميرا) -->
+    <div id="tab-pos" class="tab-view hidden">
+      <div class="card">
+        <div style="display:flex; gap:8px; margin-bottom:8px;">
+          <input type="text" id="pos-search-input" placeholder="🔍 ابحث باسم المنتج أو الباركود..." oninput="renderPosCatalog()" />
+          <button class="btn btn-primary" style="shrink:0; white-space:nowrap;" onclick="togglePosCameraScanner()">
+            📷 باركود
+          </button>
+        </div>
+        <div id="pos-camera-container" class="hidden">
+          <div id="pos-qr-reader" style="width:100%; border-radius:12px; overflow:hidden;"></div>
+          <button class="btn btn-rose btn-block" style="margin-top:6px;" onclick="stopCameraScanner()">إغلاق الكاميرا ✕</button>
+        </div>
+        <div id="pos-catalog-list" style="max-height:200px; overflow-y:auto; border-top:1px solid #f1f5f9; padding-top:6px;"></div>
+      </div>
+
+      <!-- Cart -->
+      <div class="card">
+        <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:8px;">
+          <h3 style="font-size:14px; font-weight:900;">🛒 سلة المشتريات (<span id="pos-cart-count">0</span>)</h3>
+          <button class="btn btn-outline" style="padding:4px 10px; font-size:11px; color:#f43f5e;" onclick="clearMobileCart()">إفراغ</button>
+        </div>
+
+        <div id="pos-cart-items"></div>
+
+        <div style="margin-top:12px; padding-top:10px; border-top:1px solid #e2e8f0; space-y-2;">
+          <div style="display:grid; grid-template-columns:1fr 1fr; gap:8px; margin-bottom:8px;">
+            <div>
+              <label style="font-size:11px; font-weight:800; color:#64748b;">الزبون:</label>
+              <select id="pos-customer-select"></select>
+            </div>
+            <div>
+              <label style="font-size:11px; font-weight:800; color:#64748b;">طريقة الدفع:</label>
+              <select id="pos-payment-method">
+                <option value="cash">نقداً (كاش)</option>
+                <option value="card">بطاقة بنكية</option>
+                <option value="debt">دين (آجل)</option>
+              </select>
+            </div>
+          </div>
+
+          <div style="background:#0f172a; color:#fff; padding:12px 14px; border-radius:14px; display:flex; justify-content:space-between; align-items:center; margin-bottom:10px;">
+            <span style="font-size:13px; font-weight:900;">المجموع الإجمالي:</span>
+            <span id="pos-grand-total" style="font-size:20px; font-weight:900; font-family:Arial;">0.00</span>
+          </div>
+
+          <button class="btn btn-emerald btn-block" style="padding:13px; font-size:14px;" onclick="completeMobileSale()">
+            ✅ تأكيد البيع ومزامنة الفاتورة
+          </button>
+        </div>
+      </div>
+    </div>
+
+    <!-- TAB 3: WIRELESS BARCODE SCANNER FOR PC -->
+    <div id="tab-scanner" class="tab-view hidden">
+      <div class="card" style="text-align:center;">
+        <h3 style="font-size:16px; font-weight:900; margin-bottom:4px;">📷 قارئ الباركود اللاسلكي للكمبيوتر</h3>
+        <p style="font-size:12px; color:#64748b; margin-bottom:12px;">
+          وجّه كاميرا الهاتف نحو باركود السلعة ليتم إرسالها فوراً إلى سلة المشتريات في جهاز الكمبيوتر!
+        </p>
+        <div id="pc-scanner-reader" style="width:100%; border-radius:14px; overflow:hidden; background:#000; min-height:220px;"></div>
+        <div style="display:flex; gap:8px; margin-top:10px;">
+          <button class="btn btn-primary btn-block" onclick="startPcWirelessScanner()">▶ تشغيل الكاميرا</button>
+          <button class="btn btn-outline btn-block" onclick="stopCameraScanner()">⏹ إيقاف</button>
+        </div>
+        <div style="margin-top:12px; display:flex; gap:8px;">
+          <input type="text" id="manual-barcode-to-pc" placeholder="أو اكتب رمز الباركود يدوياً..." />
+          <button class="btn btn-emerald" style="white-space:nowrap;" onclick="sendManualBarcodeToPc()">إرسال للكمبيوتر</button>
+        </div>
+      </div>
+    </div>
+
+    <!-- TAB 4: INVENTORY -->
+    <div id="tab-inventory" class="tab-view hidden">
+      <div class="card">
+        <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:10px;">
+          <h3 style="font-size:14px; font-weight:900;">📦 المخزون والمنتجات (<span id="inv-total-count">0</span>)</h3>
+          <button class="btn btn-primary" style="padding:6px 12px; font-size:11px;" onclick="toggleNewProductForm()">+ منتج جديد</button>
+        </div>
+
+        <div id="new-product-form" class="hidden" style="background:#f8fafc; padding:12px; border-radius:12px; border:1px solid #cbd5e1; margin-bottom:12px;">
+          <h4 style="font-size:12px; font-weight:900; margin-bottom:8px;">إضافة منتج جديد للمخزون</h4>
+          <div style="display:grid; gap:8px;">
+            <input type="text" id="np-name" placeholder="اسم المنتج..." />
+            <div style="display:grid; grid-template-columns:1fr 1fr; gap:8px;">
+              <input type="text" id="np-sku" placeholder="الباركود (SKU)..." />
+              <input type="number" id="np-stock" placeholder="الكمية المتوفرة..." value="10" />
+            </div>
+            <div style="display:grid; grid-template-columns:1fr 1fr; gap:8px;">
+              <input type="number" step="0.01" id="np-buy" placeholder="سعر الشراء..." />
+              <input type="number" step="0.01" id="np-sell" placeholder="سعر البيع..." />
+            </div>
+            <button class="btn btn-emerald btn-block" onclick="saveNewProductFromMobile()">حفظ ومزامنة المنتج</button>
+          </div>
+        </div>
+
+        <input type="text" id="inv-search" placeholder="🔍 ابحث في المخزون بالاسم أو الباركود..." oninput="renderInventoryList()" style="margin-bottom:10px;" />
+        <div id="inventory-list-container"></div>
+      </div>
+    </div>
+
+    <!-- TAB 5: INVOICES & CUSTOMERS & CLOUD SETTINGS -->
+    <div id="tab-invoices" class="tab-view hidden">
+      <!-- Cloud & Server Sync Settings Card -->
+      <div class="card" style="border: 1.5px solid #c7d2fe; background: #f5f7ff;">
+        <h3 style="font-size:14px; font-weight:900; color:#312e81; margin-bottom:6px;">☁️ إعدادات التزامن عن بعد (من أي مكان عبر الإنترنت)</h3>
+        <p style="font-size:11px; color:#4338ca; margin-bottom:10px;">
+          الصق "كود الربط السريع" المنسوخ من برنامج الكمبيوتر، أو أدخل رابط السحابة للربط المباشر من أي مكان:
+        </p>
+        <div style="display:flex; gap:6px; margin-bottom:8px;">
+          <input type="text" id="pairing-code-input" placeholder="الصق كود الربط السريع هنا..." />
+          <button class="btn btn-primary" style="white-space:nowrap;" onclick="applyPairingCode()">ربط فوري</button>
+        </div>
+        <details style="font-size:12px;">
+          <summary style="cursor:pointer; font-weight:800; color:#4f46e5; margin-bottom:6px;">إعدادات السحابة المتقدمة (Firebase / Supabase)</summary>
+          <div style="display:grid; gap:8px; padding-top:6px;">
+            <select id="cfg-provider" onchange="toggleProviderFields()">
+              <option value="firebase">Firebase Realtime Database (موصى به)</option>
+              <option value="supabase">Supabase Cloud</option>
+            </select>
+            <div id="firebase-fields">
+              <input type="text" id="cfg-firebase-url" placeholder="https://your-project-default-rtdb.firebaseio.com" style="margin-bottom:6px;" />
+              <input type="password" id="cfg-firebase-secret" placeholder="Firebase Secret (اختياري)" />
+            </div>
+            <div id="supabase-fields" class="hidden">
+              <input type="text" id="cfg-supabase-url" placeholder="https://xyz.supabase.co" style="margin-bottom:6px;" />
+              <input type="password" id="cfg-supabase-key" placeholder="Supabase Anon Key" />
+            </div>
+            <input type="text" id="cfg-store-id" placeholder="معرف المتجر (مثال: store_01)" value="store_01" />
+            <button class="btn btn-emerald btn-block" onclick="saveMobileCloudConfig()">حفظ ومزامنة الآن</button>
+          </div>
+        </details>
+      </div>
+
+      <!-- Customers Debt Section -->
+      <div class="card">
+        <h3 style="font-size:14px; font-weight:900; margin-bottom:8px;">👥 الزبائن والديون</h3>
+        <div id="mobile-customers-list"></div>
+      </div>
+
+      <!-- All Invoices List -->
+      <div class="card">
+        <h3 style="font-size:14px; font-weight:900; margin-bottom:8px;">🧾 سجل الفواتير</h3>
+        <div id="mobile-invoices-list"></div>
+      </div>
+    </div>
+  </div>
+
+  <!-- Bottom Navigation Bar -->
+  <nav class="bottom-nav">
+    <button class="nav-item active" id="nav-dashboard" onclick="switchTab('dashboard')">
+      <span class="nav-icon">📊</span>
+      <span>الرئيسية</span>
+    </button>
+    <button class="nav-item" id="nav-pos" onclick="switchTab('pos')">
+      <span class="nav-icon">🛒</span>
+      <span>نقطة البيع</span>
+    </button>
+    <button class="nav-item" id="nav-scanner" onclick="switchTab('scanner')">
+      <span class="nav-icon">📷</span>
+      <span>قارئ الباركود</span>
+    </button>
+    <button class="nav-item" id="nav-inventory" onclick="switchTab('inventory')">
+      <span class="nav-icon">📦</span>
+      <span>المخزون</span>
+    </button>
+    <button class="nav-item" id="nav-invoices" onclick="switchTab('invoices')">
+      <span class="nav-icon">☁️</span>
+      <span>الفواتير والربط</span>
+    </button>
+  </nav>
+
+  <script>
+    const STORAGE_DATA_KEY = 'smartpos_mobile_cached_data_v1';
+    const STORAGE_CFG_KEY = 'smartpos_cloud_sync_config_v1';
+
+    let storeData = {
+      products: [],
+      customers: [],
+      suppliers: [],
+      purchases: [],
+      invoices: [],
+      expenses: [],
+      config: { name: 'نظام المبيعات والفوترة', currency: 'د.ج', taxRate: 0 }
+    };
+
+    let mobileCart = [];
+    let html5QrScanner = null;
+
+    // Audio Beep
+    function playBeep(ok = true) {
+      try {
+        const ctx = new (window.AudioContext || window.webkitAudioContext)();
+        const osc = ctx.createOscillator();
+        const gain = ctx.createGain();
+        osc.connect(gain);
+        gain.connect(ctx.destination);
+        osc.type = ok ? 'sine' : 'sawtooth';
+        osc.frequency.setValueAtTime(ok ? 950 : 260, ctx.currentTime);
+        gain.gain.setValueAtTime(0.2, ctx.currentTime);
+        gain.gain.exponentialRampToValueAtTime(0.01, ctx.currentTime + 0.15);
+        osc.start(ctx.currentTime);
+        osc.stop(ctx.currentTime + 0.15);
+      } catch (e) {}
+    }
+
+    function showToast(msg, isWarn = false) {
+      const el = document.getElementById('app-toast');
+      el.textContent = msg;
+      el.className = isWarn ? 'toast warn' : 'toast';
+      el.style.display = 'flex';
+      setTimeout(() => { el.style.display = 'none'; }, 3200);
+    }
+
+    function getCloudConfig() {
+      try {
+        // Also check URL query param ?pair=...
+        const urlParams = new URLSearchParams(window.location.search);
+        const pairParam = urlParams.get('pair');
+        if (pairParam) {
+          const decoded = JSON.parse(decodeURIComponent(escape(atob(pairParam))));
+          const autoCfg = {
+            enabled: true,
+            provider: decoded.p || 'firebase',
+            firebaseUrl: decoded.f || '',
+            firebaseSecret: decoded.fs || '',
+            supabaseUrl: decoded.su || '',
+            supabaseKey: decoded.sk || '',
+            storeId: decoded.s || 'store_01'
+          };
+          localStorage.setItem(STORAGE_CFG_KEY, JSON.stringify(autoCfg));
+          window.history.replaceState({}, document.title, window.location.pathname);
+          return autoCfg;
+        }
+
+        const raw = localStorage.getItem(STORAGE_CFG_KEY);
+        if (raw) return JSON.parse(raw);
+      } catch (e) {}
+      return {
+        enabled: false,
+        provider: 'firebase',
+        firebaseUrl: '',
+        firebaseSecret: '',
+        supabaseUrl: '',
+        supabaseKey: '',
+        storeId: 'store_01'
+      };
+    }
+
+    function loadConfigInputs() {
+      const cfg = getCloudConfig();
+      document.getElementById('cfg-provider').value = cfg.provider || 'firebase';
+      document.getElementById('cfg-firebase-url').value = cfg.firebaseUrl || '';
+      document.getElementById('cfg-firebase-secret').value = cfg.firebaseSecret || '';
+      document.getElementById('cfg-supabase-url').value = cfg.supabaseUrl || '';
+      document.getElementById('cfg-supabase-key').value = cfg.supabaseKey || '';
+      document.getElementById('cfg-store-id').value = cfg.storeId || 'store_01';
+      toggleProviderFields();
+    }
+
+    function toggleProviderFields() {
+      const p = document.getElementById('cfg-provider').value;
+      document.getElementById('firebase-fields').classList.toggle('hidden', p !== 'firebase');
+      document.getElementById('supabase-fields').classList.toggle('hidden', p !== 'supabase');
+    }
+
+    function applyPairingCode() {
+      const code = document.getElementById('pairing-code-input').value.trim();
+      if (!code) return showToast('يرجى لصق كود الربط أولاً', true);
+      try {
+        const decoded = JSON.parse(decodeURIComponent(escape(atob(code))));
+        const newCfg = {
+          enabled: true,
+          provider: decoded.p || 'firebase',
+          firebaseUrl: decoded.f || '',
+          firebaseSecret: decoded.fs || '',
+          supabaseUrl: decoded.su || '',
+          supabaseKey: decoded.sk || '',
+          storeId: decoded.s || 'store_01'
+        };
+        localStorage.setItem(STORAGE_CFG_KEY, JSON.stringify(newCfg));
+        loadConfigInputs();
+        showToast('✅ تم ربط الهاتف بالسحابة بنجاح! جاري المزامنة...');
+        syncAllData(true);
+      } catch (e) {
+        showToast('❌ كود الربط غير صالح، تأكد من نسخه بالكامل', true);
+      }
+    }
+
+    function saveMobileCloudConfig() {
+      const cfg = {
+        enabled: true,
+        provider: document.getElementById('cfg-provider').value,
+        firebaseUrl: document.getElementById('cfg-firebase-url').value.trim(),
+        firebaseSecret: document.getElementById('cfg-firebase-secret').value.trim(),
+        supabaseUrl: document.getElementById('cfg-supabase-url').value.trim(),
+        supabaseKey: document.getElementById('cfg-supabase-key').value.trim(),
+        storeId: document.getElementById('cfg-store-id').value.trim() || 'store_01'
+      };
+      localStorage.setItem(STORAGE_CFG_KEY, JSON.stringify(cfg));
+      showToast('✅ تم حفظ إعدادات السحابة بنجاح!');
+      syncAllData(true);
+    }
+
+    async function syncAllData(manual = false) {
+      const dot = document.getElementById('sync-dot');
+      const label = document.getElementById('sync-status-label');
+      const cfg = getCloudConfig();
+
+      // 1. Try Cloud Sync if configured
+      if (cfg.enabled && ((cfg.provider === 'firebase' && cfg.firebaseUrl) || (cfg.provider === 'supabase' && cfg.supabaseUrl))) {
+        try {
+          let cloudPayload = null;
+          if (cfg.provider === 'firebase') {
+            const base = cfg.firebaseUrl.replace(/\/+$/, '');
+            const auth = cfg.firebaseSecret ? `?auth=${encodeURIComponent(cfg.firebaseSecret)}` : '';
+            const res = await fetch(`${base}/smartpos_stores/${encodeURIComponent(cfg.storeId || 'store_01')}.json${auth}`);
+            if (res.ok) {
+              const json = await res.json();
+              if (json && json.data) cloudPayload = json.data;
+            }
+          } else {
+            const base = cfg.supabaseUrl.replace(/\/+$/, '');
+            const res = await fetch(`${base}/rest/v1/smartpos_sync?store_id=eq.${encodeURIComponent(cfg.storeId || 'store_01')}&select=*`, {
+              headers: { 'apikey': cfg.supabaseKey, 'Authorization': `Bearer ${cfg.supabaseKey}` }
+            });
+            if (res.ok) {
+              const rows = await res.json();
+              if (rows && rows[0] && rows[0].payload && rows[0].payload.data) {
+                cloudPayload = rows[0].payload.data;
+              }
+            }
+          }
+
+          if (cloudPayload) {
+            storeData = { ...storeData, ...cloudPayload };
+            localStorage.setItem(STORAGE_DATA_KEY, JSON.stringify(storeData));
+            dot.className = 'dot';
+            label.textContent = 'متصل بالسحابة';
+            renderAllViews();
+            if (manual) showToast('☁️ تمت المزامنة مع السحابة بنجاح!');
+            return;
+          }
+        } catch (err) {
+          console.warn('Cloud sync error:', err);
+        }
+      }
+
+      // 2. Try Local PC Server (/api/data) if running on same network/origin
+      try {
+        if (window.location.protocol.startsWith('http')) {
+          const res = await fetch('/api/data');
+          if (res.ok) {
+            const data = await res.json();
+            storeData = { ...storeData, ...data };
+            localStorage.setItem(STORAGE_DATA_KEY, JSON.stringify(storeData));
+            dot.className = 'dot';
+            label.textContent = 'متصل بالكمبيوتر';
+            renderAllViews();
+            if (manual) showToast('💻 تمت المزامنة مع الكمبيوتر بنجاح!');
+            return;
+          }
+        }
+      } catch (e) {}
+
+      // 3. Fallback to cached offline data
+      const cached = localStorage.getItem(STORAGE_DATA_KEY);
+      if (cached) {
+        try { storeData = JSON.parse(cached); } catch (e) {}
+      }
+      dot.className = 'dot offline';
+      label.textContent = 'وضع محلي';
+      renderAllViews();
+    }
+
+    async function pushMobileChangesToServerAndCloud() {
+      localStorage.setItem(STORAGE_DATA_KEY, JSON.stringify(storeData));
+      const cfg = getCloudConfig();
+
+      // Push to local server if available
+      try {
+        if (window.location.protocol.startsWith('http')) {
+          await fetch('/api/save', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify(storeData)
+          });
+        }
+      } catch (e) {}
+
+      // Push to Cloud if enabled
+      if (cfg.enabled) {
+        const payload = {
+          updatedAt: new Date().toISOString(),
+          source: 'mobile',
+          storeId: cfg.storeId || 'store_01',
+          data: storeData
+        };
+        try {
+          if (cfg.provider === 'firebase' && cfg.firebaseUrl) {
+            const base = cfg.firebaseUrl.replace(/\/+$/, '');
+            const auth = cfg.firebaseSecret ? `?auth=${encodeURIComponent(cfg.firebaseSecret)}` : '';
+            await fetch(`${base}/smartpos_stores/${encodeURIComponent(cfg.storeId || 'store_01')}.json${auth}`, {
+              method: 'PUT',
+              headers: { 'Content-Type': 'application/json' },
+              body: JSON.stringify(payload)
+            });
+          } else if (cfg.provider === 'supabase' && cfg.supabaseUrl && cfg.supabaseKey) {
+            const base = cfg.supabaseUrl.replace(/\/+$/, '');
+            await fetch(`${base}/rest/v1/smartpos_sync?on_conflict=store_id`, {
+              method: 'POST',
+              headers: {
+                'Content-Type': 'application/json',
+                'apikey': cfg.supabaseKey,
+                'Authorization': `Bearer ${cfg.supabaseKey}`,
+                'Prefer': 'resolution=merge-duplicates'
+              },
+              body: JSON.stringify({
+                store_id: cfg.storeId || 'store_01',
+                updated_at: payload.updatedAt,
+                payload
+              })
+            });
+          }
+        } catch (e) {
+          console.warn('Cloud push failed:', e);
+        }
+      }
+    }
+
+    function switchTab(tabName) {
+      stopCameraScanner();
+      ['dashboard', 'pos', 'scanner', 'inventory', 'invoices'].forEach(t => {
+        document.getElementById(`tab-${t}`).classList.toggle('hidden', t !== tabName);
+        document.getElementById(`nav-${t}`).classList.toggle('active', t === tabName);
+      });
+      renderAllViews();
+    }
+
+    function renderAllViews() {
+      const cur = (storeData.config && storeData.config.currency) || 'د.ج';
+      document.getElementById('store-title').textContent = (storeData.config && storeData.config.name) || 'Smart POS';
+
+      // 1. Dashboard stats
+      const todayIso = new Date().toISOString().split('T')[0];
+      let todaySales = 0, todayProfit = 0, todayCount = 0;
+      let totalSales = 0, totalProfit = 0;
+
+      (storeData.invoices || []).forEach(inv => {
+        if (inv.status === 'refunded') return;
+        const amt = Number(inv.total || 0);
+        totalSales += amt;
+        let invProfit = 0;
+        (inv.items || []).forEach(it => {
+          const sell = Number(it.sellingPrice || 0) * (1 - Number(it.discount || 0) / 100);
+          const buy = Number(it.purchasePrice || 0);
+          invProfit += (sell - buy) * Number(it.quantity || 1);
+        });
+        invProfit -= Number(inv.discount || 0);
+        totalProfit += invProfit;
+
+        if ((inv.date || '').startsWith(todayIso)) {
+          todaySales += amt;
+          todayProfit += invProfit;
+          todayCount++;
+        }
+      });
+
+      const totalDebt = (storeData.customers || []).reduce((s, c) => s + Number(c.debt || 0), 0);
+      const lowStock = (storeData.products || []).filter(p => Number(p.stock || 0) <= Number(p.minStock || 5)).length;
+
+      document.getElementById('stat-today-sales').textContent = `${todaySales.toFixed(2)} ${cur}`;
+      document.getElementById('stat-today-profit').textContent = `${todayProfit.toFixed(2)} ${cur}`;
+      document.getElementById('stat-today-count').textContent = todayCount;
+      document.getElementById('stat-total-sales').textContent = `${totalSales.toFixed(2)} ${cur}`;
+      document.getElementById('stat-total-profit').textContent = `${totalProfit.toFixed(2)} ${cur}`;
+      document.getElementById('stat-total-debt').textContent = `${totalDebt.toFixed(2)} ${cur}`;
+      document.getElementById('stat-low-stock').textContent = lowStock;
+
+      // Recent invoices
+      const recentEl = document.getElementById('recent-invoices-list');
+      const recents = (storeData.invoices || []).slice(0, 6);
+      recentEl.innerHTML = recents.length ? recents.map(inv => `
+        <div class="product-item">
+          <div>
+            <div style="font-weight:900; font-size:12px;">${inv.invoiceNumber} - ${inv.customerName}</div>
+            <div style="font-size:10px; color:#64748b;">${inv.date ? new Date(inv.date).toLocaleString('ar-DZ') : ''}</div>
+          </div>
+          <div style="font-weight:900; font-family:Arial; color:#4f46e5; font-size:13px;">
+            ${Number(inv.total || 0).toFixed(2)} ${cur}
+          </div>
+        </div>
+      `).join('') : '<div style="text-align:center; color:#94a3b8; font-size:12px; padding:12px;">لا توجد فواتير بعد</div>';
+
+      // Customers select in POS
+      const custSel = document.getElementById('pos-customer-select');
+      const currentVal = custSel.value || 'walk-in';
+      custSel.innerHTML = `<option value="walk-in">زبون عابر</option>` + (storeData.customers || []).map(c =>
+        `<option value="${c.id}">${c.name} ${c.debt > 0 ? `(دين: ${Number(c.debt).toFixed(0)})` : ''}</option>`
+      ).join('');
+      custSel.value = currentVal;
+
+      renderPosCatalog();
+      renderMobileCart();
+      renderInventoryList();
+      renderInvoicesAndCustomers();
+    }
+
+    function renderPosCatalog() {
+      const cur = (storeData.config && storeData.config.currency) || 'د.ج';
+      const q = (document.getElementById('pos-search-input').value || '').toLowerCase().trim();
+      const filtered = (storeData.products || []).filter(p =>
+        !q || (p.name && p.name.toLowerCase().includes(q)) || (p.sku && p.sku.toLowerCase().includes(q))
+      ).slice(0, 25);
+
+      const listEl = document.getElementById('pos-catalog-list');
+      listEl.innerHTML = filtered.length ? filtered.map(p => `
+        <div class="product-item" onclick="addProductToMobileCart('${p.id}')" style="cursor:pointer;">
+          <div>
+            <div style="font-weight:800; font-size:12px;">${p.name}</div>
+            <div style="font-size:10px; color:#64748b;">باركود: ${p.sku || '-'} | المتوفر: ${p.stock}</div>
+          </div>
+          <div style="display:flex; align-items:center; gap:6px;">
+            <span style="font-weight:900; color:#4f46e5; font-family:Arial; font-size:13px;">${Number(p.sellingPrice || 0).toFixed(2)} ${cur}</span>
+            <span style="background:#eef2ff; color:#4f46e5; padding:4px 8px; border-radius:8px; font-weight:900;">+</span>
+          </div>
+        </div>
+      `).join('') : '<div style="text-align:center; padding:10px; font-size:12px; color:#94a3b8;">لا توجد منتجات مطابقة</div>';
+    }
+
+    function addProductToMobileCart(prodId) {
+      const prod = (storeData.products || []).find(p => p.id === prodId);
+      if (!prod) return;
+      const existing = mobileCart.find(i => i.product.id === prodId);
+      if (existing) {
+        existing.quantity += 1;
+      } else {
+        mobileCart.push({ product: prod, price: Number(prod.sellingPrice || 0), quantity: 1 });
+      }
+      playBeep(true);
+      renderMobileCart();
+    }
+
+    function updateCartItemPrice(idx, val) {
+      const newPrice = parseFloat(val) || 0;
+      mobileCart[idx].price = newPrice;
+      const buyPrice = Number(mobileCart[idx].product.purchasePrice || 0);
+      if (buyPrice > 0 && newPrice < buyPrice) {
+        playBeep(false);
+        showToast(`⚠️ تنبيه: السعر المدخل (${newPrice.toFixed(2)}) أقل من سعر الشراء (${buyPrice.toFixed(2)})!`, true);
+      }
+      renderMobileCart();
+    }
+
+    function updateCartItemQty(idx, delta) {
+      mobileCart[idx].quantity += delta;
+      if (mobileCart[idx].quantity <= 0) {
+        mobileCart.splice(idx, 1);
+      }
+      renderMobileCart();
+    }
+
+    function clearMobileCart() {
+      mobileCart = [];
+      renderMobileCart();
+    }
+
+    function renderMobileCart() {
+      const cur = (storeData.config && storeData.config.currency) || 'د.ج';
+      document.getElementById('pos-cart-count').textContent = mobileCart.reduce((s, i) => s + i.quantity, 0);
+      const container = document.getElementById('pos-cart-items');
+
+      if (mobileCart.length === 0) {
+        container.innerHTML = '<div style="text-align:center; padding:18px; color:#94a3b8; font-size:12px;">السلة فارغة - اختر منتجاً أو امسح الباركود بالكاميرا</div>';
+        document.getElementById('pos-grand-total').textContent = `0.00 ${cur}`;
+        return;
+      }
+
+      let total = 0;
+      container.innerHTML = mobileCart.map((item, idx) => {
+        const lineTotal = item.price * item.quantity;
+        total += lineTotal;
+        const buyPrice = Number(item.product.purchasePrice || 0);
+        const isBelowCost = buyPrice > 0 && item.price < buyPrice;
+
+        return `
+          <div style="padding:8px 0; border-bottom:1px solid #f1f5f9;">
+            <div style="display:flex; justify-content:space-between; align-items:center; gap:6px;">
+              <div style="flex:1; font-weight:800; font-size:12px;">${item.product.name}</div>
+              <input type="number" step="0.01" value="${item.price}" onchange="updateCartItemPrice(${idx}, this.value)"
+                style="width:82px; padding:4px 6px; text-align:center; font-family:Arial; border-color:${isBelowCost ? '#f59e0b' : '#cbd5e1'}; background:${isBelowCost ? '#fffbeb' : '#f8fafc'};" />
+              <div style="display:flex; align-items:center; gap:4px;">
+                <button class="btn btn-outline" style="padding:2px 8px;" onclick="updateCartItemQty(${idx}, -1)">-</button>
+                <span style="font-weight:900; font-family:Arial; width:22px; text-align:center;">${item.quantity}</span>
+                <button class="btn btn-outline" style="padding:2px 8px;" onclick="updateCartItemQty(${idx}, 1)">+</button>
+              </div>
+              <div style="width:65px; text-align:left; font-weight:900; font-family:Arial; font-size:12px;">${lineTotal.toFixed(2)}</div>
+            </div>
+            ${isBelowCost ? `<div class="warn-inline">⚠️ تنبيه: السعر (${item.price.toFixed(2)}) أقل من سعر الشراء (${buyPrice.toFixed(2)} ${cur})</div>` : ''}
+          </div>
+        `;
+      }).join('');
+
+      document.getElementById('pos-grand-total').textContent = `${total.toFixed(2)} ${cur}`;
+    }
+
+    async function completeMobileSale() {
+      if (mobileCart.length === 0) return showToast('السلة فارغة!', true);
+      const custId = document.getElementById('pos-customer-select').value;
+      const payMethod = document.getElementById('pos-payment-method').value;
+
+      if (payMethod === 'debt' && custId === 'walk-in') {
+        return showToast('يرجى اختيار زبون مسجل للبيع بالدين!', true);
+      }
+
+      const custObj = (storeData.customers || []).find(c => c.id === custId);
+      const custName = custObj ? custObj.name : 'زبون عابر';
+
+      const items = mobileCart.map(it => ({
+        productId: it.product.id,
+        productName: it.product.name,
+        sellingPrice: it.price,
+        purchasePrice: Number(it.product.purchasePrice || 0),
+        quantity: it.quantity,
+        discount: 0,
+        tax: 0,
+        total: it.price * it.quantity
+      }));
+
+      const total = items.reduce((s, i) => s + i.total, 0);
+      const newInvoice = {
+        id: 'inv_mob_' + Date.now(),
+        invoiceNumber: 'INV-M' + Math.floor(1000 + Math.random() * 9000),
+        date: new Date().toISOString(),
+        customerId: custId,
+        customerName: custName,
+        items,
+        subtotal: total,
+        discount: 0,
+        tax: 0,
+        total,
+        amountPaid: payMethod === 'debt' ? 0 : total,
+        paymentMethod: payMethod,
+        status: payMethod === 'debt' ? 'unpaid' : 'paid',
+        sellerName: 'تطبيق الهاتف 📱'
+      };
+
+      // Update local state
+      storeData.invoices = [newInvoice, ...(storeData.invoices || [])];
+      storeData.products = (storeData.products || []).map(p => {
+        const sold = items.find(i => i.productId === p.id);
+        return sold ? { ...p, stock: Math.max(0, Number(p.stock || 0) - sold.quantity) } : p;
+      });
+
+      if (payMethod === 'debt' && custObj) {
+        storeData.customers = (storeData.customers || []).map(c =>
+          c.id === custId ? { ...c, debt: Number(c.debt || 0) + total } : c
+        );
+      }
+
+      mobileCart = [];
+      renderAllViews();
+      playBeep(true);
+      showToast(`✅ تم إصدار الفاتورة ${newInvoice.invoiceNumber} وجاري المزامنة!`);
+      await pushMobileChangesToServerAndCloud();
+    }
+
+    function renderInventoryList() {
+      const cur = (storeData.config && storeData.config.currency) || 'د.ج';
+      document.getElementById('inv-total-count').textContent = (storeData.products || []).length;
+      const q = (document.getElementById('inv-search').value || '').toLowerCase().trim();
+      const filtered = (storeData.products || []).filter(p =>
+        !q || (p.name && p.name.toLowerCase().includes(q)) || (p.sku && p.sku.toLowerCase().includes(q))
+      );
+
+      const container = document.getElementById('inventory-list-container');
+      container.innerHTML = filtered.slice(0, 50).map(p => {
+        const st = Number(p.stock || 0);
+        const badgeClass = st <= 0 ? 'badge-out' : st <= Number(p.minStock || 5) ? 'badge-low' : 'badge-ok';
+        return `
+          <div class="product-item">
+            <div>
+              <div style="font-weight:900; font-size:12px;">${p.name}</div>
+              <div style="font-size:10px; color:#64748b;">SKU: ${p.sku || '-'} | الشراء: ${Number(p.purchasePrice || 0).toFixed(2)}</div>
+            </div>
+            <div style="text-align:left;">
+              <div style="font-weight:900; color:#4f46e5; font-family:Arial; font-size:13px;">${Number(p.sellingPrice || 0).toFixed(2)} ${cur}</div>
+              <span class="badge ${badgeClass}">المخزون: ${st}</span>
+            </div>
+          </div>
+        `;
+      }).join('');
+    }
+
+    function toggleNewProductForm() {
+      document.getElementById('new-product-form').classList.toggle('hidden');
+    }
+
+    async function saveNewProductFromMobile() {
+      const name = document.getElementById('np-name').value.trim();
+      const sku = document.getElementById('np-sku').value.trim() || ('SKU-' + Date.now().toString().slice(-5));
+      const stock = Number(document.getElementById('np-stock').value) || 0;
+      const purchasePrice = parseFloat(document.getElementById('np-buy').value) || 0;
+      const sellingPrice = parseFloat(document.getElementById('np-sell').value) || 0;
+
+      if (!name || sellingPrice <= 0) {
+        return showToast('يرجى إدخال اسم المنتج وسعر البيع', true);
+      }
+
+      const newProd = {
+        id: 'prod_mob_' + Date.now(),
+        name,
+        sku,
+        category: 'عام',
+        purchasePrice,
+        sellingPrice,
+        wholesalePrice: sellingPrice,
+        stock,
+        minStock: 5,
+        unit: 'قطعة'
+      };
+
+      storeData.products = [newProd, ...(storeData.products || [])];
+      document.getElementById('np-name').value = '';
+      document.getElementById('np-sku').value = '';
+      document.getElementById('new-product-form').classList.add('hidden');
+      renderAllViews();
+      showToast('✅ تمت إضافة المنتج ومزامنته!');
+      await pushMobileChangesToServerAndCloud();
+    }
+
+    function renderInvoicesAndCustomers() {
+      const cur = (storeData.config && storeData.config.currency) || 'د.ج';
+      const custEl = document.getElementById('mobile-customers-list');
+      const custs = storeData.customers || [];
+      custEl.innerHTML = custs.length ? custs.slice(0, 20).map(c => `
+        <div class="product-item">
+          <div>
+            <div style="font-weight:900; font-size:12px;">${c.name}</div>
+            <div style="font-size:10px; color:#64748b;">${c.phone || 'بدون هاتف'}</div>
+          </div>
+          <div style="font-weight:900; font-family:Arial; color:${Number(c.debt || 0) > 0 ? '#f43f5e' : '#10b981'};">
+            دين: ${Number(c.debt || 0).toFixed(2)} ${cur}
+          </div>
+        </div>
+      `).join('') : '<div style="text-align:center; font-size:12px; color:#94a3b8;">لا يوجد زبائن</div>';
+
+      const invEl = document.getElementById('mobile-invoices-list');
+      const invs = (storeData.invoices || []).slice(0, 25);
+      invEl.innerHTML = invs.length ? invs.map(inv => `
+        <div class="product-item">
+          <div>
+            <div style="font-weight:900; font-size:12px;">${inv.invoiceNumber} - ${inv.customerName}</div>
+            <div style="font-size:10px; color:#64748b;">${inv.date ? new Date(inv.date).toLocaleString('ar-DZ') : ''} | المنتجات: ${(inv.items || []).reduce((s, i) => s + Number(i.quantity || 1), 0)}</div>
+          </div>
+          <div style="font-weight:900; font-family:Arial; color:#0f172a;">
+            ${Number(inv.total || 0).toFixed(2)} ${cur}
+          </div>
+        </div>
+      `).join('') : '<div style="text-align:center; font-size:12px; color:#94a3b8;">لا توجد فواتير</div>';
+    }
+
+    // Camera Scanners
+    function stopCameraScanner() {
+      if (html5QrScanner) {
+        try {
+          html5QrScanner.stop().then(() => html5QrScanner.clear()).catch(() => {});
+        } catch (e) {}
+        html5QrScanner = null;
+      }
+      document.getElementById('pos-camera-container').classList.add('hidden');
+    }
+
+    function togglePosCameraScanner() {
+      const container = document.getElementById('pos-camera-container');
+      if (!container.classList.contains('hidden')) {
+        stopCameraScanner();
+        return;
+      }
+      container.classList.remove('hidden');
+      html5QrScanner = new Html5Qrcode("pos-qr-reader");
+      html5QrScanner.start(
+        { facingMode: "environment" },
+        { fps: 10, qrbox: { width: 240, height: 120 } },
+        (decodedText) => {
+          const clean = decodedText.trim();
+          const found = (storeData.products || []).find(p =>
+            (p.sku && p.sku.toLowerCase() === clean.toLowerCase()) ||
+            (p.name && p.name.toLowerCase() === clean.toLowerCase())
+          );
+          if (found) {
+            addProductToMobileCart(found.id);
+            showToast(`✓ تمت إضافة "${found.name}" للسلة`);
+            stopCameraScanner();
+          } else {
+            playBeep(false);
+            showToast(`❌ باركود غير مسجل: ${clean}`, true);
+          }
+        },
+        () => {}
+      ).catch(() => {
+        showToast('تعذر فتح الكاميرا، تأكد من منح صلاحية الكاميرا للمتصفح', true);
+      });
+    }
+
+    function startPcWirelessScanner() {
+      stopCameraScanner();
+      html5QrScanner = new Html5Qrcode("pc-scanner-reader");
+      let lastScanTime = 0;
+      html5QrScanner.start(
+        { facingMode: "environment" },
+        { fps: 10, qrbox: { width: 250, height: 130 } },
+        async (decodedText) => {
+          if (Date.now() - lastScanTime < 1800) return;
+          lastScanTime = Date.now();
+          await transmitBarcodeToPc(decodedText.trim());
+        },
+        () => {}
+      ).catch(() => {
+        showToast('تعذر تشغيل الكاميرا، تأكد من منح صلاحية الكاميرا', true);
+      });
+    }
+
+    async function sendManualBarcodeToPc() {
+      const code = document.getElementById('manual-barcode-to-pc').value.trim();
+      if (!code) return;
+      await transmitBarcodeToPc(code);
+      document.getElementById('manual-barcode-to-pc').value = '';
+    }
+
+    async function transmitBarcodeToPc(code) {
+      playBeep(true);
+      showToast(`📡 تم إرسال الباركود (${code}) إلى سلة الكمبيوتر!`);
+
+      // 1. Send via Local Server if connected
+      try {
+        if (window.location.protocol.startsWith('http')) {
+          await fetch('/api/remote-barcode', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ code })
+          });
+        }
+      } catch (e) {}
+
+      // 2. Send via Cloud Firebase if enabled
+      const cfg = getCloudConfig();
+      if (cfg.enabled && cfg.provider === 'firebase' && cfg.firebaseUrl) {
+        try {
+          const base = cfg.firebaseUrl.replace(/\/+$/, '');
+          const auth = cfg.firebaseSecret ? `?auth=${encodeURIComponent(cfg.firebaseSecret)}` : '';
+          await fetch(`${base}/smartpos_barcodes/${encodeURIComponent(cfg.storeId || 'store_01')}.json${auth}`, {
+            method: 'PUT',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ code, timestamp: Date.now() })
+          });
+        } catch (e) {}
+      }
+    }
+
+    // Initialize on load
+    window.addEventListener('DOMContentLoaded', () => {
+      loadConfigInputs();
+      syncAllData(false);
+      setInterval(() => syncAllData(false), 12000);
+    });
+  </script>
+</body>
+</html>

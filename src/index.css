@@ -1,0 +1,471 @@
+@import url('https://fonts.googleapis.com/css2?family=Cairo:wght@500;600;700;800;900&family=Tajawal:wght@400;500;700;800;900&family=JetBrains+Mono:wght@400;500;700&display=swap');
+@import "tailwindcss";
+
+@theme {
+  --font-sans: "Tajawal", "Inter", ui-sans-serif, system-ui, sans-serif;
+  --font-heading: "Cairo", "Tajawal", ui-sans-serif, system-ui, sans-serif;
+  --font-mono: "JetBrains Mono", ui-monospace, SFMono-Regular, monospace;
+}
+
+body {
+  font-family: var(--font-sans);
+}
+
+h1, h2, h3, h4, h5, h6, .font-heading {
+  font-family: var(--font-heading);
+}
+
+@layer utilities {
+  .animate-fade-in {
+    animation: fadeIn 0.2s ease-out forwards;
+  }
+}
+
+/* Hide scrollbars globally across all browsers while maintaining smooth scrolling */
+*, *::before, *::after {
+  scrollbar-width: none !important;
+  -ms-overflow-style: none !important;
+}
+
+::-webkit-scrollbar {
+  display: none !important;
+  width: 0 !important;
+  height: 0 !important;
+}
+
+.no-scrollbar {
+  scrollbar-width: none !important;
+  -ms-overflow-style: none !important;
+}
+
+.no-scrollbar::-webkit-scrollbar {
+  display: none !important;
+  width: 0 !important;
+  height: 0 !important;
+}
+
+@keyframes fadeIn {
+  from {
+    opacity: 0;
+  }
+  to {
+    opacity: 1;
+  }
+}
+
+/* Custom dark mode and theme styles */
+.dark {
+  color-scheme: dark;
+}
+
+.dark body {
+  background-color: #0b1120;
+  color: #f1f5f9;
+}
+
+.dark .bg-white {
+  background-color: #111827 !important;
+  color: #f3f4f6;
+  border-color: #1f2937 !important;
+}
+
+.dark .bg-slate-50 {
+  background-color: #0f172a !important;
+}
+
+.dark .bg-slate-100 {
+  background-color: #1e293b !important;
+  color: #e2e8f0;
+}
+
+.dark .text-slate-800,
+.dark .text-slate-900 {
+  color: #f8fafc !important;
+}
+
+.dark .text-slate-700 {
+  color: #e2e8f0 !important;
+}
+
+.dark .text-slate-600,
+.dark .text-slate-500 {
+  color: #94a3b8 !important;
+}
+
+.dark .border-slate-100,
+.dark .border-slate-200 {
+  border-color: #334155 !important;
+}
+
+.dark input:not([type="checkbox"]):not([type="radio"]),
+.dark select,
+.dark textarea {
+  background-color: #1e293b !important;
+  color: #f8fafc !important;
+  border-color: #475569 !important;
+}
+
+/* Comprehensive Full-App Theme Presets (Exclusively 5 Colors) */
+
+/* 1. Purple (Classic - بنفسجي كلاسيكي) */
+.theme-indigo aside,
+.theme-purple aside,
+.theme-slate aside {
+  background-color: #1e1b4b !important;
+  border-color: #312e81 !important;
+}
+.theme-indigo aside nav button[class*="bg-slate-800"],
+.theme-purple aside nav button[class*="bg-slate-800"],
+.theme-slate aside nav button[class*="bg-slate-800"] {
+  background-color: #312e81 !important;
+  border-color: #818cf8 !important;
+  color: #ffffff !important;
+}
+.theme-indigo aside nav button[class*="border-indigo-500"],
+.theme-purple aside nav button[class*="border-indigo-500"],
+.theme-slate aside nav button[class*="border-indigo-500"] {
+  border-color: #818cf8 !important;
+}
+.theme-indigo main,
+.theme-indigo#root-viewport-wrap,
+.theme-purple main,
+.theme-purple#root-viewport-wrap,
+.theme-slate main,
+.theme-slate#root-viewport-wrap {
+  background-color: #f5f3ff !important;
+}
+.theme-indigo .bg-indigo-600,
+.theme-indigo .bg-indigo-500,
+.theme-purple .bg-indigo-600,
+.theme-purple .bg-indigo-500 {
+  background-color: #6366f1 !important;
+}
+.theme-indigo .bg-indigo-700,
+.theme-indigo .bg-indigo-800,
+.theme-purple .bg-indigo-700,
+.theme-purple .bg-indigo-800 {
+  background-color: #4f46e5 !important;
+}
+.theme-indigo .hover\:bg-indigo-700:hover,
+.theme-indigo .hover\:bg-indigo-600:hover,
+.theme-purple .hover\:bg-indigo-700:hover,
+.theme-purple .hover\:bg-indigo-600:hover {
+  background-color: #4338ca !important;
+}
+.theme-indigo .text-indigo-600,
+.theme-indigo .text-indigo-500,
+.theme-indigo .text-indigo-650,
+.theme-indigo .text-indigo-700,
+.theme-purple .text-indigo-600,
+.theme-purple .text-indigo-500,
+.theme-purple .text-indigo-650,
+.theme-purple .text-indigo-700 {
+  color: #6366f1 !important;
+}
+.theme-indigo .text-indigo-400,
+.theme-indigo .text-indigo-300,
+.theme-purple .text-indigo-400,
+.theme-purple .text-indigo-300 {
+  color: #818cf8 !important;
+}
+.theme-indigo .text-indigo-800,
+.theme-indigo .text-indigo-900,
+.theme-purple .text-indigo-800,
+.theme-purple .text-indigo-900 {
+  color: #3730a3 !important;
+}
+.theme-indigo .border-indigo-500,
+.theme-indigo .border-indigo-600,
+.theme-indigo .border-indigo-400,
+.theme-purple .border-indigo-500,
+.theme-purple .border-indigo-600,
+.theme-purple .border-indigo-400 {
+  border-color: #818cf8 !important;
+}
+.theme-indigo .border-indigo-300,
+.theme-indigo .border-indigo-200,
+.theme-indigo .border-indigo-100,
+.theme-purple .border-indigo-300,
+.theme-purple .border-indigo-200,
+.theme-purple .border-indigo-100 {
+  border-color: #c7d2fe !important;
+}
+.theme-indigo .bg-indigo-50,
+.theme-indigo .bg-indigo-100,
+.theme-purple .bg-indigo-50,
+.theme-purple .bg-indigo-100 {
+  background-color: #eef2ff !important;
+}
+.theme-indigo .focus\:ring-indigo-500:focus,
+.theme-purple .focus\:ring-indigo-500:focus {
+  --tw-ring-color: #818cf8 !important;
+}
+
+/* 2. Sky Blue Theme (أزرق سماوي) */
+.theme-sky aside {
+  background-color: #082f49 !important;
+  border-color: #0c4a6e !important;
+}
+.theme-sky aside nav button[class*="bg-slate-800"] {
+  background-color: #0c4a6e !important;
+  border-color: #38bdf8 !important;
+  color: #ffffff !important;
+}
+.theme-sky aside nav button[class*="border-indigo-500"] {
+  border-color: #38bdf8 !important;
+}
+.theme-sky main,
+.theme-sky#root-viewport-wrap {
+  background-color: #f0f9ff !important;
+}
+.theme-sky .bg-indigo-600,
+.theme-sky .bg-indigo-500 {
+  background-color: #0284c7 !important;
+}
+.theme-sky .bg-indigo-700,
+.theme-sky .bg-indigo-800 {
+  background-color: #0369a1 !important;
+}
+.theme-sky .hover\:bg-indigo-700:hover,
+.theme-sky .hover\:bg-indigo-600:hover {
+  background-color: #075985 !important;
+}
+.theme-sky .text-indigo-600,
+.theme-sky .text-indigo-500,
+.theme-sky .text-indigo-650,
+.theme-sky .text-indigo-700 {
+  color: #0284c7 !important;
+}
+.theme-sky .text-indigo-400,
+.theme-sky .text-indigo-300 {
+  color: #38bdf8 !important;
+}
+.theme-sky .text-indigo-800,
+.theme-sky .text-indigo-900 {
+  color: #075985 !important;
+}
+.theme-sky .border-indigo-500,
+.theme-sky .border-indigo-600,
+.theme-sky .border-indigo-400 {
+  border-color: #38bdf8 !important;
+}
+.theme-sky .border-indigo-300,
+.theme-sky .border-indigo-200,
+.theme-sky .border-indigo-100 {
+  border-color: #bae6fd !important;
+}
+.theme-sky .bg-indigo-50,
+.theme-sky .bg-indigo-100 {
+  background-color: #f0f9ff !important;
+}
+.theme-sky .focus\:ring-indigo-500:focus {
+  --tw-ring-color: #38bdf8 !important;
+}
+
+/* 3. Emerald Green Theme (أخضر) */
+.theme-emerald aside {
+  background-color: #062e24 !important;
+  border-color: #0e4e3f !important;
+}
+.theme-emerald aside nav button[class*="bg-slate-800"] {
+  background-color: #0e4e3f !important;
+  border-color: #10b981 !important;
+  color: #ffffff !important;
+}
+.theme-emerald aside nav button[class*="border-indigo-500"] {
+  border-color: #10b981 !important;
+}
+.theme-emerald main,
+.theme-emerald#root-viewport-wrap {
+  background-color: #f0fdf4 !important;
+}
+.theme-emerald .bg-indigo-600,
+.theme-emerald .bg-indigo-500 {
+  background-color: #059669 !important;
+}
+.theme-emerald .bg-indigo-700,
+.theme-emerald .bg-indigo-800 {
+  background-color: #047857 !important;
+}
+.theme-emerald .hover\:bg-indigo-700:hover,
+.theme-emerald .hover\:bg-indigo-600:hover {
+  background-color: #065f46 !important;
+}
+.theme-emerald .text-indigo-600,
+.theme-emerald .text-indigo-500,
+.theme-emerald .text-indigo-650,
+.theme-emerald .text-indigo-700 {
+  color: #059669 !important;
+}
+.theme-emerald .text-indigo-400,
+.theme-emerald .text-indigo-300 {
+  color: #34d399 !important;
+}
+.theme-emerald .text-indigo-800,
+.theme-emerald .text-indigo-900 {
+  color: #065f46 !important;
+}
+.theme-emerald .border-indigo-500,
+.theme-emerald .border-indigo-600,
+.theme-emerald .border-indigo-400 {
+  border-color: #10b981 !important;
+}
+.theme-emerald .border-indigo-300,
+.theme-emerald .border-indigo-200,
+.theme-emerald .border-indigo-100 {
+  border-color: #a7f3d0 !important;
+}
+.theme-emerald .bg-indigo-50,
+.theme-emerald .bg-indigo-100 {
+  background-color: #ecfdf5 !important;
+}
+.theme-emerald .focus\:ring-indigo-500:focus {
+  --tw-ring-color: #34d399 !important;
+}
+
+/* 4. Rose Red Theme (أحمر) */
+.theme-rose aside {
+  background-color: #4c0519 !important;
+  border-color: #881337 !important;
+}
+.theme-rose aside nav button[class*="bg-slate-800"] {
+  background-color: #881337 !important;
+  border-color: #f43f5e !important;
+  color: #ffffff !important;
+}
+.theme-rose aside nav button[class*="border-indigo-500"] {
+  border-color: #f43f5e !important;
+}
+.theme-rose main,
+.theme-rose#root-viewport-wrap {
+  background-color: #fff1f2 !important;
+}
+.theme-rose .bg-indigo-600,
+.theme-rose .bg-indigo-500 {
+  background-color: #e11d48 !important;
+}
+.theme-rose .bg-indigo-700,
+.theme-rose .bg-indigo-800 {
+  background-color: #be123c !important;
+}
+.theme-rose .hover\:bg-indigo-700:hover,
+.theme-rose .hover\:bg-indigo-600:hover {
+  background-color: #9f1239 !important;
+}
+.theme-rose .text-indigo-600,
+.theme-rose .text-indigo-500,
+.theme-rose .text-indigo-650,
+.theme-rose .text-indigo-700 {
+  color: #e11d48 !important;
+}
+.theme-rose .text-indigo-400,
+.theme-rose .text-indigo-300 {
+  color: #fb7185 !important;
+}
+.theme-rose .text-indigo-800,
+.theme-rose .text-indigo-900 {
+  color: #9f1239 !important;
+}
+.theme-rose .border-indigo-500,
+.theme-rose .border-indigo-600,
+.theme-rose .border-indigo-400 {
+  border-color: #f43f5e !important;
+}
+.theme-rose .border-indigo-300,
+.theme-rose .border-indigo-200,
+.theme-rose .border-indigo-100 {
+  border-color: #fecdd3 !important;
+}
+.theme-rose .bg-indigo-50,
+.theme-rose .bg-indigo-100 {
+  background-color: #fff1f2 !important;
+}
+.theme-rose .focus\:ring-indigo-500:focus {
+  --tw-ring-color: #fb7185 !important;
+}
+
+/* 5. Amber Theme (كهرماني) */
+.theme-amber aside {
+  background-color: #451a03 !important;
+  border-color: #78350f !important;
+}
+.theme-amber aside nav button[class*="bg-slate-800"] {
+  background-color: #78350f !important;
+  border-color: #f59e0b !important;
+  color: #ffffff !important;
+}
+.theme-amber aside nav button[class*="border-indigo-500"] {
+  border-color: #f59e0b !important;
+}
+.theme-amber main,
+.theme-amber#root-viewport-wrap {
+  background-color: #fffbeb !important;
+}
+.theme-amber .bg-indigo-600,
+.theme-amber .bg-indigo-500 {
+  background-color: #d97706 !important;
+}
+.theme-amber .bg-indigo-700,
+.theme-amber .bg-indigo-800 {
+  background-color: #b45309 !important;
+}
+.theme-amber .hover\:bg-indigo-700:hover,
+.theme-amber .hover\:bg-indigo-600:hover {
+  background-color: #92400e !important;
+}
+.theme-amber .text-indigo-600,
+.theme-amber .text-indigo-500,
+.theme-amber .text-indigo-650,
+.theme-amber .text-indigo-700 {
+  color: #d97706 !important;
+}
+.theme-amber .text-indigo-400,
+.theme-amber .text-indigo-300 {
+  color: #fbbf24 !important;
+}
+.theme-amber .text-indigo-800,
+.theme-amber .text-indigo-900 {
+  color: #92400e !important;
+}
+.theme-amber .border-indigo-500,
+.theme-amber .border-indigo-600,
+.theme-amber .border-indigo-400 {
+  border-color: #f59e0b !important;
+}
+.theme-amber .border-indigo-300,
+.theme-amber .border-indigo-200,
+.theme-amber .border-indigo-100 {
+  border-color: #fde68a !important;
+}
+.theme-amber .bg-indigo-50,
+.theme-amber .bg-indigo-100 {
+  background-color: #fef3c7 !important;
+}
+.theme-amber .focus\:ring-indigo-500:focus {
+  --tw-ring-color: #fbbf24 !important;
+}
+
+/* Thermal Receipt Optimized Numbers & Fonts */
+#pos-thermal-receipt-body,
+#invoice-bill-modal,
+.thermal-receipt-font {
+  font-family: 'Cairo', 'Tajawal', Tahoma, 'Simplified Arabic', sans-serif !important;
+}
+
+#pos-thermal-receipt-body .font-mono,
+#invoice-bill-modal .font-mono,
+.thermal-receipt-font .font-mono {
+  font-family: Arial, 'Trebuchet MS', 'Segoe UI', Tahoma, sans-serif !important;
+  font-variant-numeric: tabular-nums !important;
+  font-feature-settings: "tnum" 1 !important;
+  font-weight: 800 !important;
+  letter-spacing: 0.3px !important;
+}
+
+#pos-thermal-receipt-body .divider,
+#pos-thermal-receipt-body .divider-thick,
+.thermal-receipt-font .divider,
+.thermal-receipt-font .divider-thick {
+  border-style: solid !important;
+}
+

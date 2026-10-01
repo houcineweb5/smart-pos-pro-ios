@@ -1,0 +1,57 @@
+{
+  "name": "Smart POS Pro - نظام المبيعات والفوترة الذكي",
+  "short_name": "Smart POS",
+  "description": "نظام نقاط البيع والمخزون والفوترة المتكامل للهواتف الذكية (أندرويد وآيفون) والحاسوب مع مزامنة سحابية فورية",
+  "start_url": "/?source=pwa",
+  "scope": "/",
+  "display": "standalone",
+  "orientation": "any",
+  "background_color": "#0f172a",
+  "theme_color": "#0f172a",
+  "dir": "rtl",
+  "lang": "ar",
+  "categories": ["business", "finance", "productivity"],
+  "icons": [
+    {
+      "src": "/sp-icon.svg",
+      "sizes": "any",
+      "type": "image/svg+xml",
+      "purpose": "any maskable"
+    },
+    {
+      "src": "/favicon.ico",
+      "sizes": "64x64 32x32 24x24 16x16",
+      "type": "image/x-icon"
+    }
+  ],
+  "shortcuts": [
+    {
+      "name": "نقطة البيع (الكاشير)",
+      "short_name": "نقطة البيع",
+      "description": "فتح شاشة البيع السريع وقارئ الباركود",
+      "url": "/?tab=pos",
+      "icons": [{ "src": "/sp-icon.svg", "sizes": "any" }]
+    },
+    {
+      "name": "إدارة المخزون والسلع",
+      "short_name": "المخزون",
+      "description": "جرد وإضافة المنتجات والباركود",
+      "url": "/?tab=inventory",
+      "icons": [{ "src": "/sp-icon.svg", "sizes": "any" }]
+    },
+    {
+      "name": "الفواتير والمبيعات",
+      "short_name": "الفواتير",
+      "description": "متابعة الفواتير والديون والمرتجعات",
+      "url": "/?tab=invoices",
+      "icons": [{ "src": "/sp-icon.svg", "sizes": "any" }]
+    },
+    {
+      "name": "المزامنة السحابية والهاتف",
+      "short_name": "المزامنة",
+      "description": "إعدادات المزامنة الفورية بين الهواتف والحاسوب",
+      "url": "/?tab=mobile-sync",
+      "icons": [{ "src": "/sp-icon.svg", "sizes": "any" }]
+    }
+  ]
+}

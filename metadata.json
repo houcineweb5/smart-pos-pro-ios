@@ -1,0 +1,6 @@
+{
+  "name": "Sales and Invoicing System",
+  "description": "A comprehensive, multi-lingual (Arabic, French, English) sales and invoicing management platform with inventory control, customer logs, supplier purchases, debt accounting, POS simulation, and advanced financial analytics.",
+  "requestFramePermissions": [],
+  "majorCapabilities": ["MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"]
+}
