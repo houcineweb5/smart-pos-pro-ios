@@ -53,6 +53,7 @@ export interface Invoice {
   tax: number; // total tax sum
   total: number;
   amountPaid: number;
+  previousBalance?: number; // Old credit / extra amount shown on invoice total only (excluded from statistics)
   paymentMethod: PaymentMethod;
   status: PaymentStatus;
   notes?: string;
@@ -228,11 +229,16 @@ export interface CommercialDocument {
   discount: number;
   tax: number;
   total: number;
+  amountPaid?: number;
+  previousBalance?: number;
+  paymentMethod?: PaymentMethod;
   status: CommercialDocStatus;
   notes?: string;
   convertedTo?: { docType: CommercialDocType; docId: string; docNumber: string };
   convertedFrom?: { docType: CommercialDocType; docId: string; docNumber: string };
   sellerName?: string;
+  isWholesale?: boolean;
+  pricingMode?: 'retail' | 'wholesale' | 'installment';
 }
 
 

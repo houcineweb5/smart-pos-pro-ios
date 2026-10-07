@@ -13,6 +13,18 @@
   "categories": ["business", "finance", "productivity"],
   "icons": [
     {
+      "src": "/apple-touch-icon.png",
+      "sizes": "180x180",
+      "type": "image/png",
+      "purpose": "any"
+    },
+    {
+      "src": "/sp-icon.png",
+      "sizes": "512x512",
+      "type": "image/png",
+      "purpose": "any maskable"
+    },
+    {
       "src": "/sp-icon.svg",
       "sizes": "any",
       "type": "image/svg+xml",

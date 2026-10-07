@@ -2,6 +2,8 @@ import React, { useState, useRef } from 'react';
 import { Product, Language, StoreConfig } from '../types';
 import { languages } from '../languages';
 import { parseDecimal, sanitizeDecimalInput } from '../utils/numberInput';
+import { printHtmlContent, exportCsvFile } from '../utils/printService';
+import { compressImageFile } from '../utils/cloudSync';
 import {
   Plus,
   Search,
@@ -109,17 +111,26 @@ export default function Inventory({ products, config, onSaveProduct, onDeletePro
   // Low stock alert products
   const lowStockProducts = products.filter((p) => p.stock <= p.minStock);
 
+  const generateUniqueSku = () => {
+    const existingSkus = new Set(products.map(p => (p.sku || '').trim().toLowerCase()));
+    let candidate = '';
+    do {
+      candidate = Math.floor(10000000 + Math.random() * 90000000).toString();
+    } while (existingSkus.has(candidate));
+    return candidate;
+  };
+
   const handleStartAdd = () => {
     setEditingProduct({
       id: '',
-      sku: Math.floor(10000000 + Math.random() * 90000000).toString(),
+      sku: generateUniqueSku(),
       name: '',
       category: '',
-      purchasePrice: 0,
-      sellingPrice: 0,
-      wholesalePrice: 0,
-      stock: 0,
-      minStock: 5,
+      purchasePrice: '' as any,
+      sellingPrice: '' as any,
+      wholesalePrice: '' as any,
+      stock: '' as any,
+      minStock: '' as any,
       unit: 'pcs',
       imageUrl: '',
     });
@@ -140,29 +151,52 @@ export default function Inventory({ products, config, onSaveProduct, onDeletePro
     if (!editingProduct) return;
 
     const finalCategory = isNewCategoryMode ? newCategoryName.trim() : (editingProduct.category || '');
+    const cleanSku = String(editingProduct.sku || '').trim();
 
     if (
       !editingProduct.name ||
-      !editingProduct.sku ||
-      !finalCategory ||
-      editingProduct.purchasePrice === undefined ||
-      editingProduct.sellingPrice === undefined ||
-      editingProduct.stock === undefined
+      !cleanSku ||
+      !finalCategory
     ) {
       alert(t.common.requiredFields);
       return;
     }
 
+    // Prevent duplicate barcode (SKU)
+    const duplicateProduct = products.find(
+      p => p.id !== editingProduct.id && (p.sku || '').trim().toLowerCase() === cleanSku.toLowerCase()
+    );
+    if (duplicateProduct) {
+      alert(
+        lang === 'ar'
+          ? `⚠️ كود الباركود (${cleanSku}) مستخدم مسبقاً للمنتج "${duplicateProduct.name}". لا يمكن تكرار نفس الباركود لأكثر من منتج!`
+          : `⚠️ Barcode (${cleanSku}) is already assigned to "${duplicateProduct.name}". Duplicate barcodes are not allowed!`
+      );
+      return;
+    }
+
+    const parsedPurchase = parseDecimal(editingProduct.purchasePrice, 0);
+    const parsedSelling = parseDecimal(editingProduct.sellingPrice, 0);
+    const parsedWholesale =
+      editingProduct.wholesalePrice === undefined || String(editingProduct.wholesalePrice).trim() === ''
+        ? parsedSelling
+        : parseDecimal(editingProduct.wholesalePrice, parsedSelling);
+    const parsedStock = parseDecimal(editingProduct.stock, 0);
+    const parsedMinStock =
+      editingProduct.minStock === undefined || String(editingProduct.minStock).trim() === ''
+        ? 5
+        : parseDecimal(editingProduct.minStock, 5);
+
     const productToSave: Product = {
       id: editingProduct.id || 'prod_' + Date.now(),
-      sku: editingProduct.sku,
-      name: editingProduct.name,
+      sku: cleanSku,
+      name: editingProduct.name.trim(),
       category: finalCategory,
-      purchasePrice: parseDecimal(editingProduct.purchasePrice),
-      sellingPrice: parseDecimal(editingProduct.sellingPrice),
-      wholesalePrice: parseDecimal(editingProduct.wholesalePrice ?? editingProduct.sellingPrice),
-      stock: Number(editingProduct.stock),
-      minStock: Number(editingProduct.minStock ?? 0),
+      purchasePrice: parsedPurchase,
+      sellingPrice: parsedSelling,
+      wholesalePrice: parsedWholesale,
+      stock: parsedStock,
+      minStock: parsedMinStock,
       unit: editingProduct.unit || 'pcs',
       imageUrl: editingProduct.imageUrl || undefined,
     };
@@ -172,8 +206,8 @@ export default function Inventory({ products, config, onSaveProduct, onDeletePro
     setEditingProduct(null);
   };
 
-  // CSV Export with UTF-8 BOM
-  const handleExportCSV = () => {
+  // CSV Export with UTF-8 BOM (Compatible with iPhone / iOS & Desktop)
+  const handleExportCSV = async () => {
     const headers = ['SKU', 'Name', 'Category', 'PurchasePrice', 'SellingPrice', 'WholesalePrice', 'Stock', 'MinStock', 'Unit'];
     const rows = products.map(p => [
       `"${(p.sku || '').replace(/"/g, '""')}"`,
@@ -187,16 +221,8 @@ export default function Inventory({ products, config, onSaveProduct, onDeletePro
       `"${(p.unit || 'pcs').replace(/"/g, '""')}"`
     ]);
 
-    const csvContent = '\uFEFF' + [headers.join(','), ...rows.map(r => r.join(','))].join('\n');
-    const blob = new Blob([csvContent], { type: 'text/csv;charset=utf-8;' });
-    const url = URL.createObjectURL(blob);
-    const link = document.createElement('a');
-    link.setAttribute('href', url);
-    link.setAttribute('download', `inventory_${new Date().toISOString().slice(0, 10)}.csv`);
-    document.body.appendChild(link);
-    link.click();
-    document.body.removeChild(link);
-    URL.revokeObjectURL(url);
+    const csvContent = [headers.join(','), ...rows.map(r => r.join(','))].join('\n');
+    await exportCsvFile(`inventory_${new Date().toISOString().slice(0, 10)}.csv`, csvContent);
   };
 
   // CSV Import handler
@@ -346,11 +372,8 @@ export default function Inventory({ products, config, onSaveProduct, onDeletePro
     `;
   };
 
-  // Print Barcode stickers window
+  // Print Barcode stickers window (works on iPhone iOS & Desktop)
   const triggerPrintBarcodes = () => {
-    const printWindow = window.open('', '', 'width=850,height=950');
-    if (!printWindow) return;
-
     const stickers: Product[] = [];
     (Object.entries(barcodeSelection) as [string, number][]).forEach(([prodId, count]) => {
       const prod = products.find(p => p.id === prodId);
@@ -380,154 +403,128 @@ export default function Inventory({ products, config, onSaveProduct, onDeletePro
 
     const isThermal = barcodePrintMode === 'thermal';
 
-    printWindow.document.write(`
-      <!DOCTYPE html>
-      <html>
-        <head>
-          <meta charset="utf-8" />
-          <title>Barcode Stickers - ${storeName}</title>
-          <style>
-            ${isThermal ? `
-              @page { size: auto; margin: 1.5mm; }
-              body {
-                font-family: system-ui, -apple-system, sans-serif;
-                margin: 0;
-                padding: 0;
-                color: #000;
-                background: #fff;
-              }
-              .stickers-container {
-                display: flex;
-                flex-direction: column;
-                align-items: center;
-                width: 100%;
-              }
-              .sticker-card {
-                width: 48mm;
-                height: 28mm;
-                max-width: 100%;
-                box-sizing: border-box;
-                padding: 1.5mm;
-                margin: 0 auto;
-                text-align: center;
-                page-break-after: always;
-                page-break-inside: avoid;
-                display: flex;
-                flex-direction: column;
-                align-items: center;
-                justify-content: space-between;
-                overflow: hidden;
-              }
-              .store-name {
-                font-size: 8px;
-                font-weight: 700;
-                text-transform: uppercase;
-                color: #475569;
-                line-height: 1;
-              }
-              .prod-name {
-                font-size: 9.5px;
-                font-weight: 800;
-                color: #000;
-                margin: 1px 0;
-                max-width: 100%;
-                overflow: hidden;
-                text-overflow: ellipsis;
-                white-space: nowrap;
-                line-height: 1.2;
-              }
-              .barcode-container {
-                display: flex;
-                justify-content: center;
-                margin: 1px 0;
-              }
-              .price-tag {
-                font-size: 11px;
-                font-weight: 900;
-                font-family: monospace;
-                color: #000;
-                border-top: 1px solid #cbd5e1;
-                padding-top: 1px;
-                width: 100%;
-                line-height: 1.1;
-              }
-            ` : `
-              @page { size: A4; margin: 8mm; }
-              body {
-                font-family: system-ui, -apple-system, BlinkMacSystemFont, sans-serif;
-                margin: 0;
-                padding: 0;
-                color: #0f172a;
-                background: #fff;
-              }
-              .stickers-container {
-                display: grid;
-                grid-template-columns: repeat(3, 1fr);
-                gap: 6mm;
-              }
-              .sticker-card {
-                border: 1px dashed #cbd5e1;
-                border-radius: 8px;
-                padding: 8px 10px;
-                text-align: center;
-                page-break-inside: avoid;
-                background: #fff;
-                display: flex;
-                flex-direction: column;
-                align-items: center;
-                justify-content: space-between;
-                min-height: 115px;
-                box-sizing: border-box;
-              }
-              .store-name {
-                font-size: 9px;
-                font-weight: 700;
-                text-transform: uppercase;
-                letter-spacing: 0.5px;
-                color: #64748b;
-              }
-              .prod-name {
-                font-size: 11px;
-                font-weight: 800;
-                color: #0f172a;
-                margin: 2px 0;
-                max-width: 100%;
-                overflow: hidden;
-                text-overflow: ellipsis;
-                white-space: nowrap;
-              }
-              .barcode-container {
-                display: flex;
-                justify-content: center;
-              }
-              .price-tag {
-                font-size: 13px;
-                font-weight: 900;
-                font-family: monospace;
-                color: #0f172a;
-                border-top: 1px solid #f1f5f9;
-                padding-top: 3px;
-                width: 100%;
-              }
-            `}
-            @media print {
-              body { -webkit-print-color-adjust: exact; print-color-adjust: exact; }
-            }
-          </style>
-        </head>
-        <body>
-          <div class="stickers-container">
-            ${stickersHtml}
-          </div>
-        </body>
-      </html>
-    `);
-    printWindow.document.close();
-    printWindow.focus();
-    setTimeout(() => {
-      printWindow.print();
-      printWindow.close();
-    }, 500);
+    const styleAndBodyHtml = `
+      <style>
+        ${isThermal ? `
+          .stickers-container {
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            width: 100%;
+          }
+          .sticker-card {
+            width: 48mm;
+            height: 28mm;
+            max-width: 100%;
+            box-sizing: border-box;
+            padding: 1.5mm;
+            margin: 0 auto 2mm auto;
+            text-align: center;
+            page-break-after: always;
+            page-break-inside: avoid;
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            justify-content: space-between;
+            overflow: hidden;
+            border: 1px dashed #cbd5e1;
+          }
+          .store-name {
+            font-size: 8px;
+            font-weight: 700;
+            text-transform: uppercase;
+            color: #475569;
+            line-height: 1;
+          }
+          .prod-name {
+            font-size: 9.5px;
+            font-weight: 800;
+            color: #000;
+            margin: 1px 0;
+            max-width: 100%;
+            overflow: hidden;
+            text-overflow: ellipsis;
+            white-space: nowrap;
+            line-height: 1.2;
+          }
+          .barcode-container {
+            display: flex;
+            justify-content: center;
+            margin: 1px 0;
+          }
+          .price-tag {
+            font-size: 11px;
+            font-weight: 900;
+            font-family: monospace;
+            color: #000;
+            border-top: 1px solid #cbd5e1;
+            padding-top: 1px;
+            width: 100%;
+            line-height: 1.1;
+          }
+        ` : `
+          .stickers-container {
+            display: grid;
+            grid-template-columns: repeat(3, 1fr);
+            gap: 6mm;
+          }
+          .sticker-card {
+            border: 1px dashed #cbd5e1;
+            border-radius: 8px;
+            padding: 8px 10px;
+            text-align: center;
+            page-break-inside: avoid;
+            background: #fff;
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            justify-content: space-between;
+            min-height: 115px;
+            box-sizing: border-box;
+          }
+          .store-name {
+            font-size: 9px;
+            font-weight: 700;
+            text-transform: uppercase;
+            letter-spacing: 0.5px;
+            color: #64748b;
+          }
+          .prod-name {
+            font-size: 11px;
+            font-weight: 800;
+            color: #0f172a;
+            margin: 2px 0;
+            max-width: 100%;
+            overflow: hidden;
+            text-overflow: ellipsis;
+            white-space: nowrap;
+          }
+          .barcode-container {
+            display: flex;
+            justify-content: center;
+          }
+          .price-tag {
+            font-size: 13px;
+            font-weight: 900;
+            font-family: monospace;
+            color: #0f172a;
+            border-top: 1px solid #f1f5f9;
+            padding-top: 3px;
+            width: 100%;
+          }
+        `}
+      </style>
+      <div class="stickers-container">
+        ${stickersHtml}
+      </div>
+    `;
+
+    printHtmlContent({
+      title: `Barcode Stickers - ${storeName}`,
+      html: styleAndBodyHtml,
+      isRTL,
+      mode: isThermal ? '80mm' : 'a4',
+    });
   };
 
   return (
@@ -837,270 +834,313 @@ export default function Inventory({ products, config, onSaveProduct, onDeletePro
         </div>
       </div>
 
-      {/* Editor Modal Overlay */}
-      {isEditing && editingProduct && (
-        <div className="fixed inset-0 bg-slate-900/60 backdrop-blur-xs flex items-center justify-center p-4 z-50 overflow-y-auto" id="edit-product-modal">
-          <div className="bg-white rounded-2xl shadow-xl border border-slate-100 w-full max-w-lg overflow-hidden animate-fade-in my-8">
-            <div className="flex justify-between items-center bg-slate-50 px-6 py-4 border-b border-slate-100">
-              <h2 className="font-bold text-slate-800 text-lg">
-                {editingProduct.id ? t.inventory.editProduct : t.inventory.addProduct}
-              </h2>
-              <button
-                id="btn-close-modal"
-                onClick={() => setIsEditing(false)}
-                className="p-1 hover:bg-slate-200 text-slate-400 hover:text-slate-600 rounded-lg transition"
-              >
-                <X className="w-5 h-5" />
-              </button>
-            </div>
+      {/* Editor Modal Overlay - Safe Area Aware for iPhone Status Bar */}
+      {isEditing && editingProduct && (() => {
+        const cleanCurrentSku = String(editingProduct.sku || '').trim();
+        const duplicateSkuProd = cleanCurrentSku
+          ? products.find(p => p.id !== editingProduct.id && (p.sku || '').trim().toLowerCase() === cleanCurrentSku.toLowerCase())
+          : undefined;
 
-            <form onSubmit={handleSave} className="p-6 space-y-4">
-              <div className="grid grid-cols-2 gap-4">
-                {/* Product Image Input with Preview & File Upload */}
-                <div className="col-span-2">
-                  <label className="block text-xs font-bold text-slate-500 uppercase mb-1.5">
-                    {lang === 'ar' ? 'صورة المنتج' : 'Product Image'}
-                  </label>
-                  <div className="flex items-center gap-3 bg-slate-50 p-3 rounded-xl border border-slate-200">
-                    <div className="w-16 h-16 rounded-xl border-2 border-dashed border-slate-300 bg-white flex items-center justify-center overflow-hidden shrink-0 shadow-2xs">
-                      {editingProduct.imageUrl ? (
-                        <img
-                          src={editingProduct.imageUrl}
-                          alt="Product Preview"
-                          className="w-full h-full object-cover"
-                        />
-                      ) : (
-                        <Package className="w-6 h-6 text-slate-400" />
-                      )}
-                    </div>
-                    <div className="flex-1 space-y-2">
-                      <input
-                        id="form-p-image-url"
-                        type="text"
-                        placeholder={lang === 'ar' ? 'أدخل رابط الصورة (URL) هنا...' : 'https://example.com/photo.jpg'}
-                        value={editingProduct.imageUrl || ''}
-                        onChange={(e) => setEditingProduct({ ...editingProduct, imageUrl: e.target.value })}
-                        className="w-full px-3 py-1.5 border border-slate-200 bg-white rounded-lg text-xs font-medium focus:outline-none focus:ring-1 focus:ring-indigo-500"
-                      />
-                      <div className="flex items-center gap-3">
-                        <label className="px-3 py-1 bg-indigo-50 hover:bg-indigo-100 text-indigo-700 rounded-lg text-xs font-bold cursor-pointer transition flex items-center gap-1.5 border border-indigo-200">
-                          <Upload className="w-3.5 h-3.5" />
-                          <span>{lang === 'ar' ? 'اختيار صورة من الجهاز' : 'Upload File'}</span>
-                          <input
-                            type="file"
-                            accept="image/*"
-                            className="hidden"
-                            onChange={(e) => {
-                              const file = e.target.files?.[0];
-                              if (file) {
-                                const reader = new FileReader();
-                                reader.onload = (event) => {
-                                  if (event.target?.result) {
-                                    setEditingProduct({ ...editingProduct, imageUrl: event.target.result as string });
-                                  }
-                                };
-                                reader.readAsDataURL(file);
-                              }
-                            }}
+        return (
+          <div
+            className="fixed inset-0 bg-slate-900/60 backdrop-blur-xs flex items-start sm:items-center justify-center px-3 sm:px-4 z-[100] overflow-y-auto safe-modal-overlay"
+            style={{
+              paddingTop: 'max(3.25rem, calc(env(safe-area-inset-top, 20px) + 1rem))',
+              paddingBottom: 'max(1.5rem, env(safe-area-inset-bottom, 20px))'
+            }}
+            id="edit-product-modal"
+          >
+            <div className="bg-white rounded-3xl shadow-2xl border border-slate-100 w-full max-w-lg max-h-[calc(100dvh-4.75rem)] flex flex-col overflow-hidden animate-fade-in my-auto">
+              <div className="flex justify-between items-center bg-slate-50 px-5 sm:px-6 py-3.5 border-b border-slate-100 shrink-0">
+                <h2 className="font-black text-slate-800 text-base sm:text-lg">
+                  {editingProduct.id ? t.inventory.editProduct : t.inventory.addProduct}
+                </h2>
+                <button
+                  id="btn-close-modal"
+                  type="button"
+                  onClick={() => setIsEditing(false)}
+                  className="p-1.5 hover:bg-slate-200 text-slate-400 hover:text-slate-600 rounded-xl transition cursor-pointer"
+                >
+                  <X className="w-5 h-5" />
+                </button>
+              </div>
+
+              <form onSubmit={handleSave} className="p-5 sm:p-6 space-y-4 overflow-y-auto flex-1">
+                <div className="grid grid-cols-2 gap-4">
+                  {/* Product Image Input with Preview & File Upload */}
+                  <div className="col-span-2">
+                    <label className="block text-xs font-bold text-slate-500 uppercase mb-1.5">
+                      {lang === 'ar' ? 'صورة المنتج' : 'Product Image'}
+                    </label>
+                    <div className="flex items-center gap-3 bg-slate-50 p-3 rounded-xl border border-slate-200">
+                      <div className="w-16 h-16 rounded-xl border-2 border-dashed border-slate-300 bg-white flex items-center justify-center overflow-hidden shrink-0 shadow-2xs">
+                        {editingProduct.imageUrl ? (
+                          <img
+                            src={editingProduct.imageUrl}
+                            alt="Product Preview"
+                            className="w-full h-full object-cover"
                           />
-                        </label>
-                        {editingProduct.imageUrl && (
-                          <button
-                            type="button"
-                            onClick={() => setEditingProduct({ ...editingProduct, imageUrl: '' })}
-                            className="text-xs text-rose-500 hover:text-rose-700 font-bold cursor-pointer"
-                          >
-                            {lang === 'ar' ? 'إزالة الصورة' : 'Remove Image'}
-                          </button>
+                        ) : (
+                          <Package className="w-6 h-6 text-slate-400" />
                         )}
+                      </div>
+                      <div className="flex-1 space-y-2">
+                        <input
+                          id="form-p-image-url"
+                          type="text"
+                          placeholder={lang === 'ar' ? 'أدخل رابط الصورة (URL) هنا...' : 'https://example.com/photo.jpg'}
+                          value={editingProduct.imageUrl || ''}
+                          onChange={(e) => setEditingProduct({ ...editingProduct, imageUrl: e.target.value })}
+                          className="w-full px-3 py-1.5 border border-slate-200 bg-white rounded-lg text-xs font-medium focus:outline-none focus:ring-1 focus:ring-indigo-500"
+                        />
+                        <div className="flex items-center gap-3">
+                          <label className="px-3 py-1 bg-indigo-50 hover:bg-indigo-100 text-indigo-700 rounded-lg text-xs font-bold cursor-pointer transition flex items-center gap-1.5 border border-indigo-200">
+                            <Upload className="w-3.5 h-3.5" />
+                            <span>{lang === 'ar' ? 'اختيار صورة من الجهاز' : 'Upload File'}</span>
+                            <input
+                              type="file"
+                              accept="image/*"
+                              className="hidden"
+                              onChange={async (e) => {
+                                const file = e.target.files?.[0];
+                                if (file) {
+                                  try {
+                                    const compressed = await compressImageFile(file, 220, 0.72);
+                                    setEditingProduct({ ...editingProduct, imageUrl: compressed });
+                                  } catch {
+                                    const reader = new FileReader();
+                                    reader.onload = (event) => {
+                                      if (event.target?.result) {
+                                        setEditingProduct({ ...editingProduct, imageUrl: event.target.result as string });
+                                      }
+                                    };
+                                    reader.readAsDataURL(file);
+                                  }
+                                }
+                              }}
+                            />
+                          </label>
+                          {editingProduct.imageUrl && (
+                            <button
+                              type="button"
+                              onClick={() => setEditingProduct({ ...editingProduct, imageUrl: '' })}
+                              className="text-xs text-rose-500 hover:text-rose-700 font-bold cursor-pointer"
+                            >
+                              {lang === 'ar' ? 'إزالة الصورة' : 'Remove Image'}
+                            </button>
+                          )}
+                        </div>
                       </div>
                     </div>
                   </div>
-                </div>
 
-                <div className="col-span-2">
-                  <label className="block text-xs font-bold text-slate-500 uppercase mb-1.5">{t.inventory.name} *</label>
-                  <input
-                    id="form-p-name"
-                    required
-                    type="text"
-                    value={editingProduct.name || ''}
-                    onChange={(e) => setEditingProduct({ ...editingProduct, name: e.target.value })}
-                    className="w-full px-3.5 py-2.5 border border-slate-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-indigo-500 font-semibold text-slate-800"
-                  />
-                </div>
-
-                <div>
-                  <label className="block text-xs font-bold text-slate-500 uppercase mb-1.5">{t.inventory.sku} *</label>
-                  <div className="flex gap-1.5">
+                  <div className="col-span-2">
+                    <label className="block text-xs font-bold text-slate-500 uppercase mb-1.5">{t.inventory.name} *</label>
                     <input
-                      id="form-p-sku"
+                      id="form-p-name"
                       required
                       type="text"
-                      value={editingProduct.sku || ''}
-                      onChange={(e) => setEditingProduct({ ...editingProduct, sku: e.target.value })}
-                      className="w-full px-3.5 py-2.5 border border-slate-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-indigo-500 font-mono font-medium text-slate-700"
+                      value={editingProduct.name || ''}
+                      onChange={(e) => setEditingProduct({ ...editingProduct, name: e.target.value })}
+                      className="w-full px-3.5 py-2.5 border border-slate-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-indigo-500 font-semibold text-slate-800"
                     />
-                    <button
-                      type="button"
-                      onClick={() => setCameraScanTarget('sku')}
-                      className="px-3 py-2.5 bg-indigo-50 hover:bg-indigo-100 text-indigo-600 border border-indigo-200 rounded-lg transition cursor-pointer shrink-0 flex items-center justify-center"
-                      title={lang === 'ar' ? 'مسح باركود السلعة بالكاميرا' : 'Scan Barcode with Camera'}
-                    >
-                      <Camera className="w-4 h-4" />
-                    </button>
                   </div>
-                </div>
 
-                <div className="col-span-2">
-                  <label className="block text-xs font-bold text-slate-500 uppercase mb-1.5">{t.inventory.category} *</label>
-                  <div className="space-y-2">
-                    <select
-                      id="form-p-category-select"
-                      required
-                      value={isNewCategoryMode ? '__new__' : (editingProduct.category || '')}
-                      onChange={(e) => {
-                        const val = e.target.value;
-                        if (val === '__new__') {
-                          setIsNewCategoryMode(true);
-                          setEditingProduct({ ...editingProduct, category: '' });
-                        } else {
-                          setIsNewCategoryMode(false);
-                          setEditingProduct({ ...editingProduct, category: val });
-                        }
-                      }}
-                      className="w-full px-3.5 py-2.5 border border-slate-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-indigo-500 text-slate-700 font-medium bg-white"
-                    >
-                      <option value="" disabled>{lang === 'ar' ? '-- اختر الصنف --' : '-- Select Category --'}</option>
-                      {Array.from(new Set(products.map((p) => p.category))).filter(Boolean).map((cat) => (
-                        <option key={cat} value={cat}>{cat}</option>
-                      ))}
-                      <option value="__new__">➕ {lang === 'ar' ? 'إضافة صنف جديد...' : 'Create New Category...'}</option>
-                    </select>
-
-                    {isNewCategoryMode && (
+                  <div className="col-span-2">
+                    <label className="block text-xs font-bold text-slate-500 uppercase mb-1.5">{t.inventory.sku} *</label>
+                    <div className="flex gap-1.5">
                       <input
-                        id="form-p-category-custom"
+                        id="form-p-sku"
                         required
                         type="text"
-                        placeholder={lang === 'ar' ? 'اكتب اسم الصنف الجديد هنا' : 'Type new category name...'}
-                        value={newCategoryName}
-                        onChange={(e) => {
-                          setNewCategoryName(e.target.value);
-                          setEditingProduct({ ...editingProduct, category: e.target.value });
-                        }}
-                        className="w-full px-3.5 py-2.5 border border-slate-200 bg-amber-50/50 rounded-lg focus:outline-none focus:ring-2 focus:ring-indigo-500 text-slate-700 font-bold"
+                        value={editingProduct.sku || ''}
+                        onFocus={(e) => e.target.select()}
+                        onChange={(e) => setEditingProduct({ ...editingProduct, sku: e.target.value })}
+                        className={`w-full px-3.5 py-2.5 border rounded-lg focus:outline-none focus:ring-2 font-mono font-medium ${
+                          duplicateSkuProd
+                            ? 'border-rose-400 bg-rose-50 text-rose-800 focus:ring-rose-500'
+                            : 'border-slate-200 text-slate-700 focus:ring-indigo-500'
+                        }`}
                       />
+                      <button
+                        type="button"
+                        onClick={() => setCameraScanTarget('sku')}
+                        className="px-3.5 py-2.5 bg-indigo-50 hover:bg-indigo-100 text-indigo-600 border border-indigo-200 rounded-lg transition cursor-pointer shrink-0 flex items-center justify-center gap-1.5 text-xs font-bold"
+                        title={lang === 'ar' ? 'مسح باركود السلعة بالكاميرا' : 'Scan Barcode with Camera'}
+                      >
+                        <Camera className="w-4 h-4" />
+                        <span className="hidden sm:inline">{lang === 'ar' ? 'مسح' : 'Scan'}</span>
+                      </button>
+                    </div>
+                    {duplicateSkuProd && (
+                      <p className="text-[11px] font-bold text-rose-600 mt-1 flex items-center gap-1">
+                        <AlertCircle className="w-3.5 h-3.5 shrink-0" />
+                        <span>
+                          {lang === 'ar'
+                            ? `هذا الكود بار مكرر ومستخدم مسبقاً للمنتج: "${duplicateSkuProd.name}"`
+                            : `Duplicate barcode! Already used by "${duplicateSkuProd.name}"`}
+                        </span>
+                      </p>
                     )}
+                  </div>
+
+                  <div className="col-span-2">
+                    <label className="block text-xs font-bold text-slate-500 uppercase mb-1.5">{t.inventory.category} *</label>
+                    <div className="space-y-2">
+                      <select
+                        id="form-p-category-select"
+                        required
+                        value={isNewCategoryMode ? '__new__' : (editingProduct.category || '')}
+                        onChange={(e) => {
+                          const val = e.target.value;
+                          if (val === '__new__') {
+                            setIsNewCategoryMode(true);
+                            setEditingProduct({ ...editingProduct, category: '' });
+                          } else {
+                            setIsNewCategoryMode(false);
+                            setEditingProduct({ ...editingProduct, category: val });
+                          }
+                        }}
+                        className="w-full px-3.5 py-2.5 border border-slate-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-indigo-500 text-slate-700 font-medium bg-white"
+                      >
+                        <option value="" disabled>{lang === 'ar' ? '-- اختر الصنف --' : '-- Select Category --'}</option>
+                        {Array.from(new Set(products.map((p) => p.category))).filter(Boolean).map((cat) => (
+                          <option key={cat} value={cat}>{cat}</option>
+                        ))}
+                        <option value="__new__">➕ {lang === 'ar' ? 'إضافة صنف جديد...' : 'Create New Category...'}</option>
+                      </select>
+
+                      {isNewCategoryMode && (
+                        <input
+                          id="form-p-category-custom"
+                          required
+                          type="text"
+                          placeholder={lang === 'ar' ? 'اكتب اسم الصنف الجديد هنا' : 'Type new category name...'}
+                          value={newCategoryName}
+                          onChange={(e) => {
+                            setNewCategoryName(e.target.value);
+                            setEditingProduct({ ...editingProduct, category: e.target.value });
+                          }}
+                          className="w-full px-3.5 py-2.5 border border-slate-200 bg-amber-50/50 rounded-lg focus:outline-none focus:ring-2 focus:ring-indigo-500 text-slate-700 font-bold"
+                        />
+                      )}
+                    </div>
+                  </div>
+
+                  <div>
+                    <label className="block text-xs font-bold text-slate-500 uppercase mb-1.5">{t.inventory.purchasePrice} * ({currency})</label>
+                    <input
+                      id="form-p-purchase"
+                      required
+                      type="text"
+                      inputMode="decimal"
+                      placeholder="0.00"
+                      onFocus={(e) => e.target.select()}
+                      value={editingProduct.purchasePrice === 0 || (editingProduct.purchasePrice as any) === '0' ? '' : (editingProduct.purchasePrice ?? '')}
+                      onChange={(e) => setEditingProduct({ ...editingProduct, purchasePrice: sanitizeDecimalInput(e.target.value) as any })}
+                      className="w-full px-3.5 py-2.5 border border-slate-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-indigo-500 text-slate-800 font-bold font-mono placeholder:text-slate-300 placeholder:font-normal"
+                    />
+                  </div>
+
+                  <div>
+                    <label className="block text-xs font-bold text-slate-500 uppercase mb-1.5">{t.inventory.sellingPrice} * ({currency})</label>
+                    <input
+                      id="form-p-selling"
+                      required
+                      type="text"
+                      inputMode="decimal"
+                      placeholder="0.00"
+                      onFocus={(e) => e.target.select()}
+                      value={editingProduct.sellingPrice === 0 || (editingProduct.sellingPrice as any) === '0' ? '' : (editingProduct.sellingPrice ?? '')}
+                      onChange={(e) => setEditingProduct({ ...editingProduct, sellingPrice: sanitizeDecimalInput(e.target.value) as any })}
+                      className="w-full px-3.5 py-2.5 border border-slate-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-indigo-500 text-slate-800 font-bold font-mono placeholder:text-slate-300 placeholder:font-normal"
+                    />
+                  </div>
+
+                  <div>
+                    <label className="block text-xs font-bold text-slate-500 uppercase mb-1.5">
+                      {lang === 'ar' ? `سعر البيع بالجملة (${currency})` : lang === 'fr' ? `Prix de gros (${currency})` : `Wholesale Price (${currency})`}
+                    </label>
+                    <input
+                      id="form-p-wholesale"
+                      type="text"
+                      inputMode="decimal"
+                      placeholder="0.00"
+                      onFocus={(e) => e.target.select()}
+                      value={editingProduct.wholesalePrice === 0 || (editingProduct.wholesalePrice as any) === '0' ? '' : (editingProduct.wholesalePrice ?? '')}
+                      onChange={(e) => setEditingProduct({ ...editingProduct, wholesalePrice: sanitizeDecimalInput(e.target.value) as any })}
+                      className="w-full px-3.5 py-2.5 border border-slate-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-indigo-500 text-slate-800 font-bold font-mono placeholder:text-slate-300 placeholder:font-normal"
+                    />
+                  </div>
+
+                  <div>
+                    <label className="block text-xs font-bold text-slate-500 uppercase mb-1.5">{t.inventory.stock} *</label>
+                    <input
+                      id="form-p-stock"
+                      type="text"
+                      inputMode="decimal"
+                      placeholder="0"
+                      onFocus={(e) => e.target.select()}
+                      value={editingProduct.stock === 0 || (editingProduct.stock as any) === '0' ? '' : (editingProduct.stock ?? '')}
+                      onChange={(e) => setEditingProduct({ ...editingProduct, stock: sanitizeDecimalInput(e.target.value) as any })}
+                      className="w-full px-3.5 py-2.5 border border-slate-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-indigo-500 text-slate-800 font-bold font-mono placeholder:text-slate-300 placeholder:font-normal"
+                    />
+                  </div>
+
+                  <div>
+                    <label className="block text-xs font-bold text-slate-500 uppercase mb-1.5">{t.inventory.minStock}</label>
+                    <input
+                      id="form-p-minstock"
+                      type="text"
+                      inputMode="decimal"
+                      placeholder="5"
+                      onFocus={(e) => e.target.select()}
+                      value={editingProduct.minStock === 0 || (editingProduct.minStock as any) === '0' ? '' : (editingProduct.minStock ?? '')}
+                      onChange={(e) => setEditingProduct({ ...editingProduct, minStock: sanitizeDecimalInput(e.target.value) as any })}
+                      className="w-full px-3.5 py-2.5 border border-slate-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-indigo-500 text-slate-700 font-semibold font-mono placeholder:text-slate-300 placeholder:font-normal"
+                    />
+                  </div>
+
+                  <div>
+                    <label className="block text-xs font-bold text-slate-500 uppercase mb-1.5">{t.inventory.unit}</label>
+                    <input
+                      id="form-p-unit"
+                      type="text"
+                      placeholder="pcs, bag, kg, pack..."
+                      value={editingProduct.unit || 'pcs'}
+                      onChange={(e) => setEditingProduct({ ...editingProduct, unit: e.target.value })}
+                      className="w-full px-3.5 py-2.5 border border-slate-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-indigo-500 text-slate-600"
+                    />
                   </div>
                 </div>
 
-                <div>
-                  <label className="block text-xs font-bold text-slate-500 uppercase mb-1.5">{t.inventory.purchasePrice} * ({currency})</label>
-                  <input
-                    id="form-p-purchase"
-                    required
-                    type="text"
-                    inputMode="decimal"
-                    placeholder="0.00"
-                    value={editingProduct.purchasePrice ?? ''}
-                    onChange={(e) => setEditingProduct({ ...editingProduct, purchasePrice: sanitizeDecimalInput(e.target.value) as any })}
-                    className="w-full px-3.5 py-2.5 border border-slate-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-indigo-500 text-slate-700 font-semibold"
-                  />
+                <div className="flex items-center justify-end gap-3 pt-4 border-t border-slate-100">
+                  <button
+                    id="btn-edit-cancel"
+                    type="button"
+                    onClick={() => setIsEditing(false)}
+                    className="px-4.5 py-2.5 hover:bg-slate-100 text-slate-600 font-bold rounded-xl transition cursor-pointer"
+                  >
+                    {t.inventory.cancel}
+                  </button>
+                  <button
+                    id="btn-edit-save"
+                    type="submit"
+                    disabled={!!duplicateSkuProd}
+                    className="px-5 py-2.5 bg-indigo-600 hover:bg-indigo-700 disabled:bg-slate-300 disabled:cursor-not-allowed text-white font-bold rounded-xl transition cursor-pointer"
+                  >
+                    {t.inventory.save}
+                  </button>
                 </div>
-
-                <div>
-                  <label className="block text-xs font-bold text-slate-500 uppercase mb-1.5">{t.inventory.sellingPrice} * ({currency})</label>
-                  <input
-                    id="form-p-selling"
-                    required
-                    type="text"
-                    inputMode="decimal"
-                    placeholder="0.00"
-                    value={editingProduct.sellingPrice ?? ''}
-                    onChange={(e) => setEditingProduct({ ...editingProduct, sellingPrice: sanitizeDecimalInput(e.target.value) as any })}
-                    className="w-full px-3.5 py-2.5 border border-slate-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-indigo-500 text-slate-700 font-bold"
-                  />
-                </div>
-
-                <div>
-                  <label className="block text-xs font-bold text-slate-500 uppercase mb-1.5">
-                    {lang === 'ar' ? `سعر البيع بالجملة * (${currency})` : lang === 'fr' ? `Prix de gros * (${currency})` : `Wholesale Price * (${currency})`}
-                  </label>
-                  <input
-                    id="form-p-wholesale"
-                    required
-                    type="text"
-                    inputMode="decimal"
-                    placeholder="0.00"
-                    value={editingProduct.wholesalePrice ?? ''}
-                    onChange={(e) => setEditingProduct({ ...editingProduct, wholesalePrice: sanitizeDecimalInput(e.target.value) as any })}
-                    className="w-full px-3.5 py-2.5 border border-slate-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-indigo-500 text-slate-700 font-bold"
-                  />
-                </div>
-
-                <div>
-                  <label className="block text-xs font-bold text-slate-500 uppercase mb-1.5">{t.inventory.stock} *</label>
-                  <input
-                    id="form-p-stock"
-                    required
-                    type="number"
-                    value={editingProduct.stock ?? 0}
-                    onChange={(e) => setEditingProduct({ ...editingProduct, stock: Number(e.target.value) })}
-                    className="w-full px-3.5 py-2.5 border border-slate-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-indigo-500 text-slate-700 font-semibold"
-                  />
-                </div>
-
-                <div>
-                  <label className="block text-xs font-bold text-slate-500 uppercase mb-1.5">{t.inventory.minStock}</label>
-                  <input
-                    id="form-p-minstock"
-                    type="number"
-                    min="0"
-                    value={editingProduct.minStock ?? 0}
-                    onChange={(e) => setEditingProduct({ ...editingProduct, minStock: Number(e.target.value) })}
-                    className="w-full px-3.5 py-2.5 border border-slate-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-indigo-500 text-slate-500 font-medium"
-                  />
-                </div>
-
-                <div>
-                  <label className="block text-xs font-bold text-slate-500 uppercase mb-1.5">{t.inventory.unit}</label>
-                  <input
-                    id="form-p-unit"
-                    type="text"
-                    placeholder="pcs, bag, kg, pack..."
-                    value={editingProduct.unit || 'pcs'}
-                    onChange={(e) => setEditingProduct({ ...editingProduct, unit: e.target.value })}
-                    className="w-full px-3.5 py-2.5 border border-slate-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-indigo-500 text-slate-600"
-                  />
-                </div>
-              </div>
-
-              <div className="flex items-center justify-end gap-3 pt-4 border-t border-slate-100">
-                <button
-                  id="btn-edit-cancel"
-                  type="button"
-                  onClick={() => setIsEditing(false)}
-                  className="px-4.5 py-2 hover:bg-slate-100 text-slate-600 font-medium rounded-lg transition"
-                >
-                  {t.inventory.cancel}
-                </button>
-                <button
-                  id="btn-edit-save"
-                  type="submit"
-                  className="px-5 py-2 bg-indigo-600 hover:bg-indigo-700 text-white font-medium rounded-lg transition"
-                >
-                  {t.inventory.save}
-                </button>
-              </div>
-            </form>
+              </form>
+            </div>
           </div>
-        </div>
-      )}
+        );
+      })()}
 
       {/* Custom Product Delete Dialog Overlay */}
       {deletingProductId && (
-        <div className="fixed inset-0 bg-slate-900/60 backdrop-blur-xs flex items-center justify-center p-4 z-50">
+        <div className="fixed inset-0 bg-slate-900/60 backdrop-blur-xs flex items-center justify-center p-4 z-50 safe-modal-overlay">
           <div className="bg-white rounded-2xl shadow-xl border border-slate-100 w-full max-w-md overflow-hidden p-6 space-y-4 animate-fade-in text-start">
             <div className={`flex items-center gap-3 text-rose-600 pb-2 border-b border-slate-100 ${isRTL ? 'flex-row-reverse' : ''}`}>
               <Trash2 className="w-6 h-6 shrink-0" />
@@ -1143,17 +1183,23 @@ export default function Inventory({ products, config, onSaveProduct, onDeletePro
 
       {/* Barcode Stickers Printing Modal */}
       {showBarcodeModal && (
-        <div className="fixed inset-0 bg-slate-900/60 backdrop-blur-xs flex items-center justify-center p-4 z-50 overflow-y-auto">
-          <div className="bg-white rounded-3xl shadow-2xl border border-slate-100 w-full max-w-4xl overflow-hidden animate-fade-in my-8 text-start flex flex-col max-h-[90vh]">
+        <div
+          className="fixed inset-0 bg-slate-900/60 backdrop-blur-xs flex items-start sm:items-center justify-center px-3 sm:px-4 z-[100] overflow-y-auto safe-modal-overlay"
+          style={{
+            paddingTop: 'max(3.25rem, calc(env(safe-area-inset-top, 20px) + 1rem))',
+            paddingBottom: 'max(1.5rem, env(safe-area-inset-bottom, 20px))'
+          }}
+        >
+          <div className="bg-white rounded-3xl shadow-2xl border border-slate-100 w-full max-w-4xl overflow-hidden animate-fade-in my-auto text-start flex flex-col max-h-[calc(100dvh-4.75rem)]">
             {/* Top Header */}
-            <div className="flex justify-between items-center bg-slate-50 px-6 py-4 border-b border-slate-100 shrink-0">
+            <div className="flex flex-wrap justify-between items-center bg-slate-50 px-5 sm:px-6 py-4 border-b border-slate-100 shrink-0 gap-2">
               <div className="flex items-center gap-2">
                 <Barcode className="w-5 h-5 text-indigo-600" />
                 <h3 className="font-bold text-slate-800 text-base">
                   {lang === 'ar' ? 'مولد وطباعة ملصقات الباركود' : 'Barcode Labels & Sticker Printer'}
                 </h3>
               </div>
-              <div className="flex items-center gap-3">
+              <div className="flex flex-wrap items-center gap-2 sm:gap-3">
                 <div className="flex bg-slate-200/80 p-0.5 rounded-lg text-xs font-bold">
                   <button
                     type="button"
@@ -1352,7 +1398,7 @@ export default function Inventory({ products, config, onSaveProduct, onDeletePro
 
       {/* CSV Import Feedback Toast / Modal */}
       {importSummary && (
-        <div className="fixed inset-0 bg-slate-900/60 backdrop-blur-xs flex items-center justify-center p-4 z-50">
+        <div className="fixed inset-0 bg-slate-900/60 backdrop-blur-xs flex items-center justify-center p-4 z-50 safe-modal-overlay">
           <div className="bg-white rounded-3xl shadow-2xl border border-slate-100 w-full max-w-sm overflow-hidden p-6 text-center animate-fade-in space-y-4">
             <div className="w-12 h-12 bg-emerald-100 rounded-full flex items-center justify-center mx-auto text-emerald-600">
               <CheckCircle2 className="w-6 h-6" />
@@ -1393,7 +1439,19 @@ export default function Inventory({ products, config, onSaveProduct, onDeletePro
         onClose={() => setCameraScanTarget(null)}
         onScanCode={(code) => {
           if (cameraScanTarget === 'sku' && editingProduct) {
-            setEditingProduct({ ...editingProduct, sku: code });
+            const cleanScanned = String(code || '').trim();
+            const existingProd = products.find(
+              p => p.id !== editingProduct.id && (p.sku || '').trim().toLowerCase() === cleanScanned.toLowerCase()
+            );
+            if (existingProd) {
+              alert(
+                lang === 'ar'
+                  ? `⚠️ تنبيه: الباركود الممسوح (${cleanScanned}) مسجل مسبقاً للمنتج "${existingProd.name}". لا يمكن تكرار الباركود!`
+                  : `⚠️ Barcode (${cleanScanned}) is already assigned to "${existingProd.name}"!`
+              );
+            } else {
+              setEditingProduct({ ...editingProduct, sku: cleanScanned });
+            }
           } else {
             setSearch(code);
           }

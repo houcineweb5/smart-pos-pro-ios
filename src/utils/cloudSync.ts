@@ -20,6 +20,38 @@ export interface CloudSyncConfig {
 
 const SYNC_CONFIG_STORAGE_KEY = 'smartpos_cloud_sync_config_v1';
 const DEVICE_ID_KEY = 'smartpos_device_id_v1';
+const DELETED_IDS_STORAGE_KEY = 'smartpos_deleted_ids_v1';
+
+export function getDeletedIds(): string[] {
+  try {
+    const raw = localStorage.getItem(DELETED_IDS_STORAGE_KEY);
+    if (raw) {
+      const parsed = JSON.parse(raw);
+      if (Array.isArray(parsed)) return parsed.filter(Boolean);
+    }
+  } catch {}
+  return [];
+}
+
+export function addDeletedIds(ids: (string | undefined | null)[]): string[] {
+  const valid = ids.filter((x): x is string => Boolean(x && String(x).trim()));
+  if (valid.length === 0) return getDeletedIds();
+  try {
+    const current = new Set(getDeletedIds());
+    for (const id of valid) current.add(id);
+    const next = Array.from(current).slice(-1000);
+    localStorage.setItem(DELETED_IDS_STORAGE_KEY, JSON.stringify(next));
+    return next;
+  } catch {
+    return valid;
+  }
+}
+
+export function clearDeletedIds(): void {
+  try {
+    localStorage.removeItem(DELETED_IDS_STORAGE_KEY);
+  } catch {}
+}
 
 export function getDeviceId(): string {
   try {
@@ -35,11 +67,78 @@ export function getDeviceId(): string {
   }
 }
 
+/**
+ * Normalize and validate Firebase Realtime Database URL
+ * Handles missing https://, trailing paths (/smartpos_stores/..., .json), and console.firebase.google.com links.
+ */
+export function normalizeFirebaseUrl(rawUrl: string): { url: string; error?: string } {
+  let u = String(rawUrl || '')
+    .trim()
+    .replace(/^['"]+|['"]+$/g, '');
+
+  if (!u) {
+    return { url: '', error: 'يرجى إدخال رابط قاعدة بيانات Firebase Realtime Database أولاً' };
+  }
+
+  // If user pasted the Firebase Console link:
+  // e.g. https://console.firebase.google.com/u/0/project/my-proj/database/my-proj-default-rtdb/data/~2F
+  if (u.includes('console.firebase.google.com')) {
+    const dbMatch = u.match(/\/database\/([^/?#]+)/i);
+    if (dbMatch && dbMatch[1]) {
+      u = `https://${dbMatch[1]}.firebaseio.com`;
+    } else {
+      return {
+        url: u,
+        error:
+          '⚠️ هذا رابط لوحة تحكم Firebase Console وليس رابط قاعدة البيانات! افتح قسم Realtime Database وانسخ الرابط الذي ينتهي بـ firebaseio.com أو firebasedatabase.app',
+      };
+    }
+  }
+
+  if (!/^https?:\/\//i.test(u)) {
+    u = 'https://' + u;
+  }
+
+  try {
+    const parsed = new URL(u);
+    return { url: `${parsed.protocol}//${parsed.host}` };
+  } catch {
+    // Fallback cleanup
+    u = u
+      .replace(/\/smartpos_stores.*$/i, '')
+      .replace(/\/smartpos_barcodes.*$/i, '')
+      .replace(/\.json.*$/i, '')
+      .replace(/\/+$/, '');
+    return { url: u };
+  }
+}
+
+function cleanUrl(url: string): string {
+  let u = String(url || '').trim().replace(/^['"]+|['"]+$/g, '');
+  if (u && !/^https?:\/\//i.test(u)) {
+    u = 'https://' + u;
+  }
+  return u.replace(/\/+$/, '');
+}
+
+function formatFirebaseHttpError(status: number, errText: string): string {
+  const lower = (errText || '').toLowerCase();
+  if (status === 401 || status === 403 || lower.includes('permission denied')) {
+    return '⛔ رفض الوصول (Permission Denied): افتح Firebase Console ← Realtime Database ← تبويب Rules واجعل القواعد {"rules": {".read": true, ".write": true}} ثم اضغط Publish.';
+  }
+  if (status === 404 || lower.includes('not found')) {
+    return '❌ لم يتم العثور على قاعدة البيانات (404): تأكد من نسخ رابط Realtime Database الصحيح الذي ينتهي بـ firebaseio.com أو firebasedatabase.app';
+  }
+  return `خطأ من Firebase (${status}): ${errText}`;
+}
+
 export function getCloudSyncConfig(): CloudSyncConfig {
   try {
     const raw = localStorage.getItem(SYNC_CONFIG_STORAGE_KEY);
     if (raw) {
       const parsed = JSON.parse(raw);
+      const rawFb = (parsed.firebaseUrl || '').trim();
+      const normFb = rawFb ? normalizeFirebaseUrl(rawFb).url : '';
       return {
         enabled: Boolean(parsed.enabled),
         provider:
@@ -48,14 +147,14 @@ export function getCloudSyncConfig(): CloudSyncConfig {
             : parsed.provider === 'server'
             ? 'server'
             : 'firebase',
-        firebaseUrl: (parsed.firebaseUrl || '').trim(),
+        firebaseUrl: normFb,
         firebaseSecret: (parsed.firebaseSecret || '').trim(),
         supabaseUrl: (parsed.supabaseUrl || '').trim(),
         supabaseKey: (parsed.supabaseKey || '').trim(),
         serverUrl: (parsed.serverUrl || '').trim(),
         storeId: (parsed.storeId || 'store_01').trim(),
         autoSync: parsed.autoSync !== undefined ? Boolean(parsed.autoSync) : true,
-        syncIntervalSec: Number(parsed.syncIntervalSec) || 8,
+        syncIntervalSec: Math.max(15, Number(parsed.syncIntervalSec) || 20),
         lastSyncedAt: parsed.lastSyncedAt || undefined,
         deviceId: parsed.deviceId || getDeviceId(),
       };
@@ -73,69 +172,187 @@ export function getCloudSyncConfig(): CloudSyncConfig {
     serverUrl: '',
     storeId: 'store_01',
     autoSync: true,
-    syncIntervalSec: 8,
+    syncIntervalSec: 20,
     deviceId: getDeviceId(),
   };
 }
 
-export function saveCloudSyncConfig(cfg: CloudSyncConfig): void {
+const LAST_CLOUD_UPDATED_AT_KEY = 'smartpos_last_cloud_updated_at_v1';
+let memoryLastCloudUpdatedAt: string | null = null;
+
+export function getLastKnownCloudUpdatedAt(storeId = 'store_01'): string | null {
+  if (memoryLastCloudUpdatedAt) return memoryLastCloudUpdatedAt;
   try {
-    localStorage.setItem(SYNC_CONFIG_STORAGE_KEY, JSON.stringify(cfg));
+    return localStorage.getItem(`${LAST_CLOUD_UPDATED_AT_KEY}_${storeId}`);
+  } catch {
+    return null;
+  }
+}
+
+export function setLastKnownCloudUpdatedAt(timestamp: string | undefined | null, storeId = 'store_01'): void {
+  if (!timestamp) return;
+  memoryLastCloudUpdatedAt = timestamp;
+  try {
+    localStorage.setItem(`${LAST_CLOUD_UPDATED_AT_KEY}_${storeId}`, timestamp);
+  } catch {}
+}
+
+/**
+ * Lightweight (~28 bytes) check against Firebase /smartpos_stores/{storeId}/updatedAt.json
+ * Prevents downloading the entire store tree when nothing has changed in the cloud.
+ */
+export async function fetchFirebaseRemoteUpdatedAt(cfg: CloudSyncConfig = getCloudSyncConfig()): Promise<string | null> {
+  if (cfg.provider !== 'firebase' || !cfg.firebaseUrl) return null;
+  try {
+    const norm = normalizeFirebaseUrl(cfg.firebaseUrl);
+    if (!norm.url || norm.error) return null;
+    const storeKey = encodeURIComponent((cfg.storeId || 'store_01').trim());
+    const queryParts: string[] = [];
+    if (cfg.firebaseSecret) {
+      queryParts.push(`auth=${encodeURIComponent(cfg.firebaseSecret)}`);
+    }
+    const qs = queryParts.length > 0 ? `?${queryParts.join('&')}` : '';
+    const res = await fetch(`${norm.url}/smartpos_stores/${storeKey}/updatedAt.json${qs}`, {
+      method: 'GET',
+      cache: 'no-store',
+    });
+    if (!res.ok) return null;
+    const val = await res.json();
+    return typeof val === 'string' && val ? val : null;
+  } catch {
+    return null;
+  }
+}
+
+export function saveCloudSyncConfig(cfg: CloudSyncConfig, syncToServerDb = true): void {
+  try {
+    const cleanCfg: CloudSyncConfig = {
+      ...cfg,
+      firebaseUrl: cfg.firebaseUrl ? normalizeFirebaseUrl(cfg.firebaseUrl).url : '',
+      storeId: (cfg.storeId || 'store_01').trim(),
+    };
+    localStorage.setItem(SYNC_CONFIG_STORAGE_KEY, JSON.stringify(cleanCfg));
+    if (syncToServerDb && typeof window !== 'undefined' && window.location.protocol.startsWith('http')) {
+      fetch('/api/cloud-config', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(cleanCfg),
+      }).catch(() => {});
+    }
   } catch (e) {
     console.warn('Failed to save cloud sync config:', e);
   }
 }
 
-function cleanUrl(url: string): string {
-  return url.trim().replace(/\/+$/, '');
+/**
+ * Load cloud sync config from the PC SQLite server if localStorage has not been configured yet
+ */
+export async function loadCloudSyncConfigFromServer(): Promise<CloudSyncConfig | null> {
+  try {
+    const res = await fetch('/api/cloud-config', { cache: 'no-store' });
+    if (!res.ok) return null;
+    const json = await res.json();
+    if (json && json.ok && json.config && (json.config.firebaseUrl || json.config.supabaseUrl || json.config.serverUrl)) {
+      const serverCfg: CloudSyncConfig = {
+        ...getCloudSyncConfig(),
+        ...json.config,
+        firebaseUrl: json.config.firebaseUrl ? normalizeFirebaseUrl(json.config.firebaseUrl).url : '',
+      };
+      const localCfg = getCloudSyncConfig();
+      if (!localCfg.firebaseUrl && !localCfg.supabaseUrl) {
+        saveCloudSyncConfig(serverCfg, false);
+      }
+      return serverCfg;
+    }
+  } catch {
+    // ignore when offline or on standalone mobile
+  }
+  return null;
 }
 
 /**
  * Push store dataset to Cloud (Firebase Realtime DB, Supabase, or Direct Server URL)
+ * Uses a lightweight 28-byte updatedAt check first so it only pulls & merges existing remote records
+ * when another device has actually pushed changes since our last sync!
  */
 export async function pushDataToCloud(
   data: any,
-  cfg: CloudSyncConfig = getCloudSyncConfig()
-): Promise<{ ok: boolean; timestamp: string; error?: string }> {
+  cfg: CloudSyncConfig = getCloudSyncConfig(),
+  options: { skipPreMerge?: boolean } = {}
+): Promise<{ ok: boolean; timestamp: string; mergedData?: any; error?: string }> {
   const timestamp = new Date().toISOString();
-  const payload = {
-    updatedAt: timestamp,
-    source: getDeviceId(),
-    storeId: cfg.storeId || 'store_01',
-    data: {
-      products: data.products || [],
-      customers: data.customers || [],
-      suppliers: data.suppliers || [],
-      purchases: data.purchases || [],
-      invoices: data.invoices || [],
-      config: data.config || {},
-      employees: data.employees || [],
-      repairs: data.repairs || [],
-      expenses: data.expenses || [],
-      commercialDocuments: data.commercialDocuments || [],
-      logs: (data.logs || []).slice(0, 250),
-    },
-  };
+  const storeId = (cfg.storeId || 'store_01').trim();
+  let finalData = data;
 
   try {
-    if (cfg.provider === 'firebase') {
-      if (!cfg.firebaseUrl) {
-        return { ok: false, timestamp, error: 'يرجى إدخال رابط قاعدة بيانات Firebase أولاً' };
+    // Pull & merge existing remote records before PUT only if remote updatedAt changed
+    if (!options.skipPreMerge) {
+      let shouldPullBeforePush = true;
+      if (cfg.provider === 'firebase') {
+        const remoteUpdatedAt = await fetchFirebaseRemoteUpdatedAt(cfg);
+        const lastKnown = getLastKnownCloudUpdatedAt(storeId);
+        if (!remoteUpdatedAt || (lastKnown && remoteUpdatedAt === lastKnown)) {
+          shouldPullBeforePush = false;
+        }
       }
-      const base = cleanUrl(cfg.firebaseUrl);
+
+      if (shouldPullBeforePush) {
+        const existingCloud = await pullDataFromCloud(cfg).catch(() => null);
+        if (existingCloud && existingCloud.ok && existingCloud.payload && existingCloud.payload.data) {
+          // preferRemoteEdits = false means local edits win on modified items while any new invoices/items from the other device are kept!
+          const { merged } = mergeStoreDatasets(data, existingCloud.payload.data, false);
+          finalData = merged;
+        }
+      }
+    }
+
+    const combinedDeletedIds = addDeletedIds([
+      ...(Array.isArray(finalData.deletedIds) ? finalData.deletedIds : []),
+      ...getDeletedIds(),
+    ]);
+    finalData = { ...finalData, deletedIds: combinedDeletedIds };
+
+    const payload = {
+      updatedAt: timestamp,
+      source: getDeviceId(),
+      storeId,
+      data: {
+        products: finalData.products || [],
+        customers: finalData.customers || [],
+        suppliers: finalData.suppliers || [],
+        purchases: finalData.purchases || [],
+        invoices: finalData.invoices || [],
+        config: finalData.config || {},
+        employees: finalData.employees || [],
+        repairs: finalData.repairs || [],
+        expenses: finalData.expenses || [],
+        commercialDocuments: finalData.commercialDocuments || [],
+        deletedIds: combinedDeletedIds,
+        logs: (finalData.logs || []).slice(0, 120),
+      },
+    };
+
+    if (cfg.provider === 'firebase') {
+      const norm = normalizeFirebaseUrl(cfg.firebaseUrl);
+      if (!norm.url || norm.error) {
+        return { ok: false, timestamp, error: norm.error || 'يرجى إدخال رابط قاعدة بيانات Firebase أولاً' };
+      }
+      const base = norm.url;
       const authParam = cfg.firebaseSecret ? `?auth=${encodeURIComponent(cfg.firebaseSecret)}` : '';
-      const targetUrl = `${base}/smartpos_stores/${encodeURIComponent(cfg.storeId || 'store_01')}.json${authParam}`;
+      const targetUrl = `${base}/smartpos_stores/${encodeURIComponent(storeId)}.json${authParam}`;
 
       const res = await fetch(targetUrl, {
         method: 'PUT',
+        cache: 'no-store',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify(payload),
       });
 
       if (!res.ok) {
         const errText = await res.text();
-        throw new Error(`Firebase Error (${res.status}): ${errText}`);
+        throw new Error(formatFirebaseHttpError(res.status, errText));
       }
+      setLastKnownCloudUpdatedAt(timestamp, storeId);
     } else if (cfg.provider === 'supabase') {
       if (!cfg.supabaseUrl || !cfg.supabaseKey) {
         return { ok: false, timestamp, error: 'يرجى إدخال رابط Supabase ومفتاح API (Anon Key)' };
@@ -145,6 +362,7 @@ export async function pushDataToCloud(
 
       const res = await fetch(targetUrl, {
         method: 'POST',
+        cache: 'no-store',
         headers: {
           'Content-Type': 'application/json',
           apikey: cfg.supabaseKey,
@@ -152,7 +370,7 @@ export async function pushDataToCloud(
           Prefer: 'resolution=merge-duplicates',
         },
         body: JSON.stringify({
-          store_id: cfg.storeId || 'store_01',
+          store_id: storeId,
           updated_at: timestamp,
           payload: payload,
         }),
@@ -162,11 +380,13 @@ export async function pushDataToCloud(
         const errText = await res.text();
         throw new Error(`Supabase Error (${res.status}): ${errText}`);
       }
+      setLastKnownCloudUpdatedAt(timestamp, storeId);
     } else if (cfg.provider === 'server') {
       const base = cfg.serverUrl ? cleanUrl(cfg.serverUrl) : '';
       const targetUrl = `${base}/api/save`;
       const res = await fetch(targetUrl, {
         method: 'POST',
+        cache: 'no-store',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify(payload.data),
       });
@@ -176,48 +396,100 @@ export async function pushDataToCloud(
       }
     }
 
-    const updatedCfg = { ...cfg, lastSyncedAt: timestamp };
+    const updatedCfg = { ...cfg, firebaseUrl: cfg.firebaseUrl ? normalizeFirebaseUrl(cfg.firebaseUrl).url : '', lastSyncedAt: timestamp };
     saveCloudSyncConfig(updatedCfg);
-    return { ok: true, timestamp };
+    return { ok: true, timestamp, mergedData: finalData };
   } catch (err: any) {
-    return { ok: false, timestamp, error: err?.message || 'Cloud push failed' };
+    const msg = err?.message || 'Cloud push failed';
+    if (msg.includes('Failed to fetch') || msg.includes('NetworkError') || msg.includes('Load failed')) {
+      return {
+        ok: false,
+        timestamp,
+        error: '🌐 تعذر الاتصال بقاعدة بيانات Firebase: تأكد من صحة الرابط ومن اتصالك بالإنترنت.',
+      };
+    }
+    return { ok: false, timestamp, error: msg };
   }
 }
 
 /**
  * Pull store dataset from Cloud (Firebase Realtime DB, Supabase, or Direct Server URL)
+ * When options.onlyIfChanged is true, checks the lightweight 28-byte updatedAt field first
+ * so the full database is ONLY downloaded when another device actually pushed an update!
  */
 export async function pullDataFromCloud(
-  cfg: CloudSyncConfig = getCloudSyncConfig()
-): Promise<{ ok: boolean; payload?: any; error?: string }> {
+  cfg: CloudSyncConfig = getCloudSyncConfig(),
+  options: { onlyIfChanged?: boolean } = {}
+): Promise<{ ok: boolean; payload?: any; unchanged?: boolean; error?: string }> {
+  const storeId = (cfg.storeId || 'store_01').trim();
   try {
     if (cfg.provider === 'firebase') {
-      if (!cfg.firebaseUrl) {
-        return { ok: false, error: 'يرجى إدخال رابط قاعدة بيانات Firebase أولاً' };
+      const norm = normalizeFirebaseUrl(cfg.firebaseUrl);
+      if (!norm.url || norm.error) {
+        return { ok: false, error: norm.error || 'يرجى إدخال رابط قاعدة بيانات Firebase أولاً' };
       }
-      const base = cleanUrl(cfg.firebaseUrl);
-      const authParam = cfg.firebaseSecret ? `?auth=${encodeURIComponent(cfg.firebaseSecret)}` : '';
-      const targetUrl = `${base}/smartpos_stores/${encodeURIComponent(cfg.storeId || 'store_01')}.json${authParam}`;
 
-      const res = await fetch(targetUrl, { method: 'GET' });
+      if (options.onlyIfChanged) {
+        const remoteUpdatedAt = await fetchFirebaseRemoteUpdatedAt(cfg);
+        const lastKnown = getLastKnownCloudUpdatedAt(storeId);
+        if (remoteUpdatedAt && lastKnown && remoteUpdatedAt === lastKnown) {
+          return { ok: true, unchanged: true, payload: null };
+        }
+      }
+
+      const base = norm.url;
+      const storeKey = encodeURIComponent(storeId);
+      const queryParts: string[] = [];
+      if (cfg.firebaseSecret) {
+        queryParts.push(`auth=${encodeURIComponent(cfg.firebaseSecret)}`);
+      }
+      const qs = queryParts.length > 0 ? `?${queryParts.join('&')}` : '';
+      const targetUrl = `${base}/smartpos_stores/${storeKey}.json${qs}`;
+
+      const res = await fetch(targetUrl, {
+        method: 'GET',
+        cache: 'no-store',
+        headers: {
+          Accept: 'application/json',
+        },
+      });
       if (!res.ok) {
         const errText = await res.text();
-        throw new Error(`Firebase Error (${res.status}): ${errText}`);
+        throw new Error(formatFirebaseHttpError(res.status, errText));
       }
       const json = await res.json();
-      if (!json || !json.data) {
+      if (!json) {
         return { ok: true, payload: null };
       }
-      return { ok: true, payload: json };
+      // Support both wrapped { updatedAt, data: {...} } and direct dataset
+      if (json.data && typeof json.data === 'object') {
+        if (json.updatedAt) setLastKnownCloudUpdatedAt(json.updatedAt, storeId);
+        return { ok: true, payload: json };
+      }
+      if (Array.isArray(json.products) || Array.isArray(json.invoices)) {
+        const fallbackTs = json.updatedAt || new Date().toISOString();
+        setLastKnownCloudUpdatedAt(fallbackTs, storeId);
+        return {
+          ok: true,
+          payload: {
+            updatedAt: fallbackTs,
+            source: json.source || 'cloud',
+            storeId,
+            data: json,
+          },
+        };
+      }
+      return { ok: true, payload: null };
     } else if (cfg.provider === 'supabase') {
       if (!cfg.supabaseUrl || !cfg.supabaseKey) {
         return { ok: false, error: 'يرجى إدخال رابط Supabase ومفتاح API (Anon Key)' };
       }
       const base = cleanUrl(cfg.supabaseUrl);
-      const targetUrl = `${base}/rest/v1/smartpos_sync?store_id=eq.${encodeURIComponent(cfg.storeId || 'store_01')}&select=*`;
+      const targetUrl = `${base}/rest/v1/smartpos_sync?store_id=eq.${encodeURIComponent(storeId)}&select=*`;
 
       const res = await fetch(targetUrl, {
         method: 'GET',
+        cache: 'no-store',
         headers: {
           apikey: cfg.supabaseKey,
           Authorization: `Bearer ${cfg.supabaseKey}`,
@@ -231,11 +503,14 @@ export async function pullDataFromCloud(
       if (!Array.isArray(rows) || rows.length === 0 || !rows[0].payload) {
         return { ok: true, payload: null };
       }
+      if (rows[0].payload?.updatedAt) {
+        setLastKnownCloudUpdatedAt(rows[0].payload.updatedAt, storeId);
+      }
       return { ok: true, payload: rows[0].payload };
     } else {
       const base = cfg.serverUrl ? cleanUrl(cfg.serverUrl) : '';
       const targetUrl = `${base}/api/data`;
-      const res = await fetch(targetUrl, { method: 'GET' });
+      const res = await fetch(targetUrl, { method: 'GET', cache: 'no-store' });
       if (!res.ok) {
         const errText = await res.text();
         throw new Error(`Server Error (${res.status}): ${errText}`);
@@ -246,14 +521,80 @@ export async function pullDataFromCloud(
         payload: {
           updatedAt: new Date().toISOString(),
           source: 'server',
-          storeId: cfg.storeId || 'store_01',
+          storeId,
           data,
         },
       };
     }
   } catch (err: any) {
-    return { ok: false, error: err?.message || 'Cloud pull failed' };
+    const msg = err?.message || 'Cloud pull failed';
+    if (msg.includes('Failed to fetch') || msg.includes('NetworkError') || msg.includes('Load failed')) {
+      return {
+        ok: false,
+        error: '🌐 تعذر الاتصال بقاعدة بيانات Firebase: تأكد من صحة الرابط ومن اتصالك بالإنترنت.',
+      };
+    }
+    return { ok: false, error: msg };
   }
+}
+
+/**
+ * Test connection (Read & Write) to Firebase / Supabase / Server and return diagnostic summary
+ */
+export async function testCloudConnection(
+  cfg: CloudSyncConfig = getCloudSyncConfig()
+): Promise<{
+  ok: boolean;
+  message: string;
+  remoteStats?: { products: number; invoices: number; customers: number; lastUpdated?: string };
+}> {
+  const pullRes = await pullDataFromCloud(cfg);
+  if (!pullRes.ok) {
+    return { ok: false, message: pullRes.error || 'فشل الاتصال بقاعدة البيانات' };
+  }
+
+  // Test write permission on Firebase using a lightweight heartbeat ping
+  if (cfg.provider === 'firebase') {
+    const norm = normalizeFirebaseUrl(cfg.firebaseUrl);
+    if (!norm.url || norm.error) {
+      return { ok: false, message: norm.error || 'رابط Firebase غير صالح' };
+    }
+    const authParam = cfg.firebaseSecret ? `?auth=${encodeURIComponent(cfg.firebaseSecret)}` : '';
+    const pingUrl = `${norm.url}/smartpos_ping/${encodeURIComponent((cfg.storeId || 'store_01').trim())}.json${authParam}`;
+    try {
+      const writeRes = await fetch(pingUrl, {
+        method: 'PUT',
+        cache: 'no-store',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ pingAt: new Date().toISOString(), device: getDeviceId() }),
+      });
+      if (!writeRes.ok) {
+        const errText = await writeRes.text();
+        return { ok: false, message: formatFirebaseHttpError(writeRes.status, errText) };
+      }
+    } catch {
+      return {
+        ok: false,
+        message: '🌐 تعذر الكتابة في قاعدة بيانات Firebase. تأكد من صحة الرابط ومن الاتصال بالإنترنت.',
+      };
+    }
+  }
+
+  const d = pullRes.payload?.data;
+  const remoteStats = {
+    products: Array.isArray(d?.products) ? d.products.length : 0,
+    invoices: Array.isArray(d?.invoices) ? d.invoices.length : 0,
+    customers: Array.isArray(d?.customers) ? d.customers.length : 0,
+    lastUpdated: pullRes.payload?.updatedAt,
+  };
+
+  return {
+    ok: true,
+    remoteStats,
+    message: d
+      ? `✅ الاتصال بقاعدة Firebase ناجح 100% (قراءة وكتابة)! السحابة تحتوي حالياً على: ${remoteStats.products} منتج، ${remoteStats.invoices} فاتورة، ${remoteStats.customers} زبون.`
+      : '✅ الاتصال بقاعدة Firebase ناجح 100% (قراءة وكتابة)! القاعدة جاهزة؛ اضغط "رفع ومزامنة البيانات الآن" لرفع بياناتك.',
+  };
 }
 
 /**
@@ -265,116 +606,237 @@ export function mergeStoreDatasets(
   localData: any,
   cloudData: any,
   preferRemoteEdits = true
-): { merged: any; hasNewFromCloud: boolean } {
-  if (!cloudData) return { merged: localData, hasNewFromCloud: false };
+): { merged: any; hasNewFromCloud: boolean; hasLocalChangesForCloud: boolean } {
+  const localDeletedList: string[] = Array.isArray(localData?.deletedIds) ? localData.deletedIds : [];
+  const cloudDeletedList: string[] = Array.isArray(cloudData?.deletedIds) ? cloudData.deletedIds : [];
+  const mergedDeletedIds = addDeletedIds([...localDeletedList, ...cloudDeletedList, ...getDeletedIds()]);
+  const deletedSet = new Set<string>(mergedDeletedIds);
+
+  if (!cloudData) {
+    return {
+      merged: { ...localData, deletedIds: mergedDeletedIds },
+      hasNewFromCloud: false,
+      hasLocalChangesForCloud: true,
+    };
+  }
 
   let hasNewFromCloud = false;
+  let hasLocalChangesForCloud = false;
+
+  for (const dId of mergedDeletedIds) {
+    if (!cloudDeletedList.includes(dId)) {
+      hasLocalChangesForCloud = true;
+    }
+    if (!localDeletedList.includes(dId)) {
+      hasNewFromCloud = true;
+    }
+  }
+
+  // Check if localData or cloudData still holds any deleted items so we trigger cleanup
+  const checkAndFilter = (arr: any[], isCloud: boolean) => {
+    const out: any[] = [];
+    for (const item of Array.isArray(arr) ? arr : []) {
+      if (!item || !item.id) continue;
+      if (deletedSet.has(item.id) || (item.convertedTo?.docId && deletedSet.has(item.convertedTo.docId))) {
+        if (isCloud) hasLocalChangesForCloud = true;
+        else hasNewFromCloud = true;
+        continue;
+      }
+      out.push(item);
+    }
+    return out;
+  };
 
   // 1. Merge Invoices (new invoices + updated payments/returns on existing invoices)
-  const localInvoices: any[] = Array.isArray(localData.invoices) ? localData.invoices : [];
-  const cloudInvoices: any[] = Array.isArray(cloudData.invoices) ? cloudData.invoices : [];
+  const localInvoices: any[] = checkAndFilter(localData.invoices, false);
+  const cloudInvoices: any[] = checkAndFilter(cloudData.invoices, true);
   const localInvMap = new Map(localInvoices.map((i: any) => [i.id, i]));
+  const cloudInvMap = new Map(cloudInvoices.map((i: any) => [i.id, i]));
   const newCloudInvoices: any[] = [];
+  const localOnlyInvoices: any[] = [];
+
+  for (const lInv of localInvoices) {
+    if (lInv && lInv.id && !cloudInvMap.has(lInv.id)) {
+      localOnlyInvoices.push(lInv);
+      hasLocalChangesForCloud = true;
+    }
+  }
 
   for (const cInv of cloudInvoices) {
-    if (!cInv || !cInv.id) continue;
+    if (!cInv || !cInv.id || deletedSet.has(cInv.id)) continue;
     const existing = localInvMap.get(cInv.id);
     if (!existing) {
       newCloudInvoices.push(cInv);
       localInvMap.set(cInv.id, cInv);
       hasNewFromCloud = true;
     } else {
-      // Check if remote invoice had debt settled or items returned
       const remotePaid = Number(cInv.amountPaid || 0);
       const localPaid = Number(existing.amountPaid || 0);
       const remoteReturnsLen = Array.isArray(cInv.returnedItems) ? cInv.returnedItems.length : 0;
       const localReturnsLen = Array.isArray(existing.returnedItems) ? existing.returnedItems.length : 0;
       if (remotePaid > localPaid || remoteReturnsLen > localReturnsLen || cInv.status !== existing.status) {
-        if (preferRemoteEdits) {
+        if (preferRemoteEdits || remotePaid > localPaid || remoteReturnsLen > localReturnsLen) {
           localInvMap.set(cInv.id, cInv);
           hasNewFromCloud = true;
+        } else {
+          hasLocalChangesForCloud = true;
         }
       }
     }
   }
 
-  // 2. Merge Products
-  let mergedProducts: any[] = Array.isArray(localData.products) ? [...localData.products] : [];
-  const cloudProducts: any[] = Array.isArray(cloudData.products) ? cloudData.products : [];
-
-  // Deduct stock for newly arrived invoices if local had products before cloud updated them
-  if (newCloudInvoices.length > 0) {
-    for (const inv of newCloudInvoices) {
-      if (Array.isArray(inv.items)) {
-        mergedProducts = mergedProducts.map((p: any) => {
-          const soldItem = inv.items.find((it: any) => it.productId === p.id);
-          if (soldItem) {
-            return { ...p, stock: Math.max(0, Number(p.stock || 0) - Number(soldItem.quantity || 0)) };
-          }
-          return p;
-        });
+  // Compute per-product quantities sold in localOnlyInvoices vs newCloudInvoices
+  const localOnlySoldByProduct = new Map<string, number>();
+  for (const inv of localOnlyInvoices) {
+    for (const it of inv.items || []) {
+      if (it && it.productId) {
+        localOnlySoldByProduct.set(
+          it.productId,
+          (localOnlySoldByProduct.get(it.productId) || 0) + Number(it.quantity || 0)
+        );
       }
     }
   }
 
-  const localProdMap = new Map(mergedProducts.map((p: any) => [p.id, p]));
+  const newCloudSoldByProduct = new Map<string, number>();
+  for (const inv of newCloudInvoices) {
+    for (const it of inv.items || []) {
+      if (it && it.productId) {
+        newCloudSoldByProduct.set(
+          it.productId,
+          (newCloudSoldByProduct.get(it.productId) || 0) + Number(it.quantity || 0)
+        );
+      }
+    }
+  }
+
+  // 2. Merge Products accurately across all scenarios
+  const localProducts: any[] = checkAndFilter(localData.products, false);
+  const cloudProducts: any[] = checkAndFilter(cloudData.products, true);
+  const localProdMap = new Map(localProducts.map((p: any) => [p.id, { ...p }]));
+  const cloudProdMap = new Map(cloudProducts.map((p: any) => [p.id, p]));
+
+  for (const lp of localProducts) {
+    if (lp && lp.id && !cloudProdMap.has(lp.id)) {
+      hasLocalChangesForCloud = true;
+    }
+  }
+
   for (const cp of cloudProducts) {
-    if (!cp || !cp.id) continue;
+    if (!cp || !cp.id || deletedSet.has(cp.id)) continue;
     const existing = localProdMap.get(cp.id);
     if (!existing) {
-      localProdMap.set(cp.id, cp);
+      localProdMap.set(cp.id, { ...cp });
       hasNewFromCloud = true;
-    } else if (preferRemoteEdits && newCloudInvoices.length === 0) {
-      // Check if product price, name, sku, or stock was updated remotely
-      if (
-        existing.name !== cp.name ||
-        existing.sellingPrice !== cp.sellingPrice ||
-        existing.purchasePrice !== cp.purchasePrice ||
-        existing.wholesalePrice !== cp.wholesalePrice ||
-        existing.sku !== cp.sku ||
-        existing.stock !== cp.stock
-      ) {
-        localProdMap.set(cp.id, cp);
+    } else {
+      const localSoldQty = localOnlySoldByProduct.get(cp.id) || 0;
+      const cloudSoldQty = newCloudSoldByProduct.get(cp.id) || 0;
+
+      if (localSoldQty > 0 && cloudSoldQty > 0) {
+        // Both devices sold this product independently before syncing: deduct cloudSoldQty from local stock
+        const nextStock = Math.max(0, Number(existing.stock || 0) - cloudSoldQty);
+        if (nextStock !== existing.stock) {
+          localProdMap.set(cp.id, { ...existing, stock: nextStock });
+          hasNewFromCloud = true;
+          hasLocalChangesForCloud = true;
+        }
+      } else if (localSoldQty > 0 && cloudSoldQty === 0) {
+        // Local device sold this product and cloud doesn't have that sale yet -> keep local stock
+        hasLocalChangesForCloud = true;
+      } else if (preferRemoteEdits) {
+        // Cloud has latest state (including any cloud sales or product edits on the other device)
+        if (
+          existing.name !== cp.name ||
+          existing.sellingPrice !== cp.sellingPrice ||
+          existing.purchasePrice !== cp.purchasePrice ||
+          existing.wholesalePrice !== cp.wholesalePrice ||
+          existing.sku !== cp.sku ||
+          existing.stock !== cp.stock ||
+          existing.category !== cp.category ||
+          existing.minStock !== cp.minStock ||
+          existing.imageUrl !== cp.imageUrl
+        ) {
+          localProdMap.set(cp.id, { ...existing, ...cp });
+          hasNewFromCloud = true;
+        }
+      } else if (cloudSoldQty > 0) {
+        // Pre-merge before push: local is preferred for metadata, but deduct any newly discovered cloud sale
+        const nextStock = Math.max(0, Number(existing.stock || 0) - cloudSoldQty);
+        localProdMap.set(cp.id, { ...existing, stock: nextStock });
         hasNewFromCloud = true;
       }
     }
   }
-  mergedProducts = Array.from(localProdMap.values());
+
+  // Also if there were newCloudInvoices for a product that was only in localProdMap (not in cloudProducts)
+  for (const [prodId, cloudSoldQty] of newCloudSoldByProduct.entries()) {
+    if (!cloudProdMap.has(prodId) && localProdMap.has(prodId)) {
+      const existing = localProdMap.get(prodId)!;
+      localProdMap.set(prodId, {
+        ...existing,
+        stock: Math.max(0, Number(existing.stock || 0) - cloudSoldQty),
+      });
+      hasNewFromCloud = true;
+    }
+  }
+
+  const mergedProducts = Array.from(localProdMap.values());
 
   // 3. Merge Customers
-  let mergedCustomers: any[] = Array.isArray(localData.customers) ? [...localData.customers] : [];
-  if (newCloudInvoices.length > 0) {
-    for (const inv of newCloudInvoices) {
-      if (inv.customerId && inv.customerId !== 'walk-in') {
-        const unpaid = Math.max(0, Number(inv.total || 0) - Number(inv.amountPaid || 0));
-        if (unpaid > 0) {
-          mergedCustomers = mergedCustomers.map((c: any) =>
-            c.id === inv.customerId ? { ...c, debt: Number(c.debt || 0) + unpaid } : c
-          );
-        }
-      }
+  const localCustomers: any[] = checkAndFilter(localData.customers, false);
+  const cloudCustomers: any[] = checkAndFilter(cloudData.customers, true);
+  const localCustMap = new Map(localCustomers.map((c: any) => [c.id, { ...c }]));
+  const cloudCustMap = new Map(cloudCustomers.map((c: any) => [c.id, c]));
+
+  for (const lc of localCustomers) {
+    if (lc && lc.id && !cloudCustMap.has(lc.id)) {
+      hasLocalChangesForCloud = true;
     }
   }
-  const localCustMap = new Map(mergedCustomers.map((c: any) => [c.id, c]));
-  for (const cc of cloudData.customers || []) {
-    if (!cc || !cc.id) continue;
+
+  for (const cc of cloudCustomers) {
+    if (!cc || !cc.id || deletedSet.has(cc.id)) continue;
     const existing = localCustMap.get(cc.id);
     if (!existing) {
-      localCustMap.set(cc.id, cc);
+      localCustMap.set(cc.id, { ...cc });
       hasNewFromCloud = true;
-    } else if (preferRemoteEdits && newCloudInvoices.length === 0) {
-      if (existing.name !== cc.name || existing.phone !== cc.phone || existing.debt !== cc.debt) {
-        localCustMap.set(cc.id, cc);
+    } else if (preferRemoteEdits) {
+      if (
+        existing.name !== cc.name ||
+        existing.phone !== cc.phone ||
+        existing.debt !== cc.debt ||
+        existing.email !== cc.email ||
+        existing.notes !== cc.notes
+      ) {
+        localCustMap.set(cc.id, { ...existing, ...cc });
+        hasNewFromCloud = true;
+      }
+    } else {
+      // If pre-merging before push and cloud had new unpaid invoices for this customer
+      let extraCloudDebt = 0;
+      for (const inv of newCloudInvoices) {
+        if (inv.customerId === cc.id) {
+          extraCloudDebt += Math.max(0, Number(inv.total || 0) - Number(inv.amountPaid || 0));
+        }
+      }
+      if (extraCloudDebt > 0) {
+        localCustMap.set(cc.id, { ...existing, debt: Number(existing.debt || 0) + extraCloudDebt });
         hasNewFromCloud = true;
       }
     }
   }
-  mergedCustomers = Array.from(localCustMap.values());
+  const mergedCustomers = Array.from(localCustMap.values());
 
   // 4. Merge Suppliers
-  const localSuppMap = new Map((localData.suppliers || []).map((s: any) => [s.id, s]));
-  for (const cs of cloudData.suppliers || []) {
-    if (!cs || !cs.id) continue;
+  const localSuppliers: any[] = checkAndFilter(localData.suppliers, false);
+  const cloudSuppliers: any[] = checkAndFilter(cloudData.suppliers, true);
+  const localSuppMap = new Map(localSuppliers.map((s: any) => [s.id, s]));
+  const cloudSuppMap = new Map(cloudSuppliers.map((s: any) => [s.id, s]));
+  for (const ls of localSuppliers) {
+    if (ls && ls.id && !cloudSuppMap.has(ls.id)) hasLocalChangesForCloud = true;
+  }
+  for (const cs of cloudSuppliers) {
+    if (!cs || !cs.id || deletedSet.has(cs.id)) continue;
     const existing: any = localSuppMap.get(cs.id);
     if (!existing) {
       localSuppMap.set(cs.id, cs);
@@ -387,9 +849,15 @@ export function mergeStoreDatasets(
   const mergedSuppliers = Array.from(localSuppMap.values());
 
   // 5. Merge Purchases
-  const localPurchMap = new Map((localData.purchases || []).map((p: any) => [p.id, p]));
-  for (const cp of cloudData.purchases || []) {
-    if (!cp || !cp.id) continue;
+  const localPurchases: any[] = checkAndFilter(localData.purchases, false);
+  const cloudPurchases: any[] = checkAndFilter(cloudData.purchases, true);
+  const localPurchMap = new Map(localPurchases.map((p: any) => [p.id, p]));
+  const cloudPurchMap = new Map(cloudPurchases.map((p: any) => [p.id, p]));
+  for (const lp of localPurchases) {
+    if (lp && lp.id && !cloudPurchMap.has(lp.id)) hasLocalChangesForCloud = true;
+  }
+  for (const cp of cloudPurchases) {
+    if (!cp || !cp.id || deletedSet.has(cp.id)) continue;
     const existing: any = localPurchMap.get(cp.id);
     if (!existing) {
       localPurchMap.set(cp.id, cp);
@@ -402,9 +870,15 @@ export function mergeStoreDatasets(
   const mergedPurchases = Array.from(localPurchMap.values());
 
   // 6. Merge Expenses
-  const localExpMap = new Map((localData.expenses || []).map((e: any) => [e.id, e]));
-  for (const ce of cloudData.expenses || []) {
-    if (!ce || !ce.id) continue;
+  const localExpenses: any[] = checkAndFilter(localData.expenses, false);
+  const cloudExpenses: any[] = checkAndFilter(cloudData.expenses, true);
+  const localExpMap = new Map(localExpenses.map((e: any) => [e.id, e]));
+  const cloudExpMap = new Map(cloudExpenses.map((e: any) => [e.id, e]));
+  for (const le of localExpenses) {
+    if (le && le.id && !cloudExpMap.has(le.id)) hasLocalChangesForCloud = true;
+  }
+  for (const ce of cloudExpenses) {
+    if (!ce || !ce.id || deletedSet.has(ce.id)) continue;
     if (!localExpMap.has(ce.id)) {
       localExpMap.set(ce.id, ce);
       hasNewFromCloud = true;
@@ -413,9 +887,15 @@ export function mergeStoreDatasets(
   const mergedExpenses = Array.from(localExpMap.values());
 
   // 7. Merge Repairs (SAV)
-  const localRepMap = new Map((localData.repairs || []).map((r: any) => [r.id, r]));
-  for (const cr of cloudData.repairs || []) {
-    if (!cr || !cr.id) continue;
+  const localRepairs: any[] = checkAndFilter(localData.repairs, false);
+  const cloudRepairs: any[] = checkAndFilter(cloudData.repairs, true);
+  const localRepMap = new Map(localRepairs.map((r: any) => [r.id, r]));
+  const cloudRepMap = new Map(cloudRepairs.map((r: any) => [r.id, r]));
+  for (const lr of localRepairs) {
+    if (lr && lr.id && !cloudRepMap.has(lr.id)) hasLocalChangesForCloud = true;
+  }
+  for (const cr of cloudRepairs) {
+    if (!cr || !cr.id || deletedSet.has(cr.id)) continue;
     const existing: any = localRepMap.get(cr.id);
     if (!existing) {
       localRepMap.set(cr.id, cr);
@@ -430,10 +910,16 @@ export function mergeStoreDatasets(
   }
   const mergedRepairs = Array.from(localRepMap.values());
 
-  // 8. Merge Commercial Documents (Devis, Bon de Commande, Bon de Livraison)
-  const localDocMap = new Map((localData.commercialDocuments || []).map((d: any) => [d.id, d]));
-  for (const cd of cloudData.commercialDocuments || []) {
-    if (!cd || !cd.id) continue;
+  // 8. Merge Commercial Documents (Devis, Bon de Commande, Bon de Livraison, Facture)
+  const localDocs: any[] = checkAndFilter(localData.commercialDocuments, false);
+  const cloudDocs: any[] = checkAndFilter(cloudData.commercialDocuments, true);
+  const localDocMap = new Map(localDocs.map((d: any) => [d.id, d]));
+  const cloudDocMap = new Map(cloudDocs.map((d: any) => [d.id, d]));
+  for (const ld of localDocs) {
+    if (ld && ld.id && !cloudDocMap.has(ld.id)) hasLocalChangesForCloud = true;
+  }
+  for (const cd of cloudDocs) {
+    if (!cd || !cd.id || deletedSet.has(cd.id) || deletedSet.has('inv_fac_' + cd.id) || (cd.convertedTo?.docId && deletedSet.has(cd.convertedTo.docId))) continue;
     const existing: any = localDocMap.get(cd.id);
     if (!existing) {
       localDocMap.set(cd.id, cd);
@@ -446,9 +932,11 @@ export function mergeStoreDatasets(
   const mergedCommercialDocuments = Array.from(localDocMap.values());
 
   // 9. Merge Employees
-  const localEmpMap = new Map((localData.employees || []).map((e: any) => [e.id, e]));
-  for (const ce of cloudData.employees || []) {
-    if (!ce || !ce.id) continue;
+  const localEmployees: any[] = checkAndFilter(localData.employees, false);
+  const cloudEmployees: any[] = checkAndFilter(cloudData.employees, true);
+  const localEmpMap = new Map(localEmployees.map((e: any) => [e.id, e]));
+  for (const ce of cloudEmployees) {
+    if (!ce || !ce.id || deletedSet.has(ce.id)) continue;
     if (!localEmpMap.has(ce.id)) {
       localEmpMap.set(ce.id, ce);
       hasNewFromCloud = true;
@@ -485,6 +973,7 @@ export function mergeStoreDatasets(
 
   return {
     hasNewFromCloud,
+    hasLocalChangesForCloud,
     merged: {
       ...localData,
       products: mergedProducts,
@@ -498,6 +987,7 @@ export function mergeStoreDatasets(
       employees: mergedEmployees,
       config: mergedConfig,
       logs: mergedLogs,
+      deletedIds: mergedDeletedIds,
     },
   };
 }
@@ -518,6 +1008,7 @@ export async function pushCloudBarcodeScan(
     const base = cfg.serverUrl ? cleanUrl(cfg.serverUrl) : '';
     const res = await fetch(`${base}/api/remote-barcode`, {
       method: 'POST',
+      cache: 'no-store',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ code: cleanCode }),
     });
@@ -529,15 +1020,18 @@ export async function pushCloudBarcodeScan(
   // 2. Try Firebase Realtime DB if configured
   if (cfg.firebaseUrl) {
     try {
-      const base = cleanUrl(cfg.firebaseUrl);
-      const authParam = cfg.firebaseSecret ? `?auth=${encodeURIComponent(cfg.firebaseSecret)}` : '';
-      const targetUrl = `${base}/smartpos_barcodes/${encodeURIComponent(cfg.storeId || 'store_01')}.json${authParam}`;
-      const res = await fetch(targetUrl, {
-        method: 'PUT',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ code: cleanCode, timestamp: Date.now() }),
-      });
-      if (res.ok) sent = true;
+      const norm = normalizeFirebaseUrl(cfg.firebaseUrl);
+      if (norm.url) {
+        const authParam = cfg.firebaseSecret ? `?auth=${encodeURIComponent(cfg.firebaseSecret)}` : '';
+        const targetUrl = `${norm.url}/smartpos_barcodes/${encodeURIComponent((cfg.storeId || 'store_01').trim())}.json${authParam}`;
+        const res = await fetch(targetUrl, {
+          method: 'PUT',
+          cache: 'no-store',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ code: cleanCode, timestamp: Date.now() }),
+        });
+        if (res.ok) sent = true;
+      }
     } catch {
       // ignore
     }
@@ -552,16 +1046,22 @@ export async function pushCloudBarcodeScan(
 export async function pullCloudBarcodeScan(cfg: CloudSyncConfig = getCloudSyncConfig()): Promise<string | null> {
   if (!cfg.enabled || !cfg.firebaseUrl) return null;
   try {
-    const base = cleanUrl(cfg.firebaseUrl);
-    const authParam = cfg.firebaseSecret ? `?auth=${encodeURIComponent(cfg.firebaseSecret)}` : '';
-    const targetUrl = `${base}/smartpos_barcodes/${encodeURIComponent(cfg.storeId || 'store_01')}.json${authParam}`;
+    const norm = normalizeFirebaseUrl(cfg.firebaseUrl);
+    if (!norm.url) return null;
+    const queryParts = [`_t=${Date.now()}`];
+    if (cfg.firebaseSecret) {
+      queryParts.push(`auth=${encodeURIComponent(cfg.firebaseSecret)}`);
+    }
+    const baseTargetUrl = `${norm.url}/smartpos_barcodes/${encodeURIComponent((cfg.storeId || 'store_01').trim())}.json`;
+    const targetUrl = `${baseTargetUrl}?${queryParts.join('&')}`;
 
-    const res = await fetch(targetUrl, { method: 'GET' });
+    const res = await fetch(targetUrl, { method: 'GET', cache: 'no-store' });
     if (!res.ok) return null;
     const data = await res.json();
     if (data && data.code && data.timestamp) {
       // Clear it immediately from Firebase so it's only processed once
-      await fetch(targetUrl, { method: 'DELETE' });
+      const authOnly = cfg.firebaseSecret ? `?auth=${encodeURIComponent(cfg.firebaseSecret)}` : '';
+      await fetch(`${baseTargetUrl}${authOnly}`, { method: 'DELETE', cache: 'no-store' });
       // Only accept if scanned within last 30 seconds
       if (Date.now() - Number(data.timestamp) < 30000) {
         return String(data.code);
@@ -578,14 +1078,15 @@ export async function pullCloudBarcodeScan(cfg: CloudSyncConfig = getCloudSyncCo
  * so the user can scan QR or paste it into the Smartphone App in 1 click!
  */
 export function encodePairingCode(cfg: CloudSyncConfig, fallbackServerUrl?: string): string {
+  const normFb = cfg.firebaseUrl ? normalizeFirebaseUrl(cfg.firebaseUrl).url : '';
   const minimal = {
     p: cfg.provider,
-    f: cfg.firebaseUrl,
+    f: normFb,
     fs: cfg.firebaseSecret || '',
     su: cfg.supabaseUrl || '',
     sk: cfg.supabaseKey || '',
     srv: cfg.serverUrl || fallbackServerUrl || '',
-    s: cfg.storeId || 'store_01',
+    s: (cfg.storeId || 'store_01').trim(),
   };
   return btoa(unescape(encodeURIComponent(JSON.stringify(minimal))));
 }
@@ -613,12 +1114,15 @@ export function decodePairingCode(code: string): CloudSyncConfig | null {
         ? 'supabase'
         : 'server';
 
+    const fbRaw = (parsed.f || current.firebaseUrl || '').trim();
+    const fbClean = fbRaw ? normalizeFirebaseUrl(fbRaw).url : '';
+
     return {
       ...current,
       enabled: true,
       autoSync: true,
       provider,
-      firebaseUrl: (parsed.f || current.firebaseUrl || '').trim(),
+      firebaseUrl: fbClean,
       firebaseSecret: (parsed.fs || current.firebaseSecret || '').trim(),
       supabaseUrl: (parsed.su || current.supabaseUrl || '').trim(),
       supabaseKey: (parsed.sk || current.supabaseKey || '').trim(),
@@ -628,4 +1132,79 @@ export function decodePairingCode(code: string): CloudSyncConfig | null {
   } catch {
     return null;
   }
+}
+
+/**
+ * Compress any image Data URL or File to a lightweight JPEG thumbnail (~8-15 KB)
+ * so product photos and store logos never bloat Firebase Realtime Database bandwidth.
+ */
+export function compressImageDataUrl(
+  dataUrl: string,
+  maxDimension = 220,
+  quality = 0.72
+): Promise<string> {
+  return new Promise((resolve) => {
+    if (!dataUrl || !dataUrl.startsWith('data:image/') || dataUrl.length < 22000) {
+      resolve(dataUrl);
+      return;
+    }
+    try {
+      const img = new Image();
+      img.onload = () => {
+        try {
+          let w = img.naturalWidth || img.width || maxDimension;
+          let h = img.naturalHeight || img.height || maxDimension;
+          if (w > maxDimension || h > maxDimension) {
+            if (w >= h) {
+              h = Math.max(1, Math.round((h * maxDimension) / w));
+              w = maxDimension;
+            } else {
+              w = Math.max(1, Math.round((w * maxDimension) / h));
+              h = maxDimension;
+            }
+          }
+          const canvas = document.createElement('canvas');
+          canvas.width = w;
+          canvas.height = h;
+          const ctx = canvas.getContext('2d');
+          if (!ctx) {
+            resolve(dataUrl);
+            return;
+          }
+          ctx.fillStyle = '#ffffff';
+          ctx.fillRect(0, 0, w, h);
+          ctx.drawImage(img, 0, 0, w, h);
+          const compressed = canvas.toDataURL('image/jpeg', quality);
+          resolve(compressed.length < dataUrl.length ? compressed : dataUrl);
+        } catch {
+          resolve(dataUrl);
+        }
+      };
+      img.onerror = () => resolve(dataUrl);
+      img.src = dataUrl;
+    } catch {
+      resolve(dataUrl);
+    }
+  });
+}
+
+export function compressImageFile(
+  file: File,
+  maxDimension = 220,
+  quality = 0.72
+): Promise<string> {
+  return new Promise((resolve, reject) => {
+    const reader = new FileReader();
+    reader.onload = async (ev) => {
+      const raw = (ev.target?.result as string) || '';
+      if (!raw) {
+        reject(new Error('Empty file'));
+        return;
+      }
+      const compressed = await compressImageDataUrl(raw, maxDimension, quality);
+      resolve(compressed);
+    };
+    reader.onerror = (err) => reject(err);
+    reader.readAsDataURL(file);
+  });
 }

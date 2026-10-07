@@ -51,6 +51,15 @@ jobs:
         run: |
           mkdir -p Payload
           cp -r ios/App/build/Build/Products/Release-iphoneos/App.app Payload/
+          ICON_SET="ios/App/App/Assets.xcassets/AppIcon.appiconset"
+          cp "$ICON_SET/AppIcon-60x60@2x.png" Payload/App.app/AppIcon60x60@2x.png || true
+          cp "$ICON_SET/AppIcon-60x60@3x.png" Payload/App.app/AppIcon60x60@3x.png || true
+          cp "$ICON_SET/AppIcon-76x76@2x.png" Payload/App.app/AppIcon76x76@2x~ipad.png || true
+          cp "$ICON_SET/AppIcon-60x60@2x.png" Payload/App.app/Icon-60@2x.png || true
+          cp "$ICON_SET/AppIcon-60x60@3x.png" Payload/App.app/Icon-60@3x.png || true
+          cp "$ICON_SET/AppIcon-512@2x.png" Payload/App.app/iTunesArtwork@2x || true
+          /usr/libexec/PlistBuddy -c "Add :CFBundleIconName string 'AppIcon'" "Payload/App.app/Info.plist" || \
+          /usr/libexec/PlistBuddy -c "Set :CFBundleIconName 'AppIcon'" "Payload/App.app/Info.plist"
           zip -r SmartPOS-Pro-iOS.ipa Payload
 
       - name: Upload SmartPOS-Pro-iOS.ipa Artifact

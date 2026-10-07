@@ -7,7 +7,7 @@ import express from 'express';
 import path from 'path';
 import os from 'os';
 import fs from 'fs';
-import { initDB, getData, saveData } from './server_db.js';
+import { initDB, getData, saveData, resetDB, getCloudConfigFromDB, saveCloudConfigToDB } from './server_db.js';
 
 let remoteBarcodeQueue: string[] = [];
 
@@ -59,6 +59,25 @@ async function startServer() {
     });
   });
 
+  // API: Cloud Sync Configuration stored in SQLite so PC browser sessions never lose Firebase settings
+  app.get('/api/cloud-config', async (req, res) => {
+    try {
+      const cfg = await getCloudConfigFromDB();
+      res.json({ ok: true, config: cfg });
+    } catch (err: any) {
+      res.status(500).json({ ok: false, error: err.message });
+    }
+  });
+
+  app.post('/api/cloud-config', async (req, res) => {
+    try {
+      await saveCloudConfigToDB(req.body);
+      res.json({ ok: true });
+    } catch (err: any) {
+      res.status(500).json({ ok: false, error: err.message });
+    }
+  });
+
   // API: Wireless Barcode Scanner Relay (Phone -> PC POS)
   app.post('/api/remote-barcode', (req, res) => {
     const code = req.body?.code ? String(req.body.code).trim() : '';
@@ -98,7 +117,7 @@ async function startServer() {
   // API: Hard reset database back to factory zero
   app.post('/api/reset', async (req, res) => {
     try {
-      await saveData(req.body);
+      await resetDB(req.body);
       res.json({ success: true });
     } catch (err: any) {
       console.error('Error resetting SQLite database:', err);

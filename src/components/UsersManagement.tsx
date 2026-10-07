@@ -67,10 +67,11 @@ export default function UsersManagement({
         home: 'الرئيسية',
         pos: 'نقطة البيع (كاشير)',
         invoices: 'إدارة فواتير المبيعات',
-        'commercial-documents': 'إدارة الوثائق التجارية (Devis / BC / BL)',
+        'commercial-documents': 'إدارة الوثائق التجارية (Facture / Devis / BC / BL)',
         'purchase-entry': 'فاتورة المشتريات (توريد)',
         inventory: 'إدارة المخزن والمنتجات',
         customers: 'سجل الزبناء والديون',
+        expenses: 'المصاريف والأعباء',
         reports: 'التقارير المالية',
         settings: 'الإعدادات العامة',
         suppliers: 'سجل المورّدين والديون',
@@ -79,6 +80,7 @@ export default function UsersManagement({
         repairs: 'قسم الصيانة والإصلاحات',
         logs: 'سجل العمليات والأنشطة',
         backup: 'إدارة البيانات والنسخ الاحتياطي',
+        'mobile-sync': 'تطبيق الهاتف والمزامنة',
       }
     },
     fr: {
@@ -119,10 +121,11 @@ export default function UsersManagement({
         home: 'Accueil',
         pos: 'Point de Vente (POS)',
         invoices: 'Factures de Ventes',
-        'commercial-documents': 'Documents Commerciaux (Devis / BC / BL)',
+        'commercial-documents': 'Documents Commerciaux (Facture / Devis / BC / BL)',
         'purchase-entry': 'Facture d\'Achat',
         inventory: 'Gestion du Stock',
         customers: 'Clients & Dettes',
+        expenses: 'Dépenses & Charges',
         reports: 'Rapports Financiers',
         settings: 'Configuration',
         suppliers: 'Fournisseurs',
@@ -131,6 +134,7 @@ export default function UsersManagement({
         repairs: 'Réparations & SAV',
         logs: "Journal d'activités",
         backup: 'Sauvegarde & Données',
+        'mobile-sync': 'Synchronisation Mobile',
       }
     },
     en: {
@@ -171,10 +175,11 @@ export default function UsersManagement({
         home: 'Home',
         pos: 'Point of Sale (POS)',
         invoices: 'Sales Invoices Management',
-        'commercial-documents': 'Commercial Documents (Devis / BC / BL)',
+        'commercial-documents': 'Commercial Documents (Facture / Devis / BC / BL)',
         'purchase-entry': 'Purchase Invoice',
         inventory: 'Inventory & Stock',
         customers: 'Customers & Debts',
+        expenses: 'Expenses & Charges',
         reports: 'Financial Reports',
         settings: 'Global Settings',
         suppliers: 'Suppliers Record',
@@ -183,12 +188,33 @@ export default function UsersManagement({
         repairs: 'Repairs & Maintenance',
         logs: 'System Logs',
         backup: 'Backup & Data Management',
+        'mobile-sync': 'Mobile Sync',
       }
     }
   };
 
   const t = translations[lang] || translations.en;
   const isRTL = lang === 'ar';
+
+  const allSelectableTabs: ActiveTab[] = [
+    'home',
+    'pos',
+    'invoices',
+    'commercial-documents',
+    'purchase-entry',
+    'inventory',
+    'customers',
+    'expenses',
+    'reports',
+    'settings',
+    'suppliers',
+    'purchases',
+    'users',
+    'repairs',
+    'logs',
+    'backup',
+    'mobile-sync',
+  ];
 
   const resetForm = () => {
     setUsername('');
@@ -221,11 +247,10 @@ export default function UsersManagement({
   };
 
   const handleToggleAll = () => {
-    const allAvailable: ActiveTab[] = ['home', 'pos', 'invoices', 'commercial-documents', 'purchase-entry', 'inventory', 'customers', 'reports', 'settings', 'suppliers', 'purchases', 'users', 'repairs', 'logs', 'backup'];
-    if (allowedTabs.length === allAvailable.length) {
+    if (allowedTabs.length >= allSelectableTabs.length) {
       setAllowedTabs([]);
     } else {
-      setAllowedTabs(allAvailable);
+      setAllowedTabs(allSelectableTabs);
     }
   };
 
@@ -281,7 +306,7 @@ export default function UsersManagement({
     <div className="space-y-6 animate-fade-in" id="users-tab-view">
       
       {/* Header section */}
-      <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4 bg-white p-6 rounded-3xl border border-slate-200">
+      <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4 bg-white p-5 sm:p-6 rounded-3xl border border-slate-200">
         <div className="space-y-1 text-start">
           <h2 className="text-lg font-black text-slate-800 flex items-center gap-2">
             <Users className="w-5 h-5 text-indigo-600" />
@@ -294,7 +319,7 @@ export default function UsersManagement({
         {!isAddingNew && (
           <button
             onClick={() => setIsAddingNew(true)}
-            className="px-4 py-2 bg-indigo-600 hover:bg-indigo-700 text-white rounded-xl text-xs font-black flex items-center gap-2 transition duration-200 self-stretch sm:self-auto justify-center"
+            className="px-4 py-2.5 bg-indigo-600 hover:bg-indigo-700 text-white rounded-xl text-xs font-black flex items-center gap-2 transition duration-200 self-stretch sm:self-auto justify-center cursor-pointer"
           >
             <Plus className="w-4.5 h-4.5" />
             {t.addUserBtn}
@@ -304,7 +329,7 @@ export default function UsersManagement({
 
       {isAddingNew ? (
         /* Edit or Add Employee Form */
-        <form onSubmit={handleSubmit} className="bg-white rounded-3xl border border-slate-200 p-6 space-y-6 text-start">
+        <form onSubmit={handleSubmit} className="bg-white rounded-3xl border border-slate-200 p-5 sm:p-6 space-y-6 text-start">
           <div className="border-b border-slate-100 pb-3">
             <h3 className="text-sm font-black text-indigo-700 flex items-center gap-2">
               <Shield className="w-4.5 h-4.5" />
@@ -407,7 +432,7 @@ export default function UsersManagement({
           {/* Role Choice */}
           <div className="space-y-2">
             <label className="text-[11px] font-black text-slate-500 uppercase tracking-wider block">{t.form.role}</label>
-            <div className="flex gap-4">
+            <div className="flex flex-wrap gap-3 sm:gap-4">
               <label className="flex items-center gap-2 bg-slate-50 px-4 py-2.5 rounded-xl border border-slate-200 cursor-pointer text-xs font-bold hover:bg-slate-100 transition">
                 <input
                   type="radio"
@@ -433,7 +458,7 @@ export default function UsersManagement({
           </div>
 
           {/* Allowed Modules Checklist */}
-          <div className="bg-slate-50 p-5 rounded-2xl border border-slate-200/80 space-y-3">
+          <div className="bg-slate-50 p-4 sm:p-5 rounded-2xl border border-slate-200/80 space-y-3">
             <div className="flex justify-between items-center border-b border-slate-200/60 pb-2">
               <span className="text-[11px] font-black text-slate-500 uppercase tracking-wider">
                 🛡️ {t.form.permissions}
@@ -441,27 +466,27 @@ export default function UsersManagement({
               <button
                 type="button"
                 onClick={handleToggleAll}
-                className="px-2.5 py-1 text-[10px] font-extrabold text-indigo-700 bg-indigo-50 rounded-lg hover:bg-indigo-100 transition"
+                className="px-2.5 py-1 text-[10px] font-extrabold text-indigo-700 bg-indigo-50 rounded-lg hover:bg-indigo-100 transition cursor-pointer"
               >
-                {allowedTabs.length >= 15 ? (lang === 'ar' ? 'إلغاء تحديد الكل' : 'Deselect All') : (lang === 'ar' ? 'تحديد جميع الصفحات' : 'Select All')}
+                {allowedTabs.length >= allSelectableTabs.length ? (lang === 'ar' ? 'إلغاء تحديد الكل' : 'Deselect All') : (lang === 'ar' ? 'تحديد جميع الصفحات' : 'Select All')}
               </button>
             </div>
 
             <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 gap-3">
-              {(['home', 'pos', 'invoices', 'commercial-documents', 'purchase-entry', 'inventory', 'customers', 'reports', 'settings', 'suppliers', 'purchases', 'users', 'repairs', 'logs', 'backup'] as const).map((tab) => {
+              {allSelectableTabs.map((tab) => {
                 const isSelected = allowedTabs.includes(tab);
                 return (
                   <button
                     key={tab}
                     type="button"
                     onClick={() => handleToggleTab(tab)}
-                    className={`p-3 rounded-xl border flex items-center justify-between text-start text-xs font-bold transition ${
+                    className={`p-3 rounded-xl border flex items-center justify-between text-start text-xs font-bold transition cursor-pointer ${
                       isSelected
                         ? 'bg-indigo-50/70 border-indigo-200 text-indigo-850 shadow-sm'
                         : 'bg-white border-slate-200 text-slate-800 hover:bg-slate-100/55'
                     }`}
                   >
-                    <span>{t.tabNames[tab]}</span>
+                    <span>{(t.tabNames as any)[tab] || tab}</span>
                     <span className={`w-4.5 h-4.5 rounded-md flex items-center justify-center shrink-0 border ${
                       isSelected ? 'bg-indigo-600 border-indigo-600 text-white' : 'bg-transparent border-slate-300'
                     }`}>
@@ -478,13 +503,13 @@ export default function UsersManagement({
             <button
               type="button"
               onClick={resetForm}
-              className="px-4 py-2 bg-slate-150 hover:bg-slate-200 text-slate-700 rounded-xl text-xs font-bold transition"
+              className="px-4 py-2 bg-slate-150 hover:bg-slate-200 text-slate-700 rounded-xl text-xs font-bold transition cursor-pointer"
             >
               {t.form.cancel}
             </button>
             <button
               type="submit"
-              className="px-5 py-2 bg-indigo-600 hover:bg-indigo-700 text-white rounded-xl text-xs font-black transition shadow-md shadow-indigo-600/10"
+              className="px-5 py-2 bg-indigo-600 hover:bg-indigo-700 text-white rounded-xl text-xs font-black transition shadow-md shadow-indigo-600/10 cursor-pointer"
             >
               {t.form.save}
             </button>
@@ -493,12 +518,105 @@ export default function UsersManagement({
       ) : (
         /* Employees workforce list */
         <div className="bg-white border border-slate-200 rounded-3xl overflow-hidden">
-          <div className="p-5 border-b border-slate-150/70 bg-slate-50/50 flex items-center gap-2">
+          <div className="p-4 sm:p-5 border-b border-slate-150/70 bg-slate-50/50 flex items-center gap-2">
             <Shield className="w-4.5 h-4.5 text-indigo-600" />
             <h3 className="text-xs font-black text-slate-500 uppercase tracking-wider">{t.listTitle}</h3>
           </div>
 
-          <div className="overflow-x-auto">
+          {/* Mobile Card Layout for iPhone / Small Screens */}
+          <div className="md:hidden divide-y divide-slate-100" dir={isRTL ? 'rtl' : 'ltr'}>
+            {employees.map((emp) => {
+              const isOwn = emp.id === currentUser.id;
+              return (
+                <div key={emp.id} className="p-4 space-y-3 hover:bg-slate-50/50 transition text-start">
+                  <div className="flex items-start justify-between gap-3">
+                    <div className="flex items-center gap-2.5 min-w-0">
+                      {emp.photoUrl ? (
+                        <img src={emp.photoUrl} alt={emp.name} className="w-10 h-10 rounded-full object-cover border border-slate-200 shrink-0" />
+                      ) : (
+                        <div className={`w-10 h-10 rounded-full font-black text-xs flex items-center justify-center border uppercase tracking-wider shrink-0 ${
+                          emp.role === 'admin' ? 'bg-indigo-50 border-indigo-200 text-indigo-700' : 'bg-slate-100 border-slate-200 text-slate-600'
+                        }`}>
+                          {emp.name.slice(0, 2)}
+                        </div>
+                      )}
+                      <div className="min-w-0">
+                        <div className="font-black text-slate-900 text-sm flex items-center gap-1.5 flex-wrap">
+                          <span className="truncate">{emp.name}</span>
+                          {isOwn && (
+                            <span className="bg-indigo-600 text-white font-black text-[10px] px-2 py-0.5 rounded-full">
+                              {lang === 'ar' ? 'أنت' : 'me'}
+                            </span>
+                          )}
+                        </div>
+                        <div className="flex items-center gap-2 mt-0.5 text-xs">
+                          <span className="font-mono font-bold text-indigo-600">@{emp.username}</span>
+                          <span className="text-[10px] text-slate-400 font-mono">• ID: {emp.id}</span>
+                        </div>
+                      </div>
+                    </div>
+
+                    <div className="flex items-center gap-1.5 shrink-0">
+                      <button
+                        type="button"
+                        onClick={() => handleEditInit(emp)}
+                        className="p-2 bg-indigo-50 hover:bg-indigo-100 text-indigo-700 rounded-xl transition cursor-pointer"
+                        title={lang === 'ar' ? 'تعديل' : 'Edit'}
+                      >
+                        <Edit2 className="w-4 h-4" />
+                      </button>
+                      <button
+                        type="button"
+                        onClick={() => handleDelete(emp.id)}
+                        disabled={isOwn || emp.username === 'admin'}
+                        className="p-2 bg-rose-50 hover:bg-rose-100 text-rose-600 rounded-xl transition disabled:opacity-30 cursor-pointer"
+                        title={lang === 'ar' ? 'حذف' : 'Delete'}
+                      >
+                        <Trash2 className="w-4 h-4" />
+                      </button>
+                    </div>
+                  </div>
+
+                  {/* Role Badge */}
+                  <div>
+                    <span className={`inline-flex items-center gap-1 px-2.5 py-1 text-[11px] font-black rounded-lg ${
+                      emp.role === 'admin'
+                        ? 'bg-indigo-50 text-indigo-700 border border-indigo-100'
+                        : 'bg-emerald-50 text-emerald-700 border border-emerald-100'
+                    }`}>
+                      <Key className="w-3.5 h-3.5 stroke-[2.5]" />
+                      {emp.role === 'admin' ? t.roles.admin : t.roles.user}
+                    </span>
+                  </div>
+
+                  {/* Allowed Pages */}
+                  <div className="space-y-1.5 pt-1">
+                    <span className="block text-[10px] font-black text-slate-400 uppercase">
+                      {t.tableHeaders.pages} ({(emp.allowedTabs || []).length}):
+                    </span>
+                    <div className="flex flex-wrap gap-1.5">
+                      {(emp.allowedTabs || []).map((tab) => (
+                        <span
+                          key={tab}
+                          className="bg-slate-100 text-[10px] font-bold text-slate-700 px-2 py-1 rounded-lg border border-slate-200/70"
+                        >
+                          {(t.tabNames as any)[tab] || tab}
+                        </span>
+                      ))}
+                      {(!emp.allowedTabs || emp.allowedTabs.length === 0) && (
+                        <span className="text-red-500 font-extrabold text-[11px]">
+                          ⚠️ {lang === 'ar' ? 'لا توجد صفحات مرخصة!' : 'No modules granted!'}
+                        </span>
+                      )}
+                    </div>
+                  </div>
+                </div>
+              );
+            })}
+          </div>
+
+          {/* Desktop Table View */}
+          <div className="hidden md:block overflow-x-auto">
             <table className="w-full text-start text-xs" dir={isRTL ? 'rtl' : 'ltr'}>
               <thead>
                 <tr className="bg-slate-50 text-slate-450 uppercase tracking-wider font-extrabold border-b border-slate-150 text-[10px]">
@@ -530,7 +648,7 @@ export default function UsersManagement({
                             <span className="font-bold text-slate-800 text-[12px] block flex items-center gap-1.5">
                               {emp.name}
                               {isOwn && (
-                                <span className="bg-indigo-650 text-white font-black text-[9px] px-1.5 py-0.5 rounded-full lowercase font-mono">
+                                <span className="bg-indigo-600 text-white font-black text-[9px] px-1.5 py-0.5 rounded-full lowercase font-mono">
                                   {lang === 'ar' ? 'أنت' : 'me'}
                                 </span>
                               )}
@@ -560,14 +678,14 @@ export default function UsersManagement({
                       </td>
 
                       {/* Clearances count and list preview */}
-                      <td className="p-4 text-start font-mono max-w-[280px]">
+                      <td className="p-4 text-start font-mono max-w-[340px]">
                         <div className="flex flex-wrap gap-1 leading-normal">
                           {(emp.allowedTabs || []).map((tab) => (
                             <span
                               key={tab}
-                              className="bg-slate-100/80 text-[9px] font-bold text-slate-650 px-1.5 py-0.5 rounded border border-slate-200/40"
+                              className="bg-slate-100/80 text-[10px] font-bold text-slate-700 px-2 py-0.5 rounded-md border border-slate-200/60"
                             >
-                              {t.tabNames[tab] || tab}
+                              {(t.tabNames as any)[tab] || tab}
                             </span>
                           ))}
                           {(!emp.allowedTabs || emp.allowedTabs.length === 0) && (
@@ -583,14 +701,14 @@ export default function UsersManagement({
                         <div className="flex justify-end gap-1.5">
                           <button
                             onClick={() => handleEditInit(emp)}
-                            className="p-1.5 bg-slate-100 hover:bg-indigo-50 hover:text-indigo-700 text-slate-500 rounded-lg transition"
+                            className="p-1.5 bg-slate-100 hover:bg-indigo-50 hover:text-indigo-700 text-slate-500 rounded-lg transition cursor-pointer"
                           >
                             <Edit2 className="w-4 h-4" />
                           </button>
                           <button
                             onClick={() => handleDelete(emp.id)}
                             disabled={isOwn || emp.username === 'admin'}
-                            className="p-1.5 bg-slate-100 hover:bg-rose-50 hover:text-rose-600 text-slate-500 rounded-lg transition disabled:opacity-30 disabled:hover:bg-slate-100 disabled:hover:text-slate-500"
+                            className="p-1.5 bg-slate-100 hover:bg-rose-50 hover:text-rose-600 text-slate-500 rounded-lg transition disabled:opacity-30 disabled:hover:bg-slate-100 disabled:hover:text-slate-500 cursor-pointer"
                           >
                             <Trash2 className="w-4 h-4" />
                           </button>

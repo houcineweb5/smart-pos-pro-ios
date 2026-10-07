@@ -76,7 +76,7 @@ export default function LoginScreen({ employees, onLogin, lang, onSetLang }: Log
   };
 
   return (
-    <div className="min-h-screen flex items-center justify-center bg-slate-100 p-4 font-sans" dir={isRTL ? 'rtl' : 'ltr'}>
+    <div className="min-h-screen flex items-center justify-center bg-slate-100 p-4 font-sans safe-modal-overlay" dir={isRTL ? 'rtl' : 'ltr'}>
       <div className="w-full max-w-md bg-white border border-slate-200 rounded-3xl shadow-xl overflow-hidden hover:shadow-2xl transition-all duration-300">
         
         {/* Language Selection Header */}
@@ -88,11 +88,12 @@ export default function LoginScreen({ employees, onLogin, lang, onSetLang }: Log
           {(['ar', 'fr', 'en'] as const).map((l) => (
             <button
               key={l}
+              type="button"
               onClick={() => onSetLang(l)}
-              className={`px-2.5 py-1 text-[11px] font-black rounded-lg uppercase tracking-wider transition ${
+              className={`px-2.5 py-1 text-[11px] font-black rounded-lg uppercase tracking-wider transition cursor-pointer ${
                 lang === l
-                  ? 'bg-indigo-650 text-white shadow-sm'
-                  : 'text-slate-550 hover:bg-slate-200'
+                  ? 'bg-indigo-600 text-white shadow-sm'
+                  : 'text-slate-600 hover:bg-slate-200'
               }`}
             >
               {l === 'ar' ? 'العربية' : l === 'fr' ? 'FR' : 'EN'}
@@ -101,10 +102,12 @@ export default function LoginScreen({ employees, onLogin, lang, onSetLang }: Log
         </div>
 
         {/* Brand Header */}
-        <div className="p-8 text-center bg-gradient-to-b from-indigo-55/35 to-transparent">
-          <div className="w-16 h-16 bg-indigo-600 rounded-2xl flex items-center justify-center mx-auto mb-4 shadow-lg shadow-indigo-600/10">
-            <Lock className="w-8 h-8 text-white" />
-          </div>
+        <div className="p-8 text-center bg-gradient-to-b from-indigo-50/40 to-transparent">
+          <img
+            src="/sp-icon.png"
+            alt="Smart POS Pro"
+            className="w-20 h-20 rounded-2xl object-contain bg-white p-1 mx-auto mb-4 shadow-xl border border-indigo-100"
+          />
           <h2 className="text-xl font-black text-slate-800 tracking-tight leading-snug">
             {t.title}
           </h2>
@@ -114,7 +117,7 @@ export default function LoginScreen({ employees, onLogin, lang, onSetLang }: Log
         </div>
 
         {/* Input Form */}
-        <form onSubmit={handleSubmit} className="px-8 pb-6 space-y-4">
+        <form onSubmit={handleSubmit} className="px-8 pb-8 space-y-4">
           {error && (
             <div className="p-3.5 bg-rose-50 border border-rose-100 rounded-xl flex items-center gap-2.5 text-xs text-rose-700 font-bold animate-fade-in">
               <ShieldAlert className="w-4 h-4 shrink-0 text-rose-600" />
@@ -136,7 +139,7 @@ export default function LoginScreen({ employees, onLogin, lang, onSetLang }: Log
                 placeholder={t.usernamePlace}
                 value={username}
                 onChange={(e) => setUsername(e.target.value)}
-                className="w-full px-3.5 py-2.5 bg-slate-5/40 border border-slate-200 rounded-xl text-xs font-bold text-slate-800 focus:outline-none focus:ring-2 focus:ring-indigo-500 focus:bg-white transition"
+                className="w-full px-3.5 py-2.5 bg-slate-50 border border-slate-200 rounded-xl text-xs font-bold text-slate-800 focus:outline-none focus:ring-2 focus:ring-indigo-500 focus:bg-white transition"
               />
             </div>
           </div>
@@ -155,46 +158,18 @@ export default function LoginScreen({ employees, onLogin, lang, onSetLang }: Log
                 placeholder={t.passwordPlace}
                 value={password}
                 onChange={(e) => setPassword(e.target.value)}
-                className="w-full px-3.5 py-2.5 bg-slate-5/40 border border-slate-200 rounded-xl text-xs font-bold text-slate-800 focus:outline-none focus:ring-2 focus:ring-indigo-500 focus:bg-white transition"
+                className="w-full px-3.5 py-2.5 bg-slate-50 border border-slate-200 rounded-xl text-xs font-bold text-slate-800 focus:outline-none focus:ring-2 focus:ring-indigo-500 focus:bg-white transition"
               />
             </div>
           </div>
 
           <button
             type="submit"
-            className="w-full py-3 bg-indigo-600 hover:bg-indigo-700 text-white text-xs font-black rounded-xl shadow-lg shadow-indigo-600/10 transition duration-300"
+            className="w-full py-3 bg-indigo-600 hover:bg-indigo-700 text-white text-xs font-black rounded-xl shadow-lg shadow-indigo-600/10 transition duration-300 cursor-pointer"
           >
             {t.loginBtn}
           </button>
         </form>
-
-        {/* Demo Credentials Box */}
-        <div className="p-6 bg-slate-50 border-t border-slate-100/85">
-          <p className="text-[10px] font-extrabold text-slate-500 uppercase tracking-wider mb-2.5 text-center">
-            🔑 {t.demoNotice}
-          </p>
-          <div className="grid grid-cols-1 sm:grid-cols-2 gap-2 text-xs">
-            <div className="bg-white p-2.5 rounded-xl border border-slate-200/90 text-start flex flex-col gap-1">
-              <span className="font-extrabold text-indigo-700 text-[10px] block">
-                👑 {t.adminRole}
-              </span>
-              <div className="font-mono text-[10px] text-slate-550">
-                <div>User: <span className="font-bold text-slate-800 bg-slate-100 px-1 rounded">admin</span></div>
-                <div>Pass: <span className="font-bold text-slate-800 bg-slate-100 px-1 rounded">admin</span></div>
-              </div>
-            </div>
-
-            <div className="bg-white p-2.5 rounded-xl border border-slate-200/90 text-start flex flex-col gap-1">
-              <span className="font-extrabold text-emerald-700 text-[10px] block">
-                💼 {t.cashierRole}
-              </span>
-              <div className="font-mono text-[10px] text-slate-550">
-                <div>User: <span className="font-bold text-slate-800 bg-slate-100 px-1 rounded">user1</span></div>
-                <div>Pass: <span className="font-bold text-slate-800 bg-slate-100 px-1 rounded">user1</span></div>
-              </div>
-            </div>
-          </div>
-        </div>
 
       </div>
     </div>

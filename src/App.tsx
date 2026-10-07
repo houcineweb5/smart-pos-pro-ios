@@ -25,7 +25,8 @@ import PurchaseEntry from './components/PurchaseEntry';
 import CommercialDocuments from './components/CommercialDocuments';
 import BackupManagement from './components/BackupManagement';
 import MobileAndCloudSync from './components/MobileAndCloudSync';
-import { getCloudSyncConfig, saveCloudSyncConfig, pushDataToCloud, pullDataFromCloud, mergeStoreDatasets, decodePairingCode } from './utils/cloudSync';
+import { getCloudSyncConfig, saveCloudSyncConfig, loadCloudSyncConfigFromServer, pushDataToCloud, pullDataFromCloud, mergeStoreDatasets, decodePairingCode, getDeletedIds, addDeletedIds, clearDeletedIds, compressImageDataUrl } from './utils/cloudSync';
+import { exportDatabaseBackupFile } from './utils/printService';
 import { Pin, ChevronLeft, ChevronRight, Home as SmartHome, LayoutDashboard, ShoppingCart, Receipt, Package, Users, Truck, ShoppingBag, Settings as SettingsIcon, Globe, PhoneCall, Shield, LogOut, ClipboardList, PenTool, ReceiptText, Moon, Sun, FileText, ScrollText, CheckSquare, FileSpreadsheet, Database, Smartphone, Menu, X, RefreshCw, Cloud } from 'lucide-react';
 
 export default function App() {
@@ -42,6 +43,7 @@ export default function App() {
     repairs: RepairOrder[];
     expenses?: Expense[];
     commercialDocuments?: CommercialDocument[];
+    deletedIds?: string[];
   } | null>(null);
 
   const [lang, setLang] = useState<Language>('ar'); // default is Arabic, matching Arabic query primary intent
@@ -52,9 +54,19 @@ export default function App() {
   const [deferredInstallPrompt, setDeferredInstallPrompt] = useState<any>(null);
   const [isCloudSyncing, setIsCloudSyncing] = useState(false);
   const [syncNotice, setSyncNotice] = useState<string | null>(null);
+  const [commercialDocCreateTrigger, setCommercialDocCreateTrigger] = useState(0);
   const sidebarHoverTimeout = React.useRef<any>(null);
+  const cloudPushTimeoutRef = React.useRef<any>(null);
+  const isSyncCycleInFlightRef = React.useRef<boolean>(false);
 
-  const selectTab = (tab: ActiveTab) => {
+  const selectTab = (tab: ActiveTab, openCreateForm = false) => {
+    if (tab === 'commercial-documents') {
+      if (openCreateForm) {
+        setCommercialDocCreateTrigger((prev) => prev + 1);
+      } else {
+        setCommercialDocCreateTrigger(0);
+      }
+    }
     setActiveTab(tab);
     setIsMobileMenuOpen(false);
   };
@@ -155,69 +167,250 @@ export default function App() {
     }
   }, []);
 
+  // Ensure any official invoice (facture) in commercialDocuments is synced with invoices and stock
+  // while strictly respecting deletedIds so deleted invoices/documents never return.
+  const reconcileFacturesDataset = (dataset: any) => {
+    if (!dataset) return dataset;
+    const mergedDeleted = addDeletedIds([
+      ...(Array.isArray(dataset.deletedIds) ? dataset.deletedIds : []),
+      ...getDeletedIds(),
+    ]);
+    const deletedSet = new Set<string>(mergedDeleted);
+
+    const rawDocs: CommercialDocument[] = Array.isArray(dataset.commercialDocuments) ? dataset.commercialDocuments : [];
+    const docs = rawDocs.filter(
+      (d) => d && !deletedSet.has(d.id) && !deletedSet.has('inv_doc_' + d.id)
+    );
+    const rawInvs: Invoice[] = Array.isArray(dataset.invoices) ? dataset.invoices : [];
+    const invs = rawInvs.filter((inv) => inv && !deletedSet.has(inv.id));
+    let prods: Product[] = (Array.isArray(dataset.products) ? dataset.products : []).filter(
+      (p: Product) => p && !deletedSet.has(p.id)
+    );
+    let changed = docs.length !== rawDocs.length || invs.length !== rawInvs.length;
+
+    const findProd = (it: any) => {
+      if (!it.productId) return undefined;
+      return prods.find((p) => p.id === it.productId);
+    };
+
+    const updatedDocs = docs.map((doc) => {
+      if (doc.docType !== 'facture' || doc.status === 'cancelled') return doc;
+      if (deletedSet.has(doc.id) || deletedSet.has('inv_doc_' + doc.id)) return doc;
+      const alreadySynced = invs.some(
+        (inv) =>
+          inv.id === 'inv_doc_' + doc.id ||
+          inv.invoiceNumber === doc.docNumber ||
+          (inv.notes && inv.notes.includes(doc.docNumber))
+      );
+      if (alreadySynced) return doc;
+
+      changed = true;
+      const enrichedItems = (doc.items || []).map((it) => {
+        const matched = findProd(it);
+        if (matched) {
+          prods = prods.map((p) =>
+            p.id === matched.id ? { ...p, stock: p.stock - Number(it.quantity || 0) } : p
+          );
+        }
+        return {
+          ...it,
+          productId: matched ? matched.id : '',
+          purchasePrice: matched ? Number(it.purchasePrice || matched.purchasePrice || 0) : 0,
+        };
+      });
+
+      const paidAmount = doc.amountPaid !== undefined ? Number(doc.amountPaid) : doc.total;
+      const unpaid = Math.max(0, doc.total - paidAmount);
+      const status: PaymentStatus =
+        paidAmount <= 0 && doc.total > 0 ? 'unpaid' : unpaid > 0.01 ? 'partial' : 'paid';
+
+      invs.unshift({
+        id: 'inv_doc_' + doc.id,
+        invoiceNumber: doc.docNumber,
+        date: doc.date,
+        customerId: doc.customerId || 'walk-in',
+        customerName: doc.customerName || 'زبون عام',
+        items: enrichedItems,
+        subtotal: doc.subtotal,
+        discount: doc.discount,
+        tax: doc.tax,
+        total: doc.total,
+        amountPaid: paidAmount,
+        previousBalance: Number(doc.previousBalance || 0),
+        paymentMethod: doc.paymentMethod || (unpaid > 0 ? 'debt' : 'cash'),
+        status,
+        notes: doc.notes || `فاتورة رسمية (${doc.docNumber})`,
+        sellerName: doc.sellerName,
+        isWholesale: doc.isWholesale ?? true,
+        pricingMode: doc.pricingMode || 'wholesale',
+      });
+
+      return {
+        ...doc,
+        items: enrichedItems,
+        status: (doc.status as string) === 'invoiced' ? 'validated' : doc.status,
+      };
+    });
+
+    if (!changed && Array.isArray(dataset.deletedIds) && dataset.deletedIds.length === mergedDeleted.length) {
+      return dataset;
+    }
+    return {
+      ...dataset,
+      products: prods,
+      invoices: invs,
+      commercialDocuments: updatedDocs,
+      deletedIds: mergedDeleted,
+    };
+  };
+
   // Load from SQLite database / local storage / Cloud on mount
   useEffect(() => {
-    const cloudCfg = getCloudSyncConfig();
-    const apiBase = cloudCfg.provider === 'server' && cloudCfg.serverUrl ? cloudCfg.serverUrl.replace(/\/+$/, '') : '';
+    (async () => {
+      let cloudCfg = getCloudSyncConfig();
+      if (!cloudCfg.firebaseUrl && !cloudCfg.supabaseUrl) {
+        const srvCfg = await loadCloudSyncConfigFromServer();
+        if (srvCfg) cloudCfg = srvCfg;
+      }
+      const apiBase = cloudCfg.provider === 'server' && cloudCfg.serverUrl ? cloudCfg.serverUrl.replace(/\/+$/, '') : '';
 
-    fetch(`${apiBase}/api/data`)
-      .then((res) => {
+      try {
+        const res = await fetch(`${apiBase}/api/data`, { cache: 'no-store' });
         if (!res.ok) throw new Error('Failed to fetch stats');
-        return res.json();
-      })
-      .then(async (loaded) => {
+        const loaded = await res.json();
         if (loaded?.config?.logoUrl?.includes('images.unsplash.com')) {
           loaded.config.logoUrl = '';
         }
-        let finalData = loaded;
+        let finalData = reconcileFacturesDataset(loaded);
         if (cloudCfg.enabled) {
           const cloudRes = await pullDataFromCloud(cloudCfg).catch(() => null);
           if (cloudRes?.ok && cloudRes.payload?.data) {
-            const { merged } = mergeStoreDatasets(loaded, cloudRes.payload.data, true);
-            finalData = merged;
+            const { merged, hasNewFromCloud, hasLocalChangesForCloud } = mergeStoreDatasets(finalData, cloudRes.payload.data, true);
+            finalData = reconcileFacturesDataset(merged);
+            if (hasNewFromCloud) {
+              fetch(`${apiBase}/api/save`, {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify(finalData),
+              }).catch(() => {});
+            }
+            if (hasLocalChangesForCloud) {
+              pushDataToCloud(finalData, cloudCfg, { skipPreMerge: true }).catch(() => {});
+            }
+          } else if (
+            cloudRes?.ok &&
+            !cloudRes.payload &&
+            ((finalData.products && finalData.products.length > 0) || (finalData.invoices && finalData.invoices.length > 0))
+          ) {
+            pushDataToCloud(finalData, cloudCfg, { skipPreMerge: true }).catch(() => {});
           }
         }
         saveStoredData(finalData);
         setData(finalData);
-      })
-      .catch(async (err) => {
+      } catch (err) {
         console.warn('Database load fallback to local storage / cloud:', err);
-        let loaded = getStoredData();
+        let loaded = reconcileFacturesDataset(getStoredData());
         if (loaded?.config?.logoUrl?.includes('images.unsplash.com')) {
           loaded.config.logoUrl = '';
         }
         if (cloudCfg.enabled) {
           const cloudRes = await pullDataFromCloud(cloudCfg).catch(() => null);
           if (cloudRes?.ok && cloudRes.payload?.data) {
-            const { merged } = mergeStoreDatasets(loaded, cloudRes.payload.data, true);
-            loaded = merged;
+            const { merged, hasLocalChangesForCloud } = mergeStoreDatasets(loaded, cloudRes.payload.data, true);
+            loaded = reconcileFacturesDataset(merged);
             saveStoredData(loaded);
+            if (hasLocalChangesForCloud) {
+              pushDataToCloud(loaded, cloudCfg, { skipPreMerge: true }).catch(() => {});
+            }
           }
         }
         setData(loaded);
-      });
+      }
+    })();
   }, []);
 
-  // Sync to local storage, SQLite, and Cloud whenever datasets change
-  const updateDataState = (updater: (prev: typeof data) => typeof data) => {
-    setData((old) => {
-      const next = updater(old);
-      if (next) {
-        saveStoredData(next);
-        const cloudCfg = getCloudSyncConfig();
-        const apiBase = cloudCfg.provider === 'server' && cloudCfg.serverUrl ? cloudCfg.serverUrl.replace(/\/+$/, '') : '';
-
-        fetch(`${apiBase}/api/save`, {
-          method: 'POST',
-          headers: {
-            'Content-Type': 'application/json',
-          },
-          body: JSON.stringify(next),
-        }).catch(() => {});
-
-        if (cloudCfg.enabled && cloudCfg.autoSync) {
-          pushDataToCloud(next, cloudCfg).catch(() => {});
+  // Automatically shrink any oversized Base64 product/logo images (>25KB) once after load to save Firebase bandwidth
+  const didCompressImagesRef = React.useRef(false);
+  useEffect(() => {
+    if (!data || didCompressImagesRef.current) return;
+    didCompressImagesRef.current = true;
+    (async () => {
+      let anyCompressed = false;
+      const nextProducts = await Promise.all(
+        (data.products || []).map(async (p) => {
+          if (p?.imageUrl && p.imageUrl.startsWith('data:image/') && p.imageUrl.length > 25000) {
+            const smaller = await compressImageDataUrl(p.imageUrl, 220, 0.72);
+            if (smaller.length < p.imageUrl.length) {
+              anyCompressed = true;
+              return { ...p, imageUrl: smaller };
+            }
+          }
+          return p;
+        })
+      );
+      let nextLogo = data.config?.logoUrl || '';
+      if (nextLogo && nextLogo.startsWith('data:image/') && nextLogo.length > 35000) {
+        const smallerLogo = await compressImageDataUrl(nextLogo, 260, 0.78);
+        if (smallerLogo.length < nextLogo.length) {
+          nextLogo = smallerLogo;
+          anyCompressed = true;
         }
+      }
+      if (anyCompressed) {
+        updateDataState((prev) => {
+          if (!prev) return prev;
+          return {
+            ...prev,
+            products: nextProducts,
+            config: { ...prev.config, logoUrl: nextLogo },
+          };
+        });
+      }
+    })();
+  }, [data]);
+
+  // Sync to local storage, SQLite, and Cloud whenever datasets change
+  const updateDataState = (
+    updater: (prev: typeof data) => typeof data,
+    skipCloudPush = false,
+    skipPreMerge = false
+  ) => {
+    setData((old) => {
+      const rawNext = updater(old);
+      if (!rawNext) return rawNext;
+      const next = {
+        ...rawNext,
+        deletedIds: addDeletedIds([...(rawNext.deletedIds || []), ...getDeletedIds()]),
+      };
+      saveStoredData(next);
+      const cloudCfg = getCloudSyncConfig();
+      const apiBase = cloudCfg.provider === 'server' && cloudCfg.serverUrl ? cloudCfg.serverUrl.replace(/\/+$/, '') : '';
+
+      fetch(`${apiBase}/api/save`, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify(next),
+      }).catch(() => {});
+
+      if (!skipCloudPush && cloudCfg.enabled && cloudCfg.autoSync) {
+        if (cloudPushTimeoutRef.current) {
+          clearTimeout(cloudPushTimeoutRef.current);
+        }
+        cloudPushTimeoutRef.current = setTimeout(() => {
+          pushDataToCloud(next, cloudCfg, { skipPreMerge }).then((res) => {
+            if (res.ok && res.mergedData) {
+              const reconciled = reconcileFacturesDataset(res.mergedData);
+              saveStoredData(reconciled);
+              fetch(`${apiBase}/api/save`, {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify(reconciled),
+              }).catch(() => {});
+            }
+          }).catch(() => {});
+        }, 1200);
       }
       return next;
     });
@@ -232,50 +425,73 @@ export default function App() {
       }
       return;
     }
-    setIsCloudSyncing(true);
+    if (isSyncCycleInFlightRef.current && !showFeedback) {
+      return;
+    }
+    isSyncCycleInFlightRef.current = true;
+    if (showFeedback) setIsCloudSyncing(true);
     try {
-      const res = await pullDataFromCloud(cloudCfg);
+      const res = await pullDataFromCloud(cloudCfg, { onlyIfChanged: !showFeedback });
+      if (res.unchanged) {
+        return;
+      }
       if (res.ok && res.payload && res.payload.data) {
         setData((prev) => {
           if (!prev) return prev;
-          const { merged, hasNewFromCloud } = mergeStoreDatasets(prev, res.payload.data, true);
-          if (hasNewFromCloud || showFeedback) {
-            saveStoredData(merged);
+          const { merged, hasNewFromCloud, hasLocalChangesForCloud } = mergeStoreDatasets(prev, res.payload.data, true);
+          const reconciled = reconcileFacturesDataset(merged);
+          if (hasNewFromCloud || hasLocalChangesForCloud || showFeedback) {
+            saveStoredData(reconciled);
             fetch('/api/save', {
               method: 'POST',
               headers: { 'Content-Type': 'application/json' },
-              body: JSON.stringify(merged),
+              body: JSON.stringify(reconciled),
             }).catch(() => {});
-            pushDataToCloud(merged, cloudCfg).catch(() => {});
+            if (hasLocalChangesForCloud || showFeedback) {
+              pushDataToCloud(reconciled, cloudCfg, { skipPreMerge: true }).catch(() => {});
+            }
             if (showFeedback) {
               setSyncNotice('✓ تمت مزامنة البيانات مع السحابة والهواتف بنجاح!');
               setTimeout(() => setSyncNotice(null), 3500);
             }
-            return merged;
+            return reconciled;
           }
           return prev;
         });
-      } else if (showFeedback && data) {
-        await pushDataToCloud(data, cloudCfg);
-        setSyncNotice('✓ تم رفع البيانات إلى السحابة بنجاح!');
-        setTimeout(() => setSyncNotice(null), 3500);
+      } else if (res.ok && !res.unchanged && (!res.payload || !res.payload.data)) {
+        // Cloud store node is empty — push local data if available
+        setData((prev) => {
+          if (prev && (showFeedback || (prev.products && prev.products.length > 0) || (prev.invoices && prev.invoices.length > 0))) {
+            pushDataToCloud(prev, cloudCfg, { skipPreMerge: true }).catch(() => {});
+            if (showFeedback) {
+              setSyncNotice('✓ تم رفع البيانات إلى السحابة بنجاح!');
+              setTimeout(() => setSyncNotice(null), 3500);
+            }
+          }
+          return prev;
+        });
+      } else if (!res.ok && showFeedback) {
+        setSyncNotice(res.error || '⚠️ تعذر الاتصال بالسحابة، تحقق من إعدادات المزامنة');
+        setTimeout(() => setSyncNotice(null), 5000);
       }
     } finally {
-      setIsCloudSyncing(false);
+      isSyncCycleInFlightRef.current = false;
+      if (showFeedback) setIsCloudSyncing(false);
     }
   };
 
   // Periodic background Cloud Pull & Merge + Instant wake/online sync for Android & iPhone
   useEffect(() => {
     const interval = setInterval(() => {
+      if (typeof document !== 'undefined' && document.visibilityState === 'hidden') return;
       const cloudCfg = getCloudSyncConfig();
       if (cloudCfg.enabled && cloudCfg.autoSync) {
         triggerSyncCycle(false);
       }
-    }, 8000);
+    }, 22000);
 
     const handleWakeOrOnline = () => {
-      if (document.visibilityState === 'visible' || navigator.onLine) {
+      if (document.visibilityState === 'visible' && navigator.onLine) {
         const cloudCfg = getCloudSyncConfig();
         if (cloudCfg.enabled && cloudCfg.autoSync) {
           triggerSyncCycle(false);
@@ -293,7 +509,7 @@ export default function App() {
     };
   }, []);
 
-  const addLogMessage = (action: string, details: string) => {
+  const addLogMessage = (action: string, details: string, skipCloudPush = true) => {
     updateDataState((prev) => {
       if (!prev) return prev;
       const newLog: ActivityLog = {
@@ -308,7 +524,7 @@ export default function App() {
         ...prev,
         logs: [newLog, ...prev.logs].slice(0, 800) // Keep up to 800 logs
       };
-    });
+    }, skipCloudPush);
   };
 
   const handleLogin = (employee: Employee) => {
@@ -340,15 +556,15 @@ export default function App() {
     if (finalEmp.allowedTabs && finalEmp.allowedTabs.length > 0) {
       setActiveTab(finalEmp.allowedTabs[0]);
     }
-    // We can deferred log slightly or write log
     setTimeout(() => {
-      addLogMessage('login', `Employee ${finalEmp.name} logged in successfully`);
+      addLogMessage('login', `Employee ${finalEmp.name} logged in successfully`, true);
+      triggerSyncCycle(false);
     }, 100);
   };
 
   const handleLogout = () => {
     if (currentUser) {
-      addLogMessage('logout', `Employee ${currentUser.name} signed out`);
+      addLogMessage('logout', `Employee ${currentUser.name} signed out`, true);
     }
     setCurrentUser(null);
     localStorage.removeItem('sales_app_current_user');
@@ -504,18 +720,141 @@ export default function App() {
       if (!prev) return prev;
       const docs = prev.commercialDocuments || [];
       const idx = docs.findIndex((d) => d.id === doc.id);
+      const oldDoc = idx > -1 ? docs[idx] : undefined;
       let nextDocs = [...docs];
+      let nextProds = [...prev.products];
+      let nextCusts = [...prev.customers];
+      let nextInvoices = [...prev.invoices];
+
+      const findMatchingProd = (it: any, prodsList: Product[]) => {
+        if (!it.productId) return undefined;
+        return prodsList.find((p) => p.id === it.productId);
+      };
+
+      // Enrich items with productId and purchasePrice when matching inventory product exists
+      const enrichedItems = (doc.items || []).map((it) => {
+        const matched = findMatchingProd(it, nextProds);
+        return {
+          ...it,
+          productId: matched ? matched.id : '',
+          purchasePrice: matched ? Number(it.purchasePrice || matched.purchasePrice || 0) : 0,
+        };
+      });
+
+      const normalizedDoc: CommercialDocument = {
+        ...doc,
+        items: enrichedItems,
+        amountPaid: doc.amountPaid !== undefined ? Number(doc.amountPaid) : doc.total,
+        previousBalance: Number(doc.previousBalance || 0),
+        paymentMethod: doc.paymentMethod || 'cash',
+        sellerName: doc.sellerName || currentUser?.name,
+        isWholesale: doc.isWholesale ?? true,
+        pricingMode: doc.pricingMode || 'wholesale',
+      };
+
+      // If updating an existing official invoice (facture), first revert its previous stock & debt impact
+      if (oldDoc && oldDoc.docType === 'facture' && oldDoc.status !== 'cancelled') {
+        oldDoc.items.forEach((oldIt) => {
+          const matchedOld = findMatchingProd(oldIt, nextProds);
+          if (matchedOld) {
+            nextProds = nextProds.map((p) =>
+              p.id === matchedOld.id ? { ...p, stock: p.stock + Number(oldIt.quantity || 0) } : p
+            );
+          }
+        });
+
+        const existingInv = nextInvoices.find(
+          (inv) => inv.id === 'inv_doc_' + oldDoc.id || inv.invoiceNumber === oldDoc.docNumber
+        );
+        const oldPaid =
+          oldDoc.amountPaid !== undefined
+            ? Number(oldDoc.amountPaid)
+            : existingInv
+            ? existingInv.amountPaid
+            : oldDoc.total;
+        const oldUnpaid = Math.max(0, oldDoc.total - oldPaid);
+        if (oldUnpaid > 0 && oldDoc.customerId && oldDoc.customerId !== 'walk-in') {
+          nextCusts = nextCusts.map((c) =>
+            c.id === oldDoc.customerId ? { ...c, debt: Math.max(0, c.debt - oldUnpaid) } : c
+          );
+        }
+      }
+
+      // If the saved document is an official invoice (facture), apply stock deduction, debt, and sync with invoices
+      if (normalizedDoc.docType === 'facture') {
+        if (normalizedDoc.status !== 'cancelled') {
+          normalizedDoc.items.forEach((newIt) => {
+            const matchedNew = findMatchingProd(newIt, nextProds);
+            if (matchedNew) {
+              nextProds = nextProds.map((p) =>
+                p.id === matchedNew.id ? { ...p, stock: p.stock - Number(newIt.quantity || 0) } : p
+              );
+            }
+          });
+
+          const paidVal =
+            normalizedDoc.amountPaid !== undefined ? Number(normalizedDoc.amountPaid) : normalizedDoc.total;
+          const unpaidRemainder = Math.max(0, normalizedDoc.total - paidVal);
+          const invStatus: PaymentStatus =
+            paidVal <= 0 && normalizedDoc.total > 0 ? 'unpaid' : unpaidRemainder > 0.01 ? 'partial' : 'paid';
+
+          if (unpaidRemainder > 0 && normalizedDoc.customerId && normalizedDoc.customerId !== 'walk-in') {
+            nextCusts = nextCusts.map((c) =>
+              c.id === normalizedDoc.customerId ? { ...c, debt: c.debt + unpaidRemainder } : c
+            );
+          }
+
+          const syncedInvoice: Invoice = {
+            id: 'inv_doc_' + normalizedDoc.id,
+            invoiceNumber: normalizedDoc.docNumber,
+            date: normalizedDoc.date,
+            customerId: normalizedDoc.customerId || 'walk-in',
+            customerName: normalizedDoc.customerName || (lang === 'ar' ? 'زبون عام' : 'Client Comptoir'),
+            items: enrichedItems,
+            subtotal: normalizedDoc.subtotal,
+            discount: normalizedDoc.discount,
+            tax: normalizedDoc.tax,
+            total: normalizedDoc.total,
+            amountPaid: paidVal,
+            previousBalance: Number(normalizedDoc.previousBalance || 0),
+            paymentMethod: normalizedDoc.paymentMethod || (unpaidRemainder > 0 ? 'debt' : 'cash'),
+            status: invStatus,
+            notes:
+              normalizedDoc.notes ||
+              (lang === 'ar' ? `فاتورة رسمية (${normalizedDoc.docNumber})` : `Facture officielle (${normalizedDoc.docNumber})`),
+            sellerId: currentUser?.id,
+            sellerName: normalizedDoc.sellerName || currentUser?.name,
+            isWholesale: normalizedDoc.isWholesale ?? true,
+            pricingMode: normalizedDoc.pricingMode || 'wholesale',
+          };
+
+          const invIdx = nextInvoices.findIndex(
+            (inv) => inv.id === 'inv_doc_' + normalizedDoc.id || inv.invoiceNumber === normalizedDoc.docNumber
+          );
+          if (invIdx > -1) {
+            nextInvoices[invIdx] = syncedInvoice;
+          } else {
+            nextInvoices.unshift(syncedInvoice);
+          }
+        } else {
+          // If marked cancelled, remove from active sales invoices
+          nextInvoices = nextInvoices.filter(
+            (inv) => inv.id !== 'inv_doc_' + normalizedDoc.id && inv.invoiceNumber !== normalizedDoc.docNumber
+          );
+        }
+      }
+
       let details = '';
       if (idx > -1) {
-        nextDocs[idx] = doc;
+        nextDocs[idx] = normalizedDoc;
         details = lang === 'ar' 
-          ? `تم تحديث وثيقة تجارية ${doc.docNumber} (${doc.docType}) للزبون ${doc.customerName}`
-          : `Updated commercial document ${doc.docNumber} (${doc.docType}) for ${doc.customerName}`;
+          ? `تم تحديث وثيقة تجارية ${normalizedDoc.docNumber} (${normalizedDoc.docType}) للزبون ${normalizedDoc.customerName}`
+          : `Updated commercial document ${normalizedDoc.docNumber} (${normalizedDoc.docType}) for ${normalizedDoc.customerName}`;
       } else {
-        nextDocs.unshift(doc);
+        nextDocs.unshift(normalizedDoc);
         details = lang === 'ar'
-          ? `تم إنشاء وثيقة تجارية جديدة ${doc.docNumber} (${doc.docType}) للزبون ${doc.customerName}`
-          : `Created commercial document ${doc.docNumber} (${doc.docType}) for ${doc.customerName}`;
+          ? `تم إنشاء وثيقة تجارية جديدة ${normalizedDoc.docNumber} (${normalizedDoc.docType}) للزبون ${normalizedDoc.customerName}`
+          : `Created commercial document ${normalizedDoc.docNumber} (${normalizedDoc.docType}) for ${normalizedDoc.customerName}`;
       }
 
       const newLog: ActivityLog = {
@@ -529,6 +868,9 @@ export default function App() {
 
       return {
         ...prev,
+        products: nextProds,
+        customers: nextCusts,
+        invoices: nextInvoices,
         commercialDocuments: nextDocs,
         logs: [newLog, ...prev.logs].slice(0, 800)
       };
@@ -541,6 +883,51 @@ export default function App() {
       const docs = prev.commercialDocuments || [];
       const target = docs.find((d) => d.id === id);
       const nextDocs = docs.filter((d) => d.id !== id);
+      let nextProds = [...prev.products];
+      let nextCusts = [...prev.customers];
+      let nextInvoices = [...prev.invoices];
+      const idsToDelete: string[] = [id, 'inv_doc_' + id];
+
+      if (target && target.docType === 'facture' && target.status !== 'cancelled') {
+        target.items.forEach((it) => {
+          const cleanName = String(it.productName || '').trim().toLowerCase();
+          const matched = nextProds.find(
+            (p) =>
+              (it.productId && p.id === it.productId) ||
+              (cleanName &&
+                (p.name.trim().toLowerCase() === cleanName ||
+                  (p.sku && p.sku.trim().toLowerCase() === cleanName)))
+          );
+          if (matched) {
+            nextProds = nextProds.map((p) =>
+              p.id === matched.id ? { ...p, stock: p.stock + Number(it.quantity || 0) } : p
+            );
+          }
+        });
+
+        const linkedInv = nextInvoices.find(
+          (inv) => inv.id === 'inv_doc_' + target.id || inv.invoiceNumber === target.docNumber
+        );
+        if (linkedInv) idsToDelete.push(linkedInv.id);
+        const paidVal =
+          target.amountPaid !== undefined
+            ? Number(target.amountPaid)
+            : linkedInv
+            ? linkedInv.amountPaid
+            : target.total;
+        const unpaidRemainder = Math.max(0, target.total - paidVal);
+        if (unpaidRemainder > 0 && target.customerId && target.customerId !== 'walk-in') {
+          nextCusts = nextCusts.map((c) =>
+            c.id === target.customerId ? { ...c, debt: Math.max(0, c.debt - unpaidRemainder) } : c
+          );
+        }
+
+        nextInvoices = nextInvoices.filter(
+          (inv) => inv.id !== 'inv_doc_' + target.id && inv.invoiceNumber !== target.docNumber
+        );
+      }
+
+      const nextDeletedIds = addDeletedIds([...(prev.deletedIds || []), ...idsToDelete]);
 
       const newLog: ActivityLog = {
         id: 'log_' + Date.now() + '_' + Math.random().toString(36).slice(2, 6),
@@ -555,54 +942,19 @@ export default function App() {
 
       return {
         ...prev,
+        products: nextProds,
+        customers: nextCusts,
+        invoices: nextInvoices,
         commercialDocuments: nextDocs,
+        deletedIds: nextDeletedIds,
         logs: [newLog, ...prev.logs].slice(0, 800)
       };
-    });
+    }, false, true);
   };
 
-  const handleCommercialDocConvertToInvoice = (doc: CommercialDocument) => {
-    // Generate new official sales invoice from commercial doc
-    const invoiceNum = `INV-${new Date().getFullYear()}-${String((invoices.length || 0) + 1).padStart(3, '0')}`;
-    const newInvoice: Invoice = {
-      id: 'inv_' + Date.now() + '_' + Math.random().toString(36).slice(2, 6),
-      invoiceNumber: invoiceNum,
-      date: new Date().toISOString(),
-      customerId: doc.customerId || 'walk-in',
-      customerName: doc.customerName || (lang === 'ar' ? 'زبون عام' : 'Client Comptoir'),
-      items: doc.items.map((it) => ({
-        productId: it.productId,
-        productName: it.productName,
-        quantity: it.quantity,
-        sellingPrice: it.sellingPrice,
-        purchasePrice: it.purchasePrice || 0,
-        discount: it.discount || 0,
-        tax: it.tax || 0,
-        total: it.total
-      })),
-      subtotal: doc.subtotal,
-      discount: doc.discount,
-      tax: doc.tax,
-      total: doc.total,
-      amountPaid: doc.total,
-      paymentMethod: 'cash',
-      status: 'paid',
-      notes: `${lang === 'ar' ? 'تم التحويل من وثيقة' : 'Converted from'} ${doc.docNumber} (${doc.docType})`
-    };
-
-    // Add to invoices & update document status to invoiced
-    handleAddTransaction(newInvoice);
-
-    // Also update commercial doc status to invoiced
-    updateDataState((prev) => {
-      if (!prev) return prev;
-      const docs = prev.commercialDocuments || [];
-      const updatedDocs = docs.map((d) => d.id === doc.id ? { ...d, status: 'invoiced' as const } : d);
-      return {
-        ...prev,
-        commercialDocuments: updatedDocs
-      };
-    });
+  const handleCommercialDocConvertToInvoice = (_doc: CommercialDocument) => {
+    // Official Factures (docType === 'facture') are now automatically synchronized
+    // with sales invoices, inventory stock, and customer debt inside handleSaveCommercialDoc.
   };
 
   // State handlers
@@ -644,6 +996,7 @@ export default function App() {
       const prevExpenses = prev.expenses || [];
       const target = prevExpenses.find((e) => e.id === id);
       const nextExpenses = prevExpenses.filter((e) => e.id !== id);
+      const nextDeletedIds = addDeletedIds([...(prev.deletedIds || []), id]);
 
       const newLog: ActivityLog = {
         id: 'log_' + Date.now() + '_' + Math.random().toString(36).slice(2, 6),
@@ -659,9 +1012,10 @@ export default function App() {
       return {
         ...prev,
         expenses: nextExpenses,
+        deletedIds: nextDeletedIds,
         logs: [newLog, ...prev.logs].slice(0, 800)
       };
-    });
+    }, false, true);
   };
 
   const handleSaveSupplier = (supplier: Supplier) => {
@@ -681,11 +1035,13 @@ export default function App() {
   const handleDeleteSupplier = (id: string) => {
     updateDataState((prev) => {
       if (!prev) return prev;
+      const nextDeletedIds = addDeletedIds([...(prev.deletedIds || []), id]);
       return {
         ...prev,
         suppliers: prev.suppliers.filter((s) => s.id !== id),
+        deletedIds: nextDeletedIds,
       };
-    });
+    }, false, true);
   };
 
   const handleSavePurchase = (purchase: Purchase) => {
@@ -789,6 +1145,7 @@ export default function App() {
       });
 
       const nextPurchases = prev.purchases.filter((p) => p.id !== id);
+      const nextDeletedIds = addDeletedIds([...(prev.deletedIds || []), id]);
 
       const supplierObj = prev.suppliers.find(s => s.id === targetPurchase.supplierId);
       const supplierName = supplierObj ? supplierObj.name : (targetPurchase.supplierId || 'Unknown');
@@ -809,9 +1166,10 @@ export default function App() {
         suppliers: nextSupps,
         products: nextProds,
         purchases: nextPurchases,
+        deletedIds: nextDeletedIds,
         logs: [newLog, ...prev.logs].slice(0, 800)
       };
-    });
+    }, false, true);
   };
 
   const handleSettleSupplierDebt = (supplierId: string, amount: number, paymentNotes?: string) => {
@@ -900,11 +1258,13 @@ export default function App() {
   const handleDeleteProduct = (id: string) => {
     updateDataState((prev) => {
       if (!prev) return prev;
+      const nextDeletedIds = addDeletedIds([...(prev.deletedIds || []), id]);
       return {
         ...prev,
         products: prev.products.filter((p) => p.id !== id),
+        deletedIds: nextDeletedIds,
       };
-    });
+    }, false, true);
   };
 
   const handleSaveCustomer = (customer: Customer) => {
@@ -924,11 +1284,13 @@ export default function App() {
   const handleDeleteCustomer = (id: string) => {
     updateDataState((prev) => {
       if (!prev) return prev;
+      const nextDeletedIds = addDeletedIds([...(prev.deletedIds || []), id]);
       return {
         ...prev,
         customers: prev.customers.filter((c) => c.id !== id),
+        deletedIds: nextDeletedIds,
       };
-    });
+    }, false, true);
   };
 
   const handleDeleteInvoice = (id: string) => {
@@ -937,11 +1299,13 @@ export default function App() {
       const targetInvoice = prev.invoices.find((inv) => inv.id === id);
       if (!targetInvoice) return prev;
 
-      // 1. Revert product stocks (add back quantites sold)
+      // 1. Revert product stocks (add back quantities sold across all matching rows)
       const restoredProds = prev.products.map((p) => {
-        const itemInInvoice = targetInvoice.items.find((it) => it.productId === p.id);
-        if (itemInInvoice) {
-          return { ...p, stock: p.stock + itemInInvoice.quantity };
+        const soldQty = (targetInvoice.items || [])
+          .filter((it) => it.productId === p.id)
+          .reduce((sum, it) => sum + Number(it.quantity || 0), 0);
+        if (soldQty > 0) {
+          return { ...p, stock: p.stock + soldQty };
         }
         return p;
       });
@@ -949,7 +1313,7 @@ export default function App() {
       // 2. Revert client profile debt balance (subtract invoice outstanding debt credit value)
       const restoredCusts = prev.customers.map((c) => {
         if (c.id === targetInvoice.customerId) {
-          const unpaidRemainder = targetInvoice.total - targetInvoice.amountPaid;
+          const unpaidRemainder = Number(targetInvoice.total || 0) - Number(targetInvoice.amountPaid || 0);
           if (unpaidRemainder > 0) {
             return { ...c, debt: Math.max(0, c.debt - unpaidRemainder) };
           }
@@ -957,7 +1321,21 @@ export default function App() {
         return c;
       });
 
-      // 3. Atomically add System Log in appropriate language
+      // 3. Also remove linked official Facture in commercialDocuments if this invoice originated from one
+      const idsToDelete: string[] = [id];
+      const nextCommercialDocs = (prev.commercialDocuments || []).filter((d) => {
+        const isLinked =
+          d.docType === 'facture' &&
+          ('inv_doc_' + d.id === targetInvoice.id || d.docNumber === targetInvoice.invoiceNumber);
+        if (isLinked) {
+          idsToDelete.push(d.id, 'inv_doc_' + d.id);
+        }
+        return !isLinked;
+      });
+
+      const nextDeletedIds = addDeletedIds([...(prev.deletedIds || []), ...idsToDelete]);
+
+      // 4. Atomically add System Log in appropriate language
       const newLog: ActivityLog = {
         id: 'log_' + Date.now() + '_' + Math.random().toString(36).slice(2, 6),
         timestamp: new Date().toISOString(),
@@ -974,8 +1352,105 @@ export default function App() {
       return {
         ...prev,
         invoices: nextInvoices,
+        commercialDocuments: nextCommercialDocs,
         products: restoredProds,
         customers: restoredCusts,
+        deletedIds: nextDeletedIds,
+        logs: [newLog, ...prev.logs].slice(0, 800)
+      };
+    }, false, true);
+  };
+
+  const handleEditInvoice = (updatedInvoice: Invoice) => {
+    updateDataState((prev) => {
+      if (!prev) return prev;
+      const oldInvoice = prev.invoices.find((inv) => inv.id === updatedInvoice.id);
+      if (!oldInvoice) return prev;
+
+      let nextProds = [...prev.products];
+      let nextCusts = [...prev.customers];
+
+      // 1. Revert old stock deductions
+      (oldInvoice.items || []).forEach((oldIt) => {
+        if (oldIt.productId) {
+          nextProds = nextProds.map((p) =>
+            p.id === oldIt.productId ? { ...p, stock: p.stock + Number(oldIt.quantity || 0) } : p
+          );
+        }
+      });
+
+      // 2. Revert old customer debt
+      const oldUnpaid = Math.max(0, Number(oldInvoice.total || 0) - Number(oldInvoice.amountPaid || 0));
+      if (oldUnpaid > 0 && oldInvoice.customerId && oldInvoice.customerId !== 'walk-in') {
+        nextCusts = nextCusts.map((c) =>
+          c.id === oldInvoice.customerId ? { ...c, debt: Math.max(0, c.debt - oldUnpaid) } : c
+        );
+      }
+
+      // 3. Apply new stock deductions
+      (updatedInvoice.items || []).forEach((newIt) => {
+        if (newIt.productId) {
+          nextProds = nextProds.map((p) =>
+            p.id === newIt.productId ? { ...p, stock: p.stock - Number(newIt.quantity || 0) } : p
+          );
+        }
+      });
+
+      // 4. Apply new customer debt
+      const newUnpaid = Math.max(0, Number(updatedInvoice.total || 0) - Number(updatedInvoice.amountPaid || 0));
+      if (newUnpaid > 0 && updatedInvoice.customerId && updatedInvoice.customerId !== 'walk-in') {
+        nextCusts = nextCusts.map((c) =>
+          c.id === updatedInvoice.customerId ? { ...c, debt: c.debt + newUnpaid } : c
+        );
+      }
+
+      // 5. Update invoices list
+      const nextInvoices = prev.invoices.map((inv) =>
+        inv.id === updatedInvoice.id ? updatedInvoice : inv
+      );
+
+      // 6. Sync linked official Facture in commercialDocuments if applicable
+      const nextCommercialDocs = (prev.commercialDocuments || []).map((d) => {
+        const isLinked =
+          d.docType === 'facture' &&
+          ('inv_doc_' + d.id === updatedInvoice.id || d.docNumber === updatedInvoice.invoiceNumber);
+        if (isLinked) {
+          return {
+            ...d,
+            date: updatedInvoice.date,
+            customerId: updatedInvoice.customerId,
+            customerName: updatedInvoice.customerName,
+            items: updatedInvoice.items,
+            subtotal: updatedInvoice.subtotal,
+            discount: updatedInvoice.discount,
+            tax: updatedInvoice.tax,
+            total: updatedInvoice.total,
+            amountPaid: updatedInvoice.amountPaid,
+            previousBalance: updatedInvoice.previousBalance,
+            paymentMethod: updatedInvoice.paymentMethod,
+            notes: updatedInvoice.notes,
+          };
+        }
+        return d;
+      });
+
+      const newLog: ActivityLog = {
+        id: 'log_' + Date.now() + '_' + Math.random().toString(36).slice(2, 6),
+        timestamp: new Date().toISOString(),
+        userId: currentUser?.id || 'system',
+        userName: currentUser?.name || 'System',
+        action: 'invoice_updated',
+        details: lang === 'ar'
+          ? `تم تعديل فاتورة المبيعات رقم ${updatedInvoice.invoiceNumber} للزبون "${updatedInvoice.customerName}" - الإجمالي الجديد: ${updatedInvoice.total.toFixed(2)} ${prev.config.currency}`
+          : `Updated sales invoice ${updatedInvoice.invoiceNumber} for "${updatedInvoice.customerName}" - New Total: ${updatedInvoice.total.toFixed(2)} ${prev.config.currency}`
+      };
+
+      return {
+        ...prev,
+        invoices: nextInvoices,
+        commercialDocuments: nextCommercialDocs,
+        products: nextProds,
+        customers: nextCusts,
         logs: [newLog, ...prev.logs].slice(0, 800)
       };
     });
@@ -1073,9 +1548,21 @@ export default function App() {
         return c;
       });
 
+      // Sync amountPaid on linked CommercialDocument if applicable
+      const updatedCommercialDocs = (prev.commercialDocuments || []).map((d) => {
+        if (
+          d.docType === 'facture' &&
+          ('inv_doc_' + d.id === targetInv.id || d.docNumber === targetInv.invoiceNumber)
+        ) {
+          return { ...d, amountPaid: newPaidVal };
+        }
+        return d;
+      });
+
       return {
         ...prev,
         invoices: updatedInvs,
+        commercialDocuments: updatedCommercialDocs,
         customers: updatedCusts,
       };
     });
@@ -1233,16 +1720,70 @@ export default function App() {
   const handleImportBackup = (imported: typeof data) => {
     setData(imported);
     saveStoredData(imported);
+    const cloudCfg = getCloudSyncConfig();
+    const apiBase = cloudCfg.provider === 'server' && cloudCfg.serverUrl ? cloudCfg.serverUrl.replace(/\/+$/, '') : '';
+    fetch(`${apiBase}/api/save`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(imported),
+    }).catch(() => {});
+    if (cloudCfg.enabled) {
+      pushDataToCloud(imported, cloudCfg, { skipPreMerge: true }).catch(() => {});
+    }
   };
 
-  const handleExportBackup = () => {
-    const dataStr = 'data:text/json;charset=utf-8,' + encodeURIComponent(JSON.stringify(data));
-    const downloadAnchor = document.createElement('a');
-    downloadAnchor.setAttribute('href', dataStr);
-    downloadAnchor.setAttribute('download', 'SmartPos.json');
-    document.body.appendChild(downloadAnchor);
-    downloadAnchor.click();
-    downloadAnchor.remove();
+  const handleResetDatabase = async () => {
+    const zeroData = await resetStoredToDefaults();
+    setData(zeroData);
+    saveStoredData(zeroData);
+
+    const cloudCfg = getCloudSyncConfig();
+    const apiBase = cloudCfg.provider === 'server' && cloudCfg.serverUrl ? cloudCfg.serverUrl.replace(/\/+$/, '') : '';
+
+    if (apiBase) {
+      try {
+        await fetch(`${apiBase}/api/reset`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify(zeroData),
+        });
+      } catch {
+        fetch(`${apiBase}/api/save`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify(zeroData),
+        }).catch(() => {});
+      }
+    }
+
+    if (cloudCfg.enabled || cloudCfg.firebaseUrl || cloudCfg.supabaseUrl) {
+      try {
+        await pushDataToCloud(zeroData, cloudCfg, { skipPreMerge: true });
+      } catch (e) {
+        console.warn('Cloud reset sync warning:', e);
+      }
+    }
+
+    setSyncNotice(
+      lang === 'ar'
+        ? '✓ تمت فرمتة النظام وتصفير قاعدة البيانات بالكامل بنجاح!'
+        : '✓ Database formatted and reset to zero successfully!'
+    );
+    setTimeout(() => setSyncNotice(null), 4500);
+  };
+
+  const handleExportBackup = async () => {
+    if (!data) return;
+    const filename = `SmartPos-Backup-${new Date().toISOString().slice(0, 10)}.json`;
+    const result = await exportDatabaseBackupFile(JSON.stringify(data, null, 2), filename);
+    if (result !== 'error') {
+      setSyncNotice(
+        lang === 'ar'
+          ? '✓ تم تجهيز وحفظ نسخة قاعدة البيانات بنجاح'
+          : '✓ Database backup saved successfully'
+      );
+      setTimeout(() => setSyncNotice(null), 3500);
+    }
   };
 
   const activeTheme = (!config.themeColor || config.themeColor === 'slate' || config.themeColor === 'navy') ? 'indigo' : config.themeColor;
@@ -1289,9 +1830,22 @@ export default function App() {
     >
       {/* Floating Sync Notice Toast */}
       {syncNotice && (
-        <div className="fixed top-4 left-1/2 -translate-x-1/2 z-50 px-4 py-2.5 rounded-2xl bg-slate-900 text-emerald-400 border border-emerald-500/40 shadow-2xl text-xs font-black flex items-center gap-2 animate-fade-in">
-          <Cloud className="w-4 h-4 shrink-0" />
-          <span>{syncNotice}</span>
+        <div
+          dir={isRTL ? 'rtl' : 'ltr'}
+          className="fixed inset-x-0 z-[150] flex justify-center px-3 sm:px-6 pointer-events-none"
+          style={{ top: 'max(3.5rem, calc(env(safe-area-inset-top, 0px) + 3rem))' }}
+        >
+          <div className="pointer-events-auto w-full max-w-md px-4 py-3 rounded-2xl bg-emerald-950/95 text-emerald-100 border border-emerald-500/50 shadow-2xl text-xs sm:text-sm font-bold leading-relaxed flex items-start gap-2.5">
+            <Cloud className="w-4.5 h-4.5 text-emerald-400 shrink-0 mt-0.5" />
+            <span className="flex-1 break-words text-start">{syncNotice}</span>
+            <button
+              type="button"
+              onClick={() => setSyncNotice(null)}
+              className="text-white/60 hover:text-white font-black text-xs px-1 cursor-pointer shrink-0"
+            >
+              ✕
+            </button>
+          </div>
         </div>
       )}
 
@@ -1306,6 +1860,10 @@ export default function App() {
       {/* Sidebar - Pinned on Desktop (lg+), Slide-over Drawer on Android & iPhone (< lg) */}
       <aside
         id="app-sidebar-panel"
+        style={{
+          paddingTop: 'env(safe-area-inset-top, 0px)',
+          paddingBottom: 'env(safe-area-inset-bottom, 0px)'
+        }}
         className={`w-64 bg-slate-900 text-white flex flex-col shrink-0 ltr:border-r rtl:border-l border-slate-800 z-50 lg:z-30 fixed lg:static inset-y-0 ${
           isRTL ? 'right-0' : 'left-0'
         } transition-transform duration-200 ease-in-out select-none ${
@@ -1318,17 +1876,11 @@ export default function App() {
       >
         <div className="p-3.5 flex items-center justify-between gap-3 border-b border-slate-800 shrink-0">
           <div className="flex items-center gap-3 min-w-0 flex-1">
-            {config.logoUrl ? (
-              <img
-                src={config.logoUrl}
-                alt={config.name}
-                className="w-10 h-10 rounded-xl object-cover shrink-0 shadow-md border border-slate-700/60"
-              />
-            ) : (
-              <div className="w-10 h-10 bg-gradient-to-tr from-indigo-600 to-indigo-500 rounded-xl flex items-center justify-center font-black text-white text-base shrink-0 shadow-md">
-                {config.name?.charAt(0) || 'S'}
-              </div>
-            )}
+            <img
+              src={config.logoUrl || '/sp-icon.png'}
+              alt={config.name}
+              className="w-10 h-10 rounded-xl object-contain bg-white p-0.5 shrink-0 shadow-md border border-indigo-400/30"
+            />
             <div className="min-w-0 flex-1">
               <span className="font-black text-white tracking-tight block truncate text-sm uppercase text-start">
                 {config.name}
@@ -1640,8 +2192,11 @@ export default function App() {
 
       {/* Main Content Area */}
       <main className="flex-1 flex flex-col min-w-0 bg-slate-50 relative h-screen overflow-hidden">
-        {/* Top Header Row */}
-        <header className="h-14 bg-white border-b border-slate-200 flex items-center justify-between px-3 sm:px-6 shrink-0 z-20 shadow-xs">
+        {/* Top Header Row - Respects iPhone Status Bar / Dynamic Island Safe Area */}
+        <header
+          className="min-h-14 bg-white border-b border-slate-200 flex items-center justify-between px-3 sm:px-6 pb-2.5 shrink-0 z-20 shadow-xs"
+          style={{ paddingTop: 'max(0.65rem, calc(env(safe-area-inset-top, 0px) + 0.35rem))' }}
+        >
           <div className="flex items-center gap-2 sm:gap-3 min-w-0">
             {/* Mobile Hamburger Button (< lg) */}
             <button
@@ -1760,7 +2315,10 @@ export default function App() {
         </header>
 
         {/* Dynamic Inner Active Section Viewport */}
-        <div className="p-3 sm:p-6 pb-20 lg:pb-6 flex-1 overflow-y-auto min-h-0 bg-slate-50/70 no-scrollbar" id="main-content-display">
+        <div
+          className="p-3 sm:p-6 pb-28 lg:pb-6 flex-1 overflow-y-auto min-h-0 bg-slate-50/70 no-scrollbar"
+          id="main-content-display"
+        >
           {activeTab === 'home' && (
             <Home
               invoices={invoices}
@@ -1792,11 +2350,14 @@ export default function App() {
           {activeTab === 'invoices' && (
             <Invoices
               invoices={invoices}
+              products={products}
               customers={customers}
               config={config}
               onPayInvoiceBalance={handlePayInvoiceBalance}
+              onEditInvoice={handleEditInvoice}
               onDeleteInvoice={handleDeleteInvoice}
               onReturnInvoice={handleReturnInvoiceItems}
+              onNavigate={(tab) => selectTab(tab, tab === 'commercial-documents')}
               lang={lang}
             />
           )}
@@ -1806,8 +2367,10 @@ export default function App() {
               initialType={
                 activeTab === 'bon-commande' ? 'bon_commande' :
                 activeTab === 'bon-livraison' ? 'bon_livraison' :
-                'devis'
+                activeTab === 'devis' ? 'devis' :
+                'facture'
               }
+              autoOpenCreateTrigger={commercialDocCreateTrigger}
               documents={commercialDocuments}
               products={products}
               customers={customers}
@@ -1914,7 +2477,7 @@ export default function App() {
             <BackupManagement
               onImportBackup={handleImportBackup}
               onExportBackup={handleExportBackup}
-              onResetToDefaults={resetStoredToDefaults}
+              onResetToDefaults={handleResetDatabase}
               lang={lang}
               logs={logs}
               productsCount={products.length}
@@ -2004,13 +2567,13 @@ export default function App() {
 
           <button
             type="button"
-            onClick={() => selectTab('invoices')}
+            onClick={() => selectTab('commercial-documents', true)}
             className={`py-2 flex flex-col items-center justify-center gap-0.5 text-[10px] font-black cursor-pointer transition ${
-              activeTab === 'invoices' ? 'text-indigo-600' : 'text-slate-500'
+              activeTab === 'commercial-documents' ? 'text-indigo-600' : 'text-slate-500'
             }`}
           >
-            <Receipt className="w-5 h-5" />
-            <span>{lang === 'ar' ? 'الفواتير' : 'Invoices'}</span>
+            <FileSpreadsheet className="w-5 h-5" />
+            <span>{lang === 'ar' ? 'فاتورة' : lang === 'fr' ? 'Facture' : 'Invoice'}</span>
           </button>
 
           <button

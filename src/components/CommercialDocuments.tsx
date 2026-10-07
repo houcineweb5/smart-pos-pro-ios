@@ -10,12 +10,14 @@ import { languages } from '../languages';
 import { 
   FileText, Plus, Search, Eye, Printer, Trash2, ArrowRightLeft, CheckCircle2, 
   Calendar, User, AlertCircle, X, Check, RefreshCw, FileCheck, Truck, ClipboardList,
-  Edit, ArrowUpRight, Copy, Share2, Receipt, ShoppingCart, FileSpreadsheet, ArrowRight
+  Edit, ArrowUpRight, Copy, Share2, Receipt, ShoppingCart, FileSpreadsheet, ArrowRight, FileDown
 } from 'lucide-react';
 import { parseDecimal, sanitizeDecimalInput } from '../utils/numberInput';
+import { printHtmlContent, exportStructuredPdf } from '../utils/printService';
 
 interface CommercialDocumentsProps {
   initialType?: CommercialDocType;
+  autoOpenCreateTrigger?: number;
   documents: CommercialDocument[];
   products: Product[];
   customers: Customer[];
@@ -27,7 +29,8 @@ interface CommercialDocumentsProps {
 }
 
 export default function CommercialDocuments({
-  initialType = 'devis',
+  initialType = 'facture',
+  autoOpenCreateTrigger = 0,
   documents,
   products,
   customers,
@@ -49,6 +52,9 @@ export default function CommercialDocuments({
   }, [initialType]);
   const [search, setSearch] = useState('');
   const [statusFilter, setStatusFilter] = useState<string>('all');
+  const [selectedMonth, setSelectedMonth] = useState<string>('');
+  const [fromDate, setFromDate] = useState<string>('');
+  const [toDate, setToDate] = useState<string>('');
   const [viewingDoc, setViewingDoc] = useState<CommercialDocument | null>(null);
   const [editingDoc, setEditingDoc] = useState<CommercialDocument | null>(null);
   const [isCreating, setIsCreating] = useState(false);
@@ -67,19 +73,49 @@ export default function CommercialDocuments({
   const [formItems, setFormItems] = useState<{
     productId: string;
     productName: string;
-    sellingPrice: number;
+    sellingPrice: number | string;
     purchasePrice: number;
-    quantity: number;
-    discount: number;
+    quantity: number | string;
+    discount: number | string;
     tax: number;
     total: number;
   }[]>([]);
   const [formDiscount, setFormDiscount] = useState<string>('0');
+  const [formPreviousBalance, setFormPreviousBalance] = useState<string>('');
   const [formNotes, setFormNotes] = useState<string>('');
+  const [formPaymentMethod, setFormPaymentMethod] = useState<'cash' | 'card' | 'debt'>('cash');
+  const [formAmountPaid, setFormAmountPaid] = useState<string>('');
+  const [formPricingMode, setFormPricingMode] = useState<'wholesale' | 'retail'>('wholesale');
 
   // Product quick search in modal
   const [productSearch, setProductSearch] = useState('');
   const [showProductDropdown, setShowProductDropdown] = useState(false);
+
+  const getProductPriceByMode = (prod: Product, mode: 'wholesale' | 'retail' = formPricingMode): number => {
+    if (mode === 'wholesale' && prod.wholesalePrice !== undefined && Number(prod.wholesalePrice) > 0) {
+      return Number(prod.wholesalePrice);
+    }
+    return Number(prod.sellingPrice) || 0;
+  };
+
+  const handleSwitchPricingMode = (nextMode: 'wholesale' | 'retail') => {
+    setFormPricingMode(nextMode);
+    setFormItems((prev) =>
+      prev.map((item) => {
+        if (!item.productId) return item;
+        const prod = products.find((p) => p.id === item.productId);
+        if (!prod) return item;
+        const nextUnitPrice = getProductPriceByMode(prod, nextMode);
+        const qty = parseDecimal(item.quantity, 1);
+        const disc = parseDecimal(item.discount, 0);
+        return {
+          ...item,
+          sellingPrice: nextUnitPrice,
+          total: (nextUnitPrice - (nextUnitPrice * disc) / 100) * qty,
+        };
+      })
+    );
+  };
 
   const showToast = (msg: string) => {
     setToastMessage(msg);
@@ -115,6 +151,44 @@ export default function CommercialDocuments({
     return `${prefix}-${year}-${String(count).padStart(3, '0')}`;
   };
 
+  const calculateDocProfit = (doc: CommercialDocument): number => {
+    if (!doc || !Array.isArray(doc.items)) return 0;
+    let itemsProfit = 0;
+    let registeredCount = 0;
+    doc.items.forEach((it) => {
+      const qty = Number(it.quantity) || 0;
+      if (qty <= 0) return;
+      const matchedProd = it.productId
+        ? products.find((p) => p && p.id === it.productId)
+        : undefined;
+      // Unregistered product rows (added manually without selecting a registered product) are excluded from profit
+      if (!it.productId || (!matchedProd && !(Number(it.purchasePrice) > 0))) {
+        return;
+      }
+      registeredCount++;
+      const unitCost =
+        it.purchasePrice !== undefined && it.purchasePrice !== null && Number(it.purchasePrice) > 0
+          ? Number(it.purchasePrice)
+          : Number(matchedProd?.purchasePrice) || 0;
+      const rawSelling = Number(it.sellingPrice) || 0;
+      const discPct = Number(it.discount) || 0;
+      const netUnitSelling =
+        it.total !== undefined && it.total !== null && qty > 0
+          ? Number(it.total) / qty
+          : rawSelling * (1 - discPct / 100);
+      itemsProfit += (netUnitSelling - unitCost) * qty;
+    });
+    if (registeredCount === 0) return 0;
+    const subtotalVal = Number(doc.subtotal) || 0;
+    const rawDiscount = Number(doc.discount) || 0;
+    const itemDiscountsSum = doc.items.reduce(
+      (s, it) => s + (Number(it.sellingPrice) || 0) * ((Number(it.discount) || 0) / 100) * (Number(it.quantity) || 0),
+      0
+    );
+    const extraFlatDiscount = Math.max(0, rawDiscount - itemDiscountsSum);
+    return itemsProfit - (subtotalVal > 0 ? extraFlatDiscount : 0);
+  };
+
   // Filtered documents
   const filteredDocs = documents.filter(d => {
     const matchesType = d.docType === activeType;
@@ -125,35 +199,58 @@ export default function CommercialDocuments({
       (d.customerPhone && d.customerPhone.includes(s)) ||
       (d.notes && d.notes.toLowerCase().includes(s));
     const matchesStatus = statusFilter === 'all' || d.status === statusFilter;
-    return matchesType && matchesSearch && matchesStatus;
+
+    let matchesDate = true;
+    if (selectedMonth || fromDate || toDate) {
+      if (d.date) {
+        const docDate = new Date(d.date);
+        const ts = docDate.getTime();
+        if (selectedMonth && !isNaN(ts)) {
+          const ym = `${docDate.getFullYear()}-${String(docDate.getMonth() + 1).padStart(2, '0')}`;
+          if (ym !== selectedMonth) matchesDate = false;
+        }
+        if (fromDate) {
+          const start = new Date(`${fromDate}T00:00:00`).getTime();
+          if (ts < start) matchesDate = false;
+        }
+        if (toDate) {
+          const end = new Date(`${toDate}T23:59:59.999`).getTime();
+          if (ts > end) matchesDate = false;
+        }
+      } else {
+        matchesDate = false;
+      }
+    }
+
+    return matchesType && matchesSearch && matchesStatus && matchesDate;
   });
 
   const getStatusBadge = (status: CommercialDocStatus) => {
     switch (status) {
       case 'draft':
         return (
-          <span className="inline-flex items-center gap-1 px-2.5 py-0.5 rounded-full text-xs font-bold bg-slate-100 text-slate-700 border border-slate-200">
+          <span className="inline-flex items-center gap-1 px-2.5 py-0.5 rounded-full text-xs font-bold bg-slate-100 text-slate-700 border border-slate-200 whitespace-nowrap">
             <span className="w-1.5 h-1.5 rounded-full bg-slate-400"></span>
             {lang === 'ar' ? 'مسودة' : 'Brouillon'}
           </span>
         );
       case 'validated':
         return (
-          <span className="inline-flex items-center gap-1 px-2.5 py-0.5 rounded-full text-xs font-bold bg-blue-50 text-blue-700 border border-blue-200">
+          <span className="inline-flex items-center gap-1 px-2.5 py-0.5 rounded-full text-xs font-bold bg-blue-50 text-blue-700 border border-blue-200 whitespace-nowrap">
             <span className="w-1.5 h-1.5 rounded-full bg-blue-500"></span>
             {lang === 'ar' ? 'مؤكد / ساري' : 'Validé'}
           </span>
         );
       case 'converted':
         return (
-          <span className="inline-flex items-center gap-1 px-2.5 py-0.5 rounded-full text-xs font-bold bg-emerald-50 text-emerald-700 border border-emerald-200">
+          <span className="inline-flex items-center gap-1 px-2.5 py-0.5 rounded-full text-xs font-bold bg-emerald-50 text-emerald-700 border border-emerald-200 whitespace-nowrap">
             <span className="w-1.5 h-1.5 rounded-full bg-emerald-500"></span>
             {lang === 'ar' ? 'تم التحويل' : 'Converti'}
           </span>
         );
       case 'cancelled':
         return (
-          <span className="inline-flex items-center gap-1 px-2.5 py-0.5 rounded-full text-xs font-bold bg-rose-50 text-rose-700 border border-rose-200">
+          <span className="inline-flex items-center gap-1 px-2.5 py-0.5 rounded-full text-xs font-bold bg-rose-50 text-rose-700 border border-rose-200 whitespace-nowrap">
             <span className="w-1.5 h-1.5 rounded-full bg-rose-500"></span>
             {lang === 'ar' ? 'ملغى' : 'Annulé'}
           </span>
@@ -165,6 +262,7 @@ export default function CommercialDocuments({
   const handleOpenCreate = () => {
     setIsCreating(true);
     setEditingDoc(null);
+    setFormPricingMode('wholesale');
     setFormCustomerId('');
     setFormCustomerName('');
     setFormCustomerPhone('');
@@ -182,13 +280,27 @@ export default function CommercialDocuments({
       total: 0
     }]);
     setFormDiscount('0');
+    setFormPreviousBalance('');
     setFormNotes('');
+    setFormPaymentMethod('cash');
+    setFormAmountPaid('');
   };
+
+  useEffect(() => {
+    if (autoOpenCreateTrigger > 0) {
+      setActiveType('facture');
+      handleOpenCreate();
+    } else {
+      setIsCreating(false);
+      setEditingDoc(null);
+    }
+  }, [autoOpenCreateTrigger]);
 
   // Open Edit Form
   const handleOpenEdit = (doc: CommercialDocument) => {
     setEditingDoc(doc);
     setIsCreating(false);
+    setFormPricingMode(doc.pricingMode === 'retail' || doc.isWholesale === false ? 'retail' : 'wholesale');
     setFormCustomerId(doc.customerId);
     setFormCustomerName(doc.customerName);
     setFormCustomerPhone(doc.customerPhone || '');
@@ -206,7 +318,10 @@ export default function CommercialDocuments({
       total: 0
     }]);
     setFormDiscount(doc.discount ? String(doc.discount) : '0');
+    setFormPreviousBalance(doc.previousBalance ? String(doc.previousBalance) : '');
     setFormNotes(doc.notes || '');
+    setFormPaymentMethod(doc.paymentMethod || (doc.amountPaid !== undefined && doc.amountPaid < doc.total ? 'debt' : 'cash'));
+    setFormAmountPaid(doc.amountPaid !== undefined ? String(doc.amountPaid) : '');
   };
 
   const handleSelectCustomer = (cId: string) => {
@@ -218,56 +333,48 @@ export default function CommercialDocuments({
     }
   };
 
-  // Add Item to form
+  // Add Item to form (Always placed at the TOP of the list so the user can edit it immediately)
   const handleAddProductToForm = (prod: Product) => {
-    // If only one empty row exists, overwrite it
-    if (formItems.length === 1 && !formItems[0].productId && !formItems[0].productName && formItems[0].sellingPrice === 0) {
-      setFormItems([{
-        productId: prod.id,
-        productName: prod.name,
-        sellingPrice: prod.sellingPrice,
-        purchasePrice: prod.purchasePrice || 0,
-        quantity: 1,
-        discount: 0,
-        tax: 0,
-        total: prod.sellingPrice
-      }]);
+    const modePrice = getProductPriceByMode(prod, formPricingMode);
+    const existingIndex = formItems.findIndex(i => i.productId === prod.id);
+    if (existingIndex >= 0) {
+      const existing = formItems[existingIndex];
+      const nextQty = parseDecimal(existing.quantity, 1) + 1;
+      const unit = parseDecimal(existing.sellingPrice, modePrice);
+      const disc = parseDecimal(existing.discount, 0);
+      const updatedItem = {
+        ...existing,
+        quantity: Number.isInteger(nextQty) ? nextQty : Number(nextQty.toFixed(3)),
+        total: (unit - (unit * disc / 100)) * nextQty
+      };
+      setFormItems([updatedItem, ...formItems.filter((_, idx) => idx !== existingIndex)]);
       setProductSearch('');
       setShowProductDropdown(false);
       return;
     }
 
-    const existingIndex = formItems.findIndex(i => i.productId === prod.id);
-    if (existingIndex >= 0) {
-      const updated = [...formItems];
-      updated[existingIndex].quantity += 1;
-      const unit = updated[existingIndex].sellingPrice;
-      const disc = updated[existingIndex].discount;
-      updated[existingIndex].total = (unit - (unit * disc / 100)) * updated[existingIndex].quantity;
-      setFormItems(updated);
-    } else {
-      const unit = prod.sellingPrice;
-      setFormItems([
-        ...formItems,
-        {
-          productId: prod.id,
-          productName: prod.name,
-          sellingPrice: unit,
-          purchasePrice: prod.purchasePrice || 0,
-          quantity: 1,
-          discount: 0,
-          tax: 0,
-          total: unit
-        }
-      ]);
-    }
+    const newItemRow = {
+      productId: prod.id,
+      productName: prod.name,
+      sellingPrice: modePrice,
+      purchasePrice: prod.purchasePrice || 0,
+      quantity: 1,
+      discount: 0,
+      tax: 0,
+      total: modePrice
+    };
+
+    // Remove any completely blank placeholder row when adding a real product, and put new product at top
+    const nonEmptyRows = formItems.filter(
+      i => Boolean(i.productId || i.productName.trim() || parseDecimal(i.sellingPrice, 0) > 0)
+    );
+    setFormItems([newItemRow, ...nonEmptyRows]);
     setProductSearch('');
     setShowProductDropdown(false);
   };
 
   const handleAddCustomItem = () => {
     setFormItems(prev => [
-      ...prev,
       {
         productId: '',
         productName: '',
@@ -277,7 +384,8 @@ export default function CommercialDocuments({
         discount: 0,
         tax: 0,
         total: 0
-      }
+      },
+      ...prev
     ]);
   };
 
@@ -318,14 +426,23 @@ export default function CommercialDocuments({
     if (field === 'productId') {
       const prod = products.find(p => p.id === val);
       if (prod) {
-        updated[idx] = {
+        const modePrice = getProductPriceByMode(prod, formPricingMode);
+        const curQty = parseDecimal(updated[idx].quantity, 1);
+        const curDisc = parseDecimal(updated[idx].discount, 0);
+        const updatedRow = {
           ...updated[idx],
           productId: prod.id,
           productName: prod.name,
-          sellingPrice: prod.sellingPrice,
+          sellingPrice: modePrice,
           purchasePrice: prod.purchasePrice || 0,
-          total: (prod.sellingPrice - (prod.sellingPrice * (updated[idx].discount || 0) / 100)) * (updated[idx].quantity || 1)
+          total: (modePrice - (modePrice * curDisc / 100)) * curQty
         };
+        updated[idx] = updatedRow;
+        // Move selected product row to the top so it stays at the top
+        if (idx > 0) {
+          setFormItems([updatedRow, ...updated.filter((_, i) => i !== idx)]);
+          return;
+        }
       } else {
         updated[idx] = {
           ...updated[idx],
@@ -341,9 +458,9 @@ export default function CommercialDocuments({
     }
 
     const item = { ...updated[idx], [field]: val };
-    const price = parseDecimal(item.sellingPrice);
-    const qty = Number(item.quantity) || 1;
-    const disc = parseDecimal(item.discount);
+    const price = parseDecimal(item.sellingPrice, 0);
+    const qty = parseDecimal(item.quantity, 0);
+    const disc = parseDecimal(item.discount, 0);
     item.total = (price - (price * disc / 100)) * qty;
     updated[idx] = item;
     setFormItems(updated);
@@ -371,13 +488,15 @@ export default function CommercialDocuments({
   };
 
   // Calculation totals
-  const subtotal = formItems.reduce((sum, item) => sum + (item.sellingPrice * item.quantity), 0);
-  const itemDiscounts = formItems.reduce((sum, item) => sum + (item.sellingPrice * (item.discount / 100) * item.quantity), 0);
+  const subtotal = formItems.reduce((sum, item) => sum + (parseDecimal(item.sellingPrice, 0) * parseDecimal(item.quantity, 0)), 0);
+  const itemDiscounts = formItems.reduce((sum, item) => sum + (parseDecimal(item.sellingPrice, 0) * (parseDecimal(item.discount, 0) / 100) * parseDecimal(item.quantity, 0)), 0);
   const totalDiscount = itemDiscounts + parseDecimal(formDiscount, 0);
   const taxRate = config.taxRate || 0;
   const taxableTotal = Math.max(0, subtotal - totalDiscount);
   const totalTax = (taxableTotal * taxRate) / 100;
   const netTotal = taxableTotal + totalTax;
+  const previousBalanceAmount = activeType === 'facture' ? Math.max(0, parseDecimal(formPreviousBalance, 0)) : 0;
+  const grandTotalWithPrevious = netTotal + previousBalanceAmount;
 
   // Submit form (Save / Update)
   const handleSubmitForm = (e: React.FormEvent) => {
@@ -386,13 +505,45 @@ export default function CommercialDocuments({
       alert(lang === 'ar' ? 'الرجاء إدخال اسم الزبون' : 'Veuillez saisir le nom du client');
       return;
     }
-    if (formItems.length === 0) {
+
+    const validItems = formItems
+      .map((it) => {
+        const matchedProd = it.productId
+          ? products.find((p) => p.id === it.productId)
+          : undefined;
+        const defaultProdPrice = matchedProd ? getProductPriceByMode(matchedProd, formPricingMode) : 0;
+        const numPrice = parseDecimal(it.sellingPrice, defaultProdPrice);
+        const numQty = parseDecimal(it.quantity, 1);
+        const numDisc = parseDecimal(it.discount, 0);
+        return {
+          ...it,
+          productId: matchedProd ? matchedProd.id : '',
+          productName: it.productName.trim() || matchedProd?.name || '',
+          sellingPrice: numPrice,
+          purchasePrice: matchedProd ? Number(it.purchasePrice || matchedProd.purchasePrice || 0) : 0,
+          quantity: numQty > 0 ? numQty : 1,
+          discount: numDisc,
+          total: (numPrice - (numPrice * numDisc / 100)) * (numQty > 0 ? numQty : 1)
+        };
+      })
+      .filter((it) => it.productId || it.productName.trim());
+
+    if (validItems.length === 0) {
       alert(lang === 'ar' ? 'الرجاء إضافة عنصر واحد على الأقل' : 'Veuillez ajouter au moins un article');
       return;
     }
 
     const docId = editingDoc ? editingDoc.id : `doc_${Date.now()}_${Math.random().toString(36).slice(2, 6)}`;
     const docNumber = editingDoc ? editingDoc.docNumber : generateNextDocNumber(activeType);
+
+    const resolvedAmountPaid =
+      activeType === 'facture'
+        ? formPaymentMethod === 'debt'
+          ? Math.min(netTotal, Math.max(0, parseDecimal(formAmountPaid, 0)))
+          : formAmountPaid.trim() !== ''
+          ? Math.min(netTotal, Math.max(0, parseDecimal(formAmountPaid, netTotal)))
+          : netTotal
+        : netTotal;
 
     const newDoc: CommercialDocument = {
       id: docId,
@@ -404,21 +555,34 @@ export default function CommercialDocuments({
       customerName: formCustomerName,
       customerPhone: formCustomerPhone,
       customerAddress: formCustomerAddress,
-      items: formItems,
+      items: validItems,
       subtotal,
       discount: totalDiscount,
       tax: totalTax,
       total: netTotal,
+      previousBalance: previousBalanceAmount > 0 ? previousBalanceAmount : undefined,
+      amountPaid: resolvedAmountPaid,
+      paymentMethod: activeType === 'facture' ? formPaymentMethod : 'cash',
       status: editingDoc ? editingDoc.status : 'validated',
       notes: formNotes,
       convertedTo: editingDoc?.convertedTo,
-      convertedFrom: editingDoc?.convertedFrom
+      convertedFrom: editingDoc?.convertedFrom,
+      isWholesale: formPricingMode === 'wholesale',
+      pricingMode: formPricingMode
     };
 
     onSaveDocument(newDoc);
     setIsCreating(false);
     setEditingDoc(null);
-    showToast(lang === 'ar' ? `تم حفظ ${getDocTypeLabel(activeType)} رقم ${docNumber} بنجاح` : `${getDocTypeLabel(activeType)} enregistré avec succès`);
+    if (activeType === 'facture') {
+      showToast(
+        lang === 'ar'
+          ? `🎉 تم حفظ الفاتورة الرسمية رقم ${docNumber}، وخصم المخزون، وإدراجها في الإحصائيات وسجل الفواتير!`
+          : `🎉 Facture officielle ${docNumber} enregistrée, stock déduit et statistiques mises à jour!`
+      );
+    } else {
+      showToast(lang === 'ar' ? `تم حفظ ${getDocTypeLabel(activeType)} رقم ${docNumber} بنجاح` : `${getDocTypeLabel(activeType)} enregistré avec succès`);
+    }
   };
 
   // Conversions Logic:
@@ -495,7 +659,7 @@ export default function CommercialDocuments({
     showToast(lang === 'ar' ? `تم تحويل الوثيقة بنجاح إلى Bon de livraison رقم ${nextNumber}` : `Converti avec succès en Bon de Livraison ${nextNumber}`);
   };
 
-  // 3. Convert to Facture (Creates commercial doc + triggers system invoice)
+  // 3. Convert to Facture (Creates commercial doc + automatically syncs system invoice, stock, and stats)
   const handleConvertToFacture = (sourceDoc: CommercialDocument) => {
     const nextNumber = generateNextDocNumber('facture');
     const newDoc: CommercialDocument = {
@@ -504,6 +668,8 @@ export default function CommercialDocuments({
       docType: 'facture',
       docNumber: nextNumber,
       date: new Date().toISOString(),
+      amountPaid: sourceDoc.total,
+      paymentMethod: 'cash',
       status: 'validated',
       notes: `${sourceDoc.notes || ''} (محول من ${getDocTypeLabel(sourceDoc.docType)}: ${sourceDoc.docNumber})`,
       convertedFrom: {
@@ -525,68 +691,74 @@ export default function CommercialDocuments({
 
     onSaveDocument(newDoc);
     onSaveDocument(updatedSource);
-
-    // Also trigger system invoice so it enters sales stats, customer ledger, debt
     onConvertToInvoice(newDoc);
+    setActiveType('facture');
     setViewingDoc(newDoc);
-    showToast(lang === 'ar' ? `🎉 تم تحويل الوثيقة إلى فاتورة رسمية رقم ${nextNumber} وإضافتها للمبيعات!` : `🎉 Converti avec succès en Facture ${nextNumber}!`);
+    showToast(
+      lang === 'ar'
+        ? `🎉 تم تحويل الوثيقة إلى فاتورة رسمية رقم ${nextNumber}، وخصم المخزون، وإضافتها للإحصائيات!`
+        : `🎉 Converti avec succès en Facture ${nextNumber}, stock déduit et ajouté aux statistiques!`
+    );
   };
 
-  const triggerPrint = () => {
-    if (!viewingDoc) return;
+  const buildDocPdfMeta = (doc: CommercialDocument) => {
+    const subtotalVal = Number(doc.subtotal || 0);
+    const discVal = Number(doc.discount || 0);
+    const taxVal = Number(doc.tax || 0);
+    const totalVal = Number(doc.total || 0);
+    const prevBalVal = Number(doc.previousBalance || 0);
+    return {
+      title: getDocTypeLabel(doc.docType),
+      docNumber: doc.docNumber,
+      date: doc.date ? new Date(doc.date).toLocaleDateString('fr-FR') : '',
+      storeName: config.name || 'المتجر',
+      storePhone: config.phone,
+      storeEmail: config.email,
+      storeAddress: config.address,
+      storeRegNumber: config.registrationNumber,
+      customerLabel: lang === 'ar' ? 'الزبون' : 'Client',
+      customerName: doc.customerName,
+      customerPhone: doc.customerPhone,
+      currency: config.currency,
+      mode: 'a4' as const,
+      isRTL,
+      items: doc.items.map(it => ({
+        name: it.productName,
+        quantity: it.quantity,
+        unitPrice: Number(it.sellingPrice || 0),
+        discount: it.discount,
+        total: Number(it.total || 0)
+      })),
+      subtotal: subtotalVal,
+      discount: discVal,
+      tax: taxVal,
+      total: totalVal,
+      previousBalance: prevBalVal,
+      notes: doc.notes,
+      footerText: t.invoice.thankYou
+    };
+  };
+
+  const handleExportDocPdf = async (doc: CommercialDocument) => {
+    await exportStructuredPdf(buildDocPdfMeta(doc));
+  };
+
+  const triggerPrint = (targetDoc?: CommercialDocument) => {
+    const doc = targetDoc || viewingDoc;
+    if (!doc) return;
     const printArea = document.getElementById('printable-commercial-doc');
-    if (!printArea) {
-      window.print();
-      return;
-    }
-    const printWin = window.open('', '_blank', 'width=900,height=800');
-    if (!printWin) {
-      window.print();
-      return;
-    }
-    printWin.document.write(`
-      <!DOCTYPE html>
-      <html dir="${isRTL ? 'rtl' : 'ltr'}">
-        <head>
-          <meta charset="utf-8">
-          <title>${viewingDoc.docNumber} - ${config.name || 'Commercial Document'}</title>
-          <style>
-            @page { size: A4; margin: 15mm; }
-            * { box-sizing: border-box; }
-            body {
-              font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, 'Cairo', 'Tajawal', sans-serif;
-              color: #1e293b;
-              margin: 0;
-              padding: 20px;
-              font-size: 13px;
-              direction: ${isRTL ? 'rtl' : 'ltr'};
-            }
-            table { width: 100%; border-collapse: collapse; margin-top: 15px; }
-            th, td { border: 1px solid #cbd5e1; padding: 8px 10px; }
-            th { background-color: #f1f5f9; font-weight: 800; }
-            .text-center { text-align: center; }
-            .text-end { text-align: end; }
-            .text-start { text-align: start; }
-            .font-bold { font-weight: 700; }
-            .font-black { font-weight: 900; }
-            .font-mono { font-family: monospace; }
-            img { max-height: 50px; }
-            @media print {
-              body { padding: 0; }
-            }
-          </style>
-        </head>
-        <body>
-          ${printArea.innerHTML}
-        </body>
-      </html>
-    `);
-    printWin.document.close();
-    printWin.focus();
-    setTimeout(() => {
-      printWin.print();
-      printWin.close();
-    }, 450);
+    const bodyHtml = printArea
+      ? `<div style="font-family: -apple-system, BlinkMacSystemFont, 'Cairo', 'Tajawal', sans-serif; color: #1e293b; font-size: 13px; direction: ${isRTL ? 'rtl' : 'ltr'};">${printArea.innerHTML}</div>`
+      : '';
+    printHtmlContent(
+      {
+        title: `${doc.docNumber} - ${config.name || 'Commercial Document'}`,
+        html: bodyHtml || `<h2>${doc.docNumber}</h2>`,
+        isRTL,
+        mode: 'a4'
+      },
+      buildDocPdfMeta(doc)
+    );
   };
 
   // Full-page Creation & Editing View (Identical to PurchaseEntry / Purchase Invoice)
@@ -674,8 +846,8 @@ export default function CommercialDocuments({
         )}
 
         {/* 1. Header Bar with Client Selection & Date & Doc Number */}
-        <div className="bg-white p-5 rounded-3xl border border-slate-100 shadow-xs space-y-4">
-          <div className={`flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4 ${isRTL ? 'flex-row-reverse' : ''}`}>
+        <div className="bg-white p-4 sm:p-5 rounded-3xl border border-slate-100 shadow-xs space-y-4">
+          <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4">
             <div className="flex items-center gap-3.5">
               <div className={`w-11 h-11 rounded-2xl ${visuals.iconBg} flex items-center justify-center shrink-0 shadow-2xs`}>
                 <IconComponent className="w-5 h-5" />
@@ -701,7 +873,7 @@ export default function CommercialDocuments({
             <button
               type="button"
               onClick={() => { setIsCreating(false); setEditingDoc(null); }}
-              className="px-3.5 py-2 bg-slate-50 hover:bg-slate-100 text-slate-700 text-xs font-bold rounded-xl border border-slate-200 transition cursor-pointer flex items-center gap-2 shrink-0 shadow-2xs"
+              className="w-full sm:w-auto justify-center px-3.5 py-2 bg-slate-50 hover:bg-slate-100 text-slate-700 text-xs font-bold rounded-xl border border-slate-200 transition cursor-pointer flex items-center gap-2 shrink-0 shadow-2xs"
             >
               <ClipboardList className="w-4 h-4 text-indigo-600" />
               <span>{lang === 'ar' ? 'سجل الوثائق التجارية' : 'Registre des documents'}</span>
@@ -712,7 +884,7 @@ export default function CommercialDocuments({
           {/* Integrated Client Selector & Info */}
           <div className="pt-3 border-t border-slate-100 space-y-3">
             <div className="grid grid-cols-1 sm:grid-cols-12 gap-3 items-center">
-              {/* Client Dropdown */}
+              {/* Client Dropdown - Name ONLY as requested */}
               <div className="sm:col-span-5 flex items-center gap-2">
                 <User className="w-4 h-4 text-indigo-600 shrink-0" />
                 <div className="flex-1">
@@ -725,7 +897,7 @@ export default function CommercialDocuments({
                     <option value="">-- {lang === 'ar' ? 'اختر زبون من القائمة (أو زبون عابر)' : 'Client libre / Saisie manuelle'} --</option>
                     {customers.map(c => (
                       <option key={c.id} value={c.id}>
-                        {c.name} {c.phone ? `(${c.phone})` : ''} {c.debt > 0 ? `[${lang === 'ar' ? 'دين' : 'Dette'}: ${c.debt.toFixed(0)} ${config.currency}]` : ''}
+                        {c.name}
                       </option>
                     ))}
                   </select>
@@ -796,30 +968,75 @@ export default function CommercialDocuments({
             </div>
 
             {selectedCust && selectedCust.debt > 0 && (
-              <div className="px-3 py-1.5 bg-rose-50 border border-rose-100 rounded-xl text-xs font-bold text-rose-700 flex items-center gap-2">
-                <AlertCircle className="w-3.5 h-3.5 shrink-0" />
-                <span>{lang === 'ar' ? `تنبيه: هذا الزبون لديه ديون سابقة معلقة بقيمة ${selectedCust.debt.toFixed(2)} ${config.currency}` : `Dette en cours: ${selectedCust.debt.toFixed(2)} ${config.currency}`}</span>
+              <div className="px-3 py-2 bg-rose-50 border border-rose-200 rounded-xl text-xs font-bold text-rose-700 flex flex-wrap items-center justify-between gap-2">
+                <div className="flex items-center gap-2">
+                  <AlertCircle className="w-3.5 h-3.5 shrink-0" />
+                  <span>{lang === 'ar' ? `تنبيه: هذا الزبون لديه ديون سابقة معلقة بقيمة ${selectedCust.debt.toFixed(2)} ${config.currency}` : `Dette en cours: ${selectedCust.debt.toFixed(2)} ${config.currency}`}</span>
+                </div>
+                {activeType === 'facture' && (
+                  <button
+                    type="button"
+                    onClick={() => setFormPreviousBalance(selectedCust.debt.toFixed(2))}
+                    className="px-2.5 py-1 bg-amber-500 hover:bg-amber-600 text-white rounded-lg text-[11px] font-black transition cursor-pointer shadow-2xs"
+                  >
+                    {lang === 'ar' ? '+ إضافة للفاتورة ككريدي قديم' : '+ Ajouter comme ancien crédit'}
+                  </button>
+                )}
               </div>
             )}
+
+            {/* Wholesale vs Retail/Installment Pricing Mode Toggle (Wholesale is Default) */}
+            <div className="pt-2.5 border-t border-slate-100 flex flex-wrap items-center justify-between gap-3 bg-indigo-50/40 px-3 py-2 rounded-2xl border border-indigo-100/80">
+              <div className="flex items-center gap-2">
+                <ShoppingCart className="w-4 h-4 text-indigo-600 shrink-0" />
+                <span className="text-xs font-black text-slate-800">
+                  {lang === 'ar' ? 'خيار البيع (بالجملة / بالتقسيط):' : 'Mode de vente (Gros / Détail):'}
+                </span>
+              </div>
+              <div className="inline-flex items-center bg-white p-1 rounded-xl border border-slate-200 shadow-2xs gap-1.5">
+                <button
+                  type="button"
+                  onClick={() => handleSwitchPricingMode('wholesale')}
+                  className={`px-4 py-1.5 rounded-lg text-xs font-black transition cursor-pointer flex items-center gap-1.5 ${
+                    formPricingMode === 'wholesale'
+                      ? 'bg-amber-500 text-white shadow-xs'
+                      : 'text-slate-600 hover:text-amber-700 hover:bg-amber-50'
+                  }`}
+                >
+                  <span>{lang === 'ar' ? 'البيع بالجملة (الافتراضي)' : 'Vente en Gros (Par défaut)'}</span>
+                </button>
+                <button
+                  type="button"
+                  onClick={() => handleSwitchPricingMode('retail')}
+                  className={`px-4 py-1.5 rounded-lg text-xs font-black transition cursor-pointer flex items-center gap-1.5 ${
+                    formPricingMode === 'retail'
+                      ? 'bg-purple-600 text-white shadow-xs'
+                      : 'text-slate-600 hover:text-purple-700 hover:bg-purple-50'
+                  }`}
+                >
+                  <span>{lang === 'ar' ? 'البيع بالتقسيط' : 'Vente au Détail / Facilité'}</span>
+                </button>
+              </div>
+            </div>
           </div>
         </div>
 
         {/* Main Document Form */}
         <form onSubmit={handleSubmitForm} className="space-y-6">
           {/* 2. Quick Barcode / Product Search Card (Placed ABOVE Items Table as in PurchaseEntry) */}
-          <div className="bg-white p-5 rounded-3xl border border-slate-100 shadow-xs space-y-3 relative">
-            <div className="flex justify-between items-center">
+          <div className="bg-white p-4 sm:p-5 rounded-3xl border border-slate-100 shadow-xs space-y-3 relative">
+            <div className="flex flex-wrap justify-between items-center gap-2">
               <label className="text-xs font-black text-slate-700 flex items-center gap-1.5">
-                <Search className="w-4 h-4 text-indigo-600" />
-                <span>{lang === 'ar' ? '🔍 مسح الباركود أو البحث السريع لإضافة منتج للجدول أدناه' : '🔍 Scan SKU or Search to Add Product to Table Below'}</span>
+                <Search className="w-4 h-4 text-indigo-600 shrink-0" />
+                <span>{lang === 'ar' ? '🔍 مسح الباركود أو البحث السريع لإضافة منتج للجدول أدناه (يُضاف في الأعلى)' : '🔍 Scan SKU or Search to Add Product to Table Below'}</span>
               </label>
               <button
                 type="button"
                 onClick={handleAddCustomItem}
-                className="text-[11px] font-bold text-indigo-600 hover:text-indigo-800 transition cursor-pointer flex items-center gap-1"
+                className="text-[11px] font-bold text-indigo-600 hover:text-indigo-800 transition cursor-pointer flex items-center gap-1 whitespace-nowrap shrink-0"
               >
-                <Plus className="w-3.5 h-3.5" />
-                <span>{lang === 'ar' ? 'إضافة سطر صنف مخصص' : 'Ajouter ligne personnalisée'}</span>
+                <Plus className="w-3.5 h-3.5 shrink-0" />
+                <span>{lang === 'ar' ? 'إضافة سطر مادة (منتج غير مسجل - لا يدخل في الأرباح)' : 'Ajouter ligne non enregistrée (hors bénéfice)'}</span>
               </button>
             </div>
 
@@ -829,14 +1046,14 @@ export default function CommercialDocuments({
               </span>
               <input
                 type="text"
-                placeholder={lang === 'ar' ? 'اكتب اسم المنتج أو امسح الباركود (SKU) للإضافة المباشرة...' : 'Type product name or scan SKU...'}
+                placeholder={lang === 'ar' ? 'اكتب اسم المنتج أو امسح الباركود (SKU) للإضافة المباشرة في الأعلى...' : 'Type product name or scan SKU...'}
                 value={productSearch}
                 onChange={(e) => {
                   setProductSearch(e.target.value);
                   setShowProductDropdown(true);
                 }}
                 onFocus={() => setShowProductDropdown(true)}
-                className={`w-full py-2.5 ${isRTL ? 'pr-9 pl-8' : 'pl-9 pr-8'} bg-slate-50 border border-slate-200 rounded-xl text-xs font-bold text-slate-800 placeholder-slate-400 focus:outline-none focus:ring-2 focus:ring-indigo-500 focus:bg-white transition`}
+                className={`w-full py-3 ${isRTL ? 'pr-10 pl-9' : 'pl-10 pr-9'} bg-slate-50 border border-slate-300 rounded-xl text-sm font-extrabold text-slate-900 placeholder-slate-500 focus:outline-none focus:ring-2 focus:ring-indigo-500 focus:bg-white transition`}
               />
               {productSearch && (
                 <button
@@ -845,7 +1062,7 @@ export default function CommercialDocuments({
                     setProductSearch('');
                     setShowProductDropdown(false);
                   }}
-                  className={`absolute inset-y-0 ${isRTL ? 'left-3' : 'right-3'} flex items-center text-slate-400 hover:text-slate-600`}
+                  className={`absolute inset-y-0 ${isRTL ? 'left-3' : 'right-3'} flex items-center text-slate-500 hover:text-slate-800`}
                 >
                   <X className="w-4 h-4" />
                 </button>
@@ -854,104 +1071,286 @@ export default function CommercialDocuments({
 
             {/* Instant Search Dropdown */}
             {showProductDropdown && productSearch.trim().length > 0 && (
-              <div className="absolute z-30 top-full left-5 right-5 mt-1 bg-white rounded-2xl shadow-xl border border-slate-200 overflow-hidden max-h-56 overflow-y-auto animate-fade-in">
+              <div className="absolute z-30 top-full left-5 right-5 mt-1 bg-white rounded-2xl shadow-2xl border-2 border-indigo-200 overflow-hidden max-h-64 overflow-y-auto animate-fade-in divide-y divide-slate-100">
                 {products
                   .filter(p => p.name.toLowerCase().includes(productSearch.toLowerCase()) || (p.sku && p.sku.toLowerCase().includes(productSearch.toLowerCase())))
                   .slice(0, 10)
-                  .map((p) => (
-                    <button
-                      key={p.id}
-                      type="button"
-                      onClick={() => handleAddProductToForm(p)}
-                      className="w-full px-4 py-2.5 hover:bg-indigo-50/70 flex items-center justify-between text-start transition cursor-pointer"
-                    >
-                      <div>
-                        <span className="font-bold text-xs text-slate-800 block">{p.name}</span>
-                        <div className="flex items-center gap-2 text-[10px] text-slate-400 font-mono mt-0.5">
-                          <span>SKU: {p.sku || 'N/A'}</span>
-                          {p.category && <span>• {p.category}</span>}
-                          <span className="text-slate-600 font-semibold">• {lang === 'ar' ? `المخزون المتوفر: ${p.stock}` : `Stock: ${p.stock}`}</span>
+                  .map((p) => {
+                    const activeProdPrice = getProductPriceByMode(p, formPricingMode);
+                    return (
+                      <button
+                        key={p.id}
+                        type="button"
+                        onClick={() => handleAddProductToForm(p)}
+                        className="w-full px-4 py-3 hover:bg-indigo-50 flex items-center justify-between text-start transition cursor-pointer"
+                      >
+                        <div className="space-y-1">
+                          <span className="font-black text-sm text-slate-900 block">{p.name}</span>
+                          <div className="flex flex-wrap items-center gap-2 text-xs font-extrabold text-slate-700 mt-0.5">
+                            <span className="bg-slate-100 text-slate-800 px-2 py-0.5 rounded-md font-mono font-bold">SKU: {p.sku || 'N/A'}</span>
+                            {p.category && <span className="text-slate-700 font-bold">• {p.category}</span>}
+                            <span className={`px-2 py-0.5 rounded-md font-extrabold ${p.stock <= 0 ? 'bg-rose-50 text-rose-700' : 'bg-emerald-50 text-emerald-700'}`}>
+                              {lang === 'ar' ? `المخزون المتوفر: ${p.stock}` : `Stock: ${p.stock}`}
+                            </span>
+                          </div>
                         </div>
-                      </div>
-                      <div className="text-end">
-                        <span className="font-mono font-bold text-xs text-indigo-600">{p.sellingPrice.toFixed(2)} {config.currency}</span>
-                        <span className="block text-[9px] text-slate-400 font-semibold">{lang === 'ar' ? 'سعر البيع' : 'Prix de vente'}</span>
-                      </div>
-                    </button>
-                  ))}
+                        <div className="text-end shrink-0 ms-3">
+                          <span className="font-mono font-black text-sm text-indigo-700 block">{activeProdPrice.toFixed(2)} {config.currency}</span>
+                          <span className="block text-[11px] text-slate-600 font-extrabold">
+                            {formPricingMode === 'wholesale'
+                              ? (lang === 'ar' ? 'سعر الجملة' : 'Prix de gros')
+                              : (lang === 'ar' ? 'سعر التقسيط' : 'Prix détail')}
+                          </span>
+                        </div>
+                      </button>
+                    );
+                  })}
               </div>
             )}
           </div>
 
           {/* 3. Items Table Card */}
-          <div className="bg-white p-6 rounded-3xl border border-slate-100 shadow-xs space-y-4">
-            <div className="flex justify-between items-center">
-              <h2 className="text-sm font-black text-slate-800 flex items-center gap-2">
-                <span>{lang === 'ar' ? 'قائمة المواد والأسعار' : 'Articles & Prestations'}</span>
-                <span className="px-2.5 py-0.5 bg-indigo-50 text-indigo-700 text-xs font-bold rounded-full border border-indigo-100">
-                  {formItems.length} {lang === 'ar' ? 'مواد' : 'items'}
-                </span>
-              </h2>
+          <div className="bg-white p-4 sm:p-6 rounded-3xl border border-slate-100 shadow-xs space-y-4">
+            <div className="flex flex-wrap justify-between items-center gap-2.5">
+              <div className="flex items-center gap-2 flex-wrap">
+                <h2 className="text-sm font-black text-slate-800 flex items-center gap-2">
+                  <span>{lang === 'ar' ? 'قائمة المواد والأسعار' : 'Articles & Prestations'}</span>
+                  <span className="px-2.5 py-0.5 bg-indigo-50 text-indigo-700 text-xs font-bold rounded-full border border-indigo-100 whitespace-nowrap shrink-0">
+                    {formItems.length} {lang === 'ar' ? 'مواد' : 'items'}
+                  </span>
+                </h2>
+                <div className="inline-flex items-center bg-slate-100 p-0.5 rounded-xl border border-slate-200 gap-1">
+                  <button
+                    type="button"
+                    onClick={() => handleSwitchPricingMode('wholesale')}
+                    className={`px-2.5 py-1 rounded-lg text-[11px] font-black transition cursor-pointer ${
+                      formPricingMode === 'wholesale'
+                        ? 'bg-amber-500 text-white shadow-2xs'
+                        : 'text-slate-600 hover:text-amber-700'
+                    }`}
+                  >
+                    {lang === 'ar' ? 'بيع بالجملة' : 'Gros'}
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => handleSwitchPricingMode('retail')}
+                    className={`px-2.5 py-1 rounded-lg text-[11px] font-black transition cursor-pointer ${
+                      formPricingMode === 'retail'
+                        ? 'bg-purple-600 text-white shadow-2xs'
+                        : 'text-slate-600 hover:text-purple-700'
+                    }`}
+                  >
+                    {lang === 'ar' ? 'بيع بالتقسيط' : 'Détail'}
+                  </button>
+                </div>
+              </div>
               <button
                 type="button"
                 onClick={handleAddCustomItem}
-                className="px-3.5 py-1.5 bg-indigo-600 hover:bg-indigo-700 text-white text-xs font-bold rounded-xl transition cursor-pointer flex items-center gap-1.5 shadow-xs"
+                className="px-3.5 py-2 bg-indigo-600 hover:bg-indigo-700 text-white text-xs font-bold rounded-xl transition cursor-pointer flex items-center gap-1.5 shadow-xs whitespace-nowrap shrink-0"
               >
-                <Plus className="w-4 h-4" />
-                <span>{lang === 'ar' ? 'إضافة سطر مادة' : 'Ajouter un article'}</span>
+                <Plus className="w-4 h-4 shrink-0" />
+                <span>{lang === 'ar' ? 'إضافة سطر مادة (غير مسجل - بدون ربح)' : 'Ajouter ligne non enregistrée'}</span>
               </button>
             </div>
 
-            <div className="border border-slate-200 rounded-2xl overflow-hidden shadow-2xs">
+            {/* MOBILE / IPHONE ITEMS CARDS (< md) */}
+            <div className="md:hidden space-y-3">
+              {formItems.map((item, idx) => {
+                const matchedProd = products.find(p => p.id === item.productId);
+                const isUnregisteredItem = !item.productId;
+                const itemPurchasePrice = Number(item.purchasePrice || matchedProd?.purchasePrice || 0);
+                const unitPriceVal = parseDecimal(item.sellingPrice, 0);
+                const discVal = parseDecimal(item.discount, 0);
+                const effectiveUnitPrice = unitPriceVal - (unitPriceVal * discVal / 100);
+                const isBelowPurchasePrice =
+                  !isUnregisteredItem &&
+                  String(item.sellingPrice ?? '').trim() !== '' &&
+                  itemPurchasePrice > 0 &&
+                  effectiveUnitPrice < itemPurchasePrice;
+
+                return (
+                  <div
+                    key={idx}
+                    className={`p-3.5 rounded-2xl border space-y-2.5 shadow-2xs ${
+                      isBelowPurchasePrice
+                        ? 'bg-amber-50/40 border-amber-300'
+                        : 'bg-slate-50/70 border-slate-200'
+                    }`}
+                  >
+                    <div className="flex items-center justify-between gap-2">
+                      <span className="px-2 py-0.5 bg-indigo-100 text-indigo-800 rounded-md text-[10px] font-black">
+                        #{idx + 1}
+                      </span>
+                      <button
+                        type="button"
+                        onClick={() => handleRemoveItem(idx)}
+                        className="p-1.5 text-rose-600 bg-rose-50 hover:bg-rose-100 rounded-lg border border-rose-200 transition cursor-pointer"
+                        title="Delete row"
+                      >
+                        <Trash2 className="w-3.5 h-3.5" />
+                      </button>
+                    </div>
+
+                    <select
+                      className="w-full bg-white border border-slate-300 rounded-xl px-3 py-2 text-xs font-extrabold text-slate-900 focus:outline-none focus:ring-2 focus:ring-indigo-500"
+                      value={item.productId}
+                      onChange={(e) => handleItemChange(idx, 'productId', e.target.value)}
+                    >
+                      <option value="">-- {lang === 'ar' ? 'منتج غير مسجل (إدخال يدوي - بدون ربح)' : 'Produit non enregistré (hors bénéfices)'} --</option>
+                      {products.map(p => (
+                        <option key={p.id} value={p.id}>
+                          {p.name} ({getProductPriceByMode(p, formPricingMode).toFixed(2)} {config.currency})
+                        </option>
+                      ))}
+                    </select>
+
+                    <input
+                      type="text"
+                      required
+                      placeholder={lang === 'ar' ? 'اسم المنتج أو الصنف...' : 'Product / item name...'}
+                      className="w-full bg-white border border-indigo-300 rounded-xl px-3 py-2 text-xs font-extrabold text-slate-900 focus:outline-none focus:ring-2 focus:ring-indigo-500"
+                      value={item.productName}
+                      onChange={(e) => handleItemChange(idx, 'productName', e.target.value)}
+                    />
+
+                    {isUnregisteredItem && (
+                      <div className="px-2.5 py-1 bg-slate-100 border border-slate-200 rounded-lg text-[10px] font-bold text-slate-600">
+                        {lang === 'ar' ? 'ℹ️ مادة غير مسجلة في المخزون (لا تدخل في حساب الأرباح)' : 'ℹ️ Article non enregistré (exclu des bénéfices)'}
+                      </div>
+                    )}
+
+                    {isBelowPurchasePrice && (
+                      <div className="px-2.5 py-1 bg-amber-50 border border-amber-200 rounded-lg text-[10px] font-bold text-amber-800 flex items-center gap-1.5">
+                        <AlertCircle className="w-3.5 h-3.5 text-amber-600 shrink-0" />
+                        <span>
+                          {lang === 'ar'
+                            ? `تنبيه: السعر (${effectiveUnitPrice.toFixed(2)} ${config.currency}) أقل من سعر الشراء (${itemPurchasePrice.toFixed(2)} ${config.currency})`
+                            : `Attention: Prix inférieur au prix d'achat (${itemPurchasePrice.toFixed(2)} ${config.currency})`}
+                        </span>
+                      </div>
+                    )}
+
+                    <div className="grid grid-cols-3 gap-2 pt-1">
+                      <div>
+                        <label className="block text-[10px] font-black text-slate-600 mb-1 text-center">
+                          {lang === 'ar' ? `السعر (${config.currency})` : 'Prix'}
+                        </label>
+                        <input
+                          type="text"
+                          inputMode="decimal"
+                          placeholder="0.00"
+                          required
+                          onFocus={(e) => e.target.select()}
+                          className={`w-full border rounded-xl px-2 py-2 text-xs font-black font-mono text-center focus:outline-none focus:ring-2 ${
+                            isBelowPurchasePrice
+                              ? 'bg-amber-50 border-amber-400 text-rose-700 focus:ring-rose-500'
+                              : 'bg-white border-slate-300 text-slate-900 focus:ring-indigo-500'
+                          }`}
+                          value={item.sellingPrice === 0 || item.sellingPrice === '0' ? '' : item.sellingPrice}
+                          onChange={(e) => handleItemChange(idx, 'sellingPrice', sanitizeDecimalInput(e.target.value))}
+                          onBlur={(e) => handleItemChange(idx, 'sellingPrice', sanitizeDecimalInput(e.target.value), true)}
+                        />
+                      </div>
+                      <div>
+                        <label className="block text-[10px] font-black text-slate-600 mb-1 text-center">
+                          {lang === 'ar' ? 'الكمية' : 'Qté'}
+                        </label>
+                        <input
+                          type="text"
+                          inputMode="decimal"
+                          placeholder="1"
+                          required
+                          onFocus={(e) => e.target.select()}
+                          className="w-full bg-white border border-slate-300 rounded-xl px-2 py-2 text-xs font-black font-mono text-center text-slate-900 focus:outline-none focus:ring-2 focus:ring-indigo-500"
+                          value={item.quantity === 0 || item.quantity === '0' ? '' : item.quantity}
+                          onChange={(e) => handleItemChange(idx, 'quantity', sanitizeDecimalInput(e.target.value))}
+                        />
+                      </div>
+                      <div>
+                        <label className="block text-[10px] font-black text-slate-600 mb-1 text-center">
+                          {lang === 'ar' ? 'خصم %' : 'Remise %'}
+                        </label>
+                        <input
+                          type="text"
+                          inputMode="decimal"
+                          placeholder="0"
+                          onFocus={(e) => e.target.select()}
+                          className="w-full bg-white border border-slate-300 rounded-xl px-2 py-2 text-xs font-black font-mono text-center text-slate-800 focus:outline-none focus:ring-2 focus:ring-indigo-500"
+                          value={item.discount === 0 || item.discount === '0' ? '' : item.discount}
+                          onChange={(e) => handleItemChange(idx, 'discount', sanitizeDecimalInput(e.target.value))}
+                          onBlur={(e) => handleItemChange(idx, 'discount', sanitizeDecimalInput(e.target.value), true)}
+                        />
+                      </div>
+                    </div>
+
+                    <div className="flex items-center justify-between pt-2 border-t border-slate-200/80 text-xs">
+                      <span className="font-bold text-slate-600">{lang === 'ar' ? 'مجموع السطر:' : 'Total ligne:'}</span>
+                      <span className="font-mono font-black text-indigo-700 text-sm">
+                        {item.total.toFixed(2)} {config.currency}
+                      </span>
+                    </div>
+                  </div>
+                );
+              })}
+            </div>
+
+            {/* DESKTOP ITEMS TABLE (md+) */}
+            <div className="hidden md:block border border-slate-200 rounded-2xl overflow-hidden shadow-2xs">
               <div className="overflow-x-auto">
-                <table className="w-full text-xs text-start">
-                  <thead className="bg-slate-50 text-slate-500 font-bold uppercase text-[10px] border-b border-slate-200">
+                <table className="w-full min-w-[340px] sm:min-w-[640px] text-xs text-start">
+                  <thead className="bg-slate-50 text-slate-700 font-extrabold uppercase text-[11px] sm:text-xs border-b border-slate-200">
                     <tr>
-                      <th className="py-3 px-4 text-start">{lang === 'ar' ? 'المادة / الصنف' : 'Désignation'}</th>
-                      <th className="py-3 px-4 text-center w-36">{lang === 'ar' ? `سعر الوحدة (${config.currency})` : `Prix Unitaire (${config.currency})`}</th>
-                      <th className="py-3 px-4 text-center w-28">{lang === 'ar' ? 'الكمية' : 'Quantité'}</th>
-                      <th className="py-3 px-4 text-center w-28">{lang === 'ar' ? 'خصم %' : 'Remise %'}</th>
-                      <th className="py-3 px-4 text-end w-36">{lang === 'ar' ? `المجموع (${config.currency})` : `Total (${config.currency})`}</th>
-                      <th className="py-3 px-3 text-center w-12"></th>
+                      <th className="py-2.5 sm:py-3 px-1.5 sm:px-4 text-start min-w-[160px] sm:min-w-[230px]">{lang === 'ar' ? 'المادة / الصنف' : 'Désignation'}</th>
+                      <th className="py-2.5 sm:py-3 px-1 sm:px-4 text-center min-w-[82px] sm:min-w-[120px] w-24 sm:w-36">{lang === 'ar' ? `سعر الوحدة (${config.currency})` : `Prix Unitaire (${config.currency})`}</th>
+                      <th className="py-2.5 sm:py-3 px-1 sm:px-4 text-center min-w-[68px] sm:min-w-[105px] w-20 sm:w-32">{lang === 'ar' ? 'الكمية' : 'Quantité'}</th>
+                      <th className="py-2.5 sm:py-3 px-1 sm:px-4 text-center min-w-[50px] sm:min-w-[80px] w-14 sm:w-24">{lang === 'ar' ? 'خصم %' : 'Remise %'}</th>
+                      <th className="py-2.5 sm:py-3 px-1.5 sm:px-4 text-end min-w-[76px] sm:min-w-[105px] w-22 sm:w-36">{lang === 'ar' ? `المجموع (${config.currency})` : `Total (${config.currency})`}</th>
+                      <th className="py-2.5 sm:py-3 px-1 sm:px-2 text-center w-8 sm:w-12"></th>
                     </tr>
                   </thead>
                   <tbody className="divide-y divide-slate-100 bg-white">
                     {formItems.map((item, idx) => {
                       const matchedProd = products.find(p => p.id === item.productId);
+                      const isUnregisteredItem = !item.productId;
                       const itemPurchasePrice = Number(item.purchasePrice || matchedProd?.purchasePrice || 0);
                       const unitPriceVal = parseDecimal(item.sellingPrice, 0);
                       const discVal = parseDecimal(item.discount, 0);
                       const effectiveUnitPrice = unitPriceVal - (unitPriceVal * discVal / 100);
                       const isBelowPurchasePrice =
+                        !isUnregisteredItem &&
                         String(item.sellingPrice ?? '').trim() !== '' &&
                         itemPurchasePrice > 0 &&
                         effectiveUnitPrice < itemPurchasePrice;
 
                       return (
                         <tr key={idx} className={`transition ${isBelowPurchasePrice ? 'bg-amber-50/30 hover:bg-amber-50/50' : 'hover:bg-slate-50/50'}`}>
-                          <td className="py-3 px-4">
+                          <td className="py-2.5 sm:py-3 px-1.5 sm:px-4">
                             <div className="space-y-1.5">
                               <select
-                                className="w-full bg-slate-50 border border-slate-200 rounded-xl px-3 py-2 text-xs font-bold text-slate-800 focus:outline-none focus:ring-1 focus:ring-indigo-500 focus:bg-white"
+                                className="w-full min-w-[152px] sm:min-w-[210px] bg-slate-50 border border-slate-300 rounded-xl px-2 sm:px-3 py-1.5 sm:py-2 text-xs font-extrabold text-slate-900 focus:outline-none focus:ring-2 focus:ring-indigo-500 focus:bg-white"
                                 value={item.productId}
                                 onChange={(e) => handleItemChange(idx, 'productId', e.target.value)}
                               >
-                                <option value="">-- {lang === 'ar' ? 'صنف غير مسجل (إدخال يدوي)' : 'Unregistered (Manual Text)'} --</option>
+                                <option value="" className="font-bold text-slate-900">-- {lang === 'ar' ? 'منتج غير مسجل (إدخال يدوي - لا يدخل في الأرباح)' : 'Produit non enregistré (hors bénéfices)'} --</option>
                                 {products.map(p => (
-                                  <option key={p.id} value={p.id}>
-                                    {p.name} ({p.sellingPrice} {config.currency} / {lang === 'ar' ? `المخزون: ${p.stock}` : `Stock: ${p.stock}`})
+                                  <option key={p.id} value={p.id} className="font-bold text-slate-900">
+                                    {p.name} ({getProductPriceByMode(p, formPricingMode).toFixed(2)} {config.currency})
                                   </option>
                                 ))}
                               </select>
-                              {(!item.productId || item.productId.startsWith('custom_')) && (
-                                <input
-                                  type="text"
-                                  required
-                                  placeholder={lang === 'ar' ? 'أدخل اسم الصنف أو الخدمة يدوياً...' : 'Type manual product or service name...'}
-                                  className="w-full bg-white border border-indigo-200 rounded-xl px-3 py-1.5 text-xs font-semibold focus:outline-none focus:ring-1 focus:ring-indigo-500"
-                                  value={item.productName}
-                                  onChange={(e) => handleItemChange(idx, 'productName', e.target.value)}
-                                />
+                              <input
+                                type="text"
+                                required
+                                placeholder={lang === 'ar' ? 'اسم المنتج أو الصنف (قابل للتعديل)...' : 'Product / item name (editable)...'}
+                                className="w-full min-w-[152px] sm:min-w-[210px] bg-white border border-indigo-300 rounded-xl px-2.5 sm:px-3 py-2 text-xs sm:text-sm font-extrabold text-slate-900 focus:outline-none focus:ring-2 focus:ring-indigo-500"
+                                value={item.productName}
+                                onChange={(e) => handleItemChange(idx, 'productName', e.target.value)}
+                              />
+                              {isUnregisteredItem && (
+                                <div className="px-2.5 py-1 bg-slate-100 border border-slate-200 rounded-lg text-[10px] font-bold text-slate-600 flex items-center gap-1.5 text-start">
+                                  <span>{lang === 'ar' ? 'ℹ️ مادة غير مسجلة في المخزون (لا تدخل في حساب الأرباح)' : 'ℹ️ Article non enregistré (exclu du calcul des bénéfices)'}</span>
+                                </div>
                               )}
                               {isBelowPurchasePrice && (
                                 <div className="px-2.5 py-1 bg-amber-50 border border-amber-200 rounded-lg text-[10px] font-bold text-amber-800 flex items-center gap-1.5 text-start">
@@ -965,51 +1364,55 @@ export default function CommercialDocuments({
                               )}
                             </div>
                           </td>
-                          <td className="py-3 px-4 text-center align-top">
+                          <td className="py-2.5 sm:py-3 px-1 sm:px-4 text-center align-top">
                             <input
                               type="text"
                               inputMode="decimal"
                               placeholder="0.00"
                               required
-                              className={`w-full border rounded-xl px-3 py-2 text-xs font-bold font-mono text-center focus:outline-none focus:ring-1 ${
+                              onFocus={(e) => e.target.select()}
+                              className={`w-full min-w-[76px] sm:min-w-[104px] border rounded-xl px-1.5 sm:px-3 py-2 sm:py-2.5 text-xs sm:text-sm font-black font-mono text-center focus:outline-none focus:ring-2 placeholder:text-slate-300 placeholder:font-normal ${
                                 isBelowPurchasePrice
                                   ? 'bg-amber-50 border-amber-400 text-rose-700 focus:ring-rose-500'
-                                  : 'bg-slate-50 border-slate-200 text-slate-800 focus:ring-indigo-500 focus:bg-white'
+                                  : 'bg-slate-50 border-slate-300 text-slate-900 focus:ring-indigo-500 focus:bg-white'
                               }`}
-                              value={item.sellingPrice || ''}
+                              value={item.sellingPrice === 0 || item.sellingPrice === '0' ? '' : item.sellingPrice}
                               onChange={(e) => handleItemChange(idx, 'sellingPrice', sanitizeDecimalInput(e.target.value))}
                               onBlur={(e) => handleItemChange(idx, 'sellingPrice', sanitizeDecimalInput(e.target.value), true)}
                             />
                           </td>
-                          <td className="py-3 px-4 text-center align-top">
+                          <td className="py-2.5 sm:py-3 px-1 sm:px-4 text-center align-top">
                             <input
-                              type="number"
-                              min="1"
+                              type="text"
+                              inputMode="decimal"
+                              placeholder="1"
                               required
-                              className="w-full bg-slate-50 border border-slate-200 rounded-xl px-3 py-2 text-xs font-bold font-mono text-center text-slate-800 focus:outline-none focus:ring-1 focus:ring-indigo-500 focus:bg-white"
-                              value={item.quantity || ''}
-                              onChange={(e) => handleItemChange(idx, 'quantity', Number(e.target.value))}
+                              onFocus={(e) => e.target.select()}
+                              className="w-full min-w-[62px] sm:min-w-[92px] bg-slate-50 border border-slate-300 rounded-xl px-1.5 sm:px-3 py-2 sm:py-2.5 text-xs sm:text-sm font-black font-mono text-center text-slate-900 focus:outline-none focus:ring-2 focus:ring-indigo-500 focus:bg-white placeholder:text-slate-300 placeholder:font-normal"
+                              value={item.quantity === 0 || item.quantity === '0' ? '' : item.quantity}
+                              onChange={(e) => handleItemChange(idx, 'quantity', sanitizeDecimalInput(e.target.value))}
                             />
                           </td>
-                          <td className="py-3 px-4 text-center align-top">
+                          <td className="py-2.5 sm:py-3 px-1 sm:px-4 text-center align-top">
                             <input
                               type="text"
                               inputMode="decimal"
                               placeholder="0"
-                              className="w-full bg-slate-50 border border-slate-200 rounded-xl px-3 py-2 text-xs font-bold font-mono text-center text-slate-800 focus:outline-none focus:ring-1 focus:ring-indigo-500 focus:bg-white"
-                              value={item.discount || ''}
+                              onFocus={(e) => e.target.select()}
+                              className="w-full min-w-[46px] sm:min-w-[68px] bg-slate-50 border border-slate-300 rounded-xl px-1 sm:px-2.5 py-2 sm:py-2.5 text-xs sm:text-sm font-black font-mono text-center text-slate-800 focus:outline-none focus:ring-2 focus:ring-indigo-500 focus:bg-white placeholder:text-slate-300 placeholder:font-normal"
+                              value={item.discount === 0 || item.discount === '0' ? '' : item.discount}
                               onChange={(e) => handleItemChange(idx, 'discount', sanitizeDecimalInput(e.target.value))}
                               onBlur={(e) => handleItemChange(idx, 'discount', sanitizeDecimalInput(e.target.value), true)}
                             />
                           </td>
-                          <td className="py-3 px-4 text-end font-mono font-black text-slate-800 align-top pt-3.5 text-sm">
+                          <td className="py-2.5 sm:py-3 px-1.5 sm:px-4 text-end font-mono font-black text-slate-800 align-top pt-3 sm:pt-3.5 text-xs sm:text-sm">
                             {item.total.toFixed(2)} {config.currency}
                           </td>
-                          <td className="py-3 px-3 text-center align-top pt-3">
+                          <td className="py-2.5 sm:py-3 px-1 sm:px-2 text-center align-top pt-2.5 sm:pt-3">
                             <button
                               type="button"
                               onClick={() => handleRemoveItem(idx)}
-                              className="p-1.5 text-slate-400 hover:text-rose-600 hover:bg-rose-50 rounded-lg transition cursor-pointer"
+                              className="p-1.5 sm:p-2 text-slate-400 hover:text-rose-600 hover:bg-rose-50 rounded-lg transition cursor-pointer"
                               title="Delete row"
                             >
                               <Trash2 className="w-4 h-4" />
@@ -1032,11 +1435,11 @@ export default function CommercialDocuments({
           </div>
 
           {/* 4. Financial Summary Cards */}
-          <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
+          <div className={`grid grid-cols-1 sm:grid-cols-2 ${activeType === 'facture' ? 'lg:grid-cols-5' : 'lg:grid-cols-4'} gap-4`}>
             {/* Card 1: Subtotal */}
             <div className="bg-white p-5 rounded-3xl border border-slate-100 shadow-xs space-y-1">
               <span className="text-[10px] font-black text-slate-400 uppercase tracking-wider block">
-                {lang === 'ar' ? 'المجموع الفرعي (HT)' : 'Sous-total HT'}
+                {lang === 'ar' ? 'المجموع' : 'Sous-total HT'}
               </span>
               <div className="text-2xl font-black text-slate-900 font-mono">
                 {subtotal.toFixed(2)} <span className="text-xs font-bold text-slate-400">{config.currency}</span>
@@ -1052,8 +1455,8 @@ export default function CommercialDocuments({
                 type="text"
                 inputMode="decimal"
                 placeholder="0.00"
-                className="w-full px-3 py-1.5 bg-slate-50 border border-slate-200 rounded-xl focus:outline-none focus:ring-2 focus:ring-indigo-500 text-sm font-bold font-mono text-rose-700"
-                value={formDiscount}
+                className="w-full px-3 py-1.5 bg-slate-50 border border-slate-200 rounded-xl focus:outline-none focus:ring-2 focus:ring-indigo-500 text-sm font-bold font-mono text-rose-700 placeholder:text-slate-300 placeholder:font-normal"
+                value={formDiscount === 0 || formDiscount === '0' ? '' : formDiscount}
                 onChange={(e) => setFormDiscount(sanitizeDecimalInput(e.target.value))}
               />
             </div>
@@ -1068,16 +1471,160 @@ export default function CommercialDocuments({
               </div>
             </div>
 
+            {/* Card 3b: Previous Balance / Old Credit (Only for Facture, excluded from stats) */}
+            {activeType === 'facture' && (
+              <div className="bg-amber-50/80 p-5 rounded-3xl border border-amber-300 shadow-xs space-y-1.5">
+                <div className="flex items-center justify-between gap-1">
+                  <label className="text-[10px] font-black text-amber-900 uppercase tracking-wider block">
+                    {lang === 'ar' ? 'كريدي قديم / مبلغ' : 'Ancien crédit / Montant'}
+                  </label>
+                  <span className="text-[9px] font-bold px-1.5 py-0.5 bg-amber-200/70 text-amber-900 rounded-md">
+                    {lang === 'ar' ? 'لا يدخل في الأرباح' : 'Hors stats'}
+                  </span>
+                </div>
+                <input
+                  type="text"
+                  inputMode="decimal"
+                  placeholder="0.00"
+                  className="w-full px-3 py-1.5 bg-white border border-amber-300 rounded-xl focus:outline-none focus:ring-2 focus:ring-amber-500 text-sm font-black font-mono text-amber-900 placeholder:text-amber-300 placeholder:font-normal"
+                  value={formPreviousBalance === '0' ? '' : formPreviousBalance}
+                  onChange={(e) => setFormPreviousBalance(sanitizeDecimalInput(e.target.value))}
+                />
+              </div>
+            )}
+
             {/* Card 4: Net Grand Total */}
             <div className="bg-white p-5 rounded-3xl border border-slate-100 shadow-xs space-y-1">
               <span className="text-[10px] font-black text-indigo-600 uppercase tracking-wider block">
-                {lang === 'ar' ? 'المجموع الصافي النهائي (TTC)' : 'Total Net TTC'}
+                {lang === 'ar' ? 'المجموع الكلي النهائي (TTC)' : 'Total Net TTC'}
               </span>
               <div className="text-2xl font-black text-indigo-700 font-mono">
-                {netTotal.toFixed(2)} <span className="text-xs font-bold text-indigo-500">{config.currency}</span>
+                {(activeType === 'facture' ? grandTotalWithPrevious : netTotal).toFixed(2)} <span className="text-xs font-bold text-indigo-500">{config.currency}</span>
               </div>
+              {activeType === 'facture' && previousBalanceAmount > 0 && (
+                <span className="block text-[10px] font-bold text-amber-700">
+                  {lang === 'ar' ? `صافي الفاتورة: ${netTotal.toFixed(2)} + قديم: ${previousBalanceAmount.toFixed(2)}` : `Facture: ${netTotal.toFixed(2)} + Ancien: ${previousBalanceAmount.toFixed(2)}`}
+                </span>
+              )}
             </div>
           </div>
+
+          {/* 4a. POS-Style Grand Total & Old Credit Breakdown Banner for Facture */}
+          {activeType === 'facture' && (
+            <div className="bg-slate-900 text-white p-4 sm:p-5 rounded-3xl shadow-md flex flex-col sm:flex-row items-stretch sm:items-center justify-between gap-4">
+              <div className="flex flex-wrap items-center gap-4 sm:gap-6">
+                <div>
+                  <span className="text-[11px] text-slate-400 font-bold block">
+                    {lang === 'ar' ? 'مجموع الفاتورة (المنتجات):' : 'Total Facture (Articles):'}
+                  </span>
+                  <span className="font-mono font-black text-base text-white">
+                    {netTotal.toFixed(2)} {config.currency}
+                  </span>
+                </div>
+                <div className="text-slate-600 font-black text-lg hidden sm:block">+</div>
+                <div>
+                  <span className="text-[11px] text-amber-400 font-bold block">
+                    {lang === 'ar' ? 'كريدي قديم / مبلغ مضاف:' : 'Ancien crédit / Montant ajouté:'}
+                  </span>
+                  <span className="font-mono font-black text-base text-amber-400">
+                    +{previousBalanceAmount.toFixed(2)} {config.currency}
+                  </span>
+                </div>
+              </div>
+              <div className="border-t sm:border-t-0 pt-3 sm:pt-0 border-slate-800 flex items-center justify-between sm:justify-end gap-3">
+                <span className="text-xs font-black text-indigo-300">
+                  {lang === 'ar' ? 'المجموع الكلي المطلوب:' : 'Total Général à Payer:'}
+                </span>
+                <span className="text-xl sm:text-2xl font-black font-mono text-emerald-400">
+                  {grandTotalWithPrevious.toFixed(2)} <span className="text-xs">{config.currency}</span>
+                </span>
+              </div>
+            </div>
+          )}
+
+          {/* 4b. Payment & Stock Integration Card (When creating/editing an Official Facture) */}
+          {activeType === 'facture' && (
+            <div className="bg-emerald-50/50 p-4 sm:p-5 rounded-3xl border border-emerald-200/80 shadow-xs space-y-4">
+              <div className="flex flex-wrap items-center justify-between gap-2">
+                <div className="flex items-center gap-2 text-emerald-800 text-xs font-black">
+                  <CheckCircle2 className="w-4 h-4 text-emerald-600 shrink-0" />
+                  <span>
+                    {lang === 'ar'
+                      ? 'تسديد الفاتورة الرسمية والربط التلقائي بالمخزون والإحصائيات'
+                      : 'Règlement de la Facture & Synchronisation Stock / Statistiques'}
+                  </span>
+                </div>
+                <span className="px-2.5 py-1 bg-emerald-100 text-emerald-800 rounded-xl text-[10px] font-bold">
+                  {lang === 'ar'
+                    ? '✓ يخصم المخزون ويدخل في الأرباح تلقائياً'
+                    : '✓ Déduit du stock & inclus aux ventes'}
+                </span>
+              </div>
+
+              <div className="grid grid-cols-1 sm:grid-cols-3 gap-3 items-end">
+                <div>
+                  <label className="block text-[11px] font-bold text-slate-700 mb-1">
+                    {lang === 'ar' ? 'طريقة الدفع:' : 'Mode de paiement:'}
+                  </label>
+                  <select
+                    value={formPaymentMethod}
+                    onChange={(e) => {
+                      const nextMode = e.target.value as 'cash' | 'card' | 'debt';
+                      setFormPaymentMethod(nextMode);
+                      if (nextMode !== 'debt') {
+                        setFormAmountPaid('');
+                      } else if (!formAmountPaid) {
+                        setFormAmountPaid('0');
+                      }
+                    }}
+                    className="w-full bg-white border border-emerald-200 rounded-xl px-3 py-2 text-xs font-bold text-slate-800 focus:outline-none focus:ring-2 focus:ring-emerald-500"
+                  >
+                    <option value="cash">{lang === 'ar' ? 'نقداً (مدفوعة بالكامل)' : 'Espèces (Payée)'}</option>
+                    <option value="card">{lang === 'ar' ? 'بطاقة / تحويل بنكي' : 'Carte / Virement'}</option>
+                    <option value="debt">{lang === 'ar' ? 'دفع جزئي أو آجل (دين على الزبون)' : 'Crédit / Paiement partiel'}</option>
+                  </select>
+                </div>
+
+                <div>
+                  <label className="block text-[11px] font-bold text-slate-700 mb-1">
+                    {lang === 'ar' ? `المبلغ المدفوع حالياً (${config.currency}):` : `Montant payé (${config.currency}):`}
+                  </label>
+                  <input
+                    type="text"
+                    inputMode="decimal"
+                    placeholder={netTotal.toFixed(2)}
+                    value={formPaymentMethod === 'debt' ? formAmountPaid : (formAmountPaid || netTotal.toFixed(2))}
+                    onChange={(e) => {
+                      const val = sanitizeDecimalInput(e.target.value);
+                      setFormAmountPaid(val);
+                      if (parseDecimal(val, 0) < netTotal) {
+                        setFormPaymentMethod('debt');
+                      }
+                    }}
+                    className="w-full bg-white border border-emerald-200 rounded-xl px-3 py-2 text-xs font-bold font-mono text-slate-800 focus:outline-none focus:ring-2 focus:ring-emerald-500"
+                  />
+                </div>
+
+                <div className="bg-white p-2.5 rounded-xl border border-emerald-200/70 flex items-center justify-between">
+                  <span className="text-[11px] font-bold text-slate-500">
+                    {lang === 'ar' ? 'المتبقي (دين):' : 'Reste (Dette):'}
+                  </span>
+                  <span className="font-mono font-black text-sm text-rose-600">
+                    {Math.max(
+                      0,
+                      netTotal -
+                        (formPaymentMethod === 'debt'
+                          ? parseDecimal(formAmountPaid, 0)
+                          : formAmountPaid.trim() !== ''
+                          ? parseDecimal(formAmountPaid, netTotal)
+                          : netTotal)
+                    ).toFixed(2)}{' '}
+                    {config.currency}
+                  </span>
+                </div>
+              </div>
+            </div>
+          )}
 
           {/* 5. Notes & Terms Card */}
           <div className="bg-white p-5 rounded-3xl border border-slate-100 shadow-xs space-y-3">
@@ -1105,13 +1652,15 @@ export default function CommercialDocuments({
           </div>
 
           {/* 6. Sticky Bottom Action Controls */}
-          <div className={`bg-white p-5 rounded-3xl border border-slate-100 shadow-xs flex flex-col sm:flex-row items-center justify-between gap-4 ${isRTL ? 'flex-row-reverse' : ''}`}>
-            <div className="text-sm font-bold text-slate-600">
+          <div className="bg-white p-4 sm:p-5 rounded-3xl border border-slate-100 shadow-xs flex flex-col sm:flex-row items-center justify-between gap-4">
+            <div className="text-sm font-bold text-slate-600 text-center sm:text-start">
               <span className="text-slate-400 font-medium">{lang === 'ar' ? 'المجموع النهائي للوثيقة:' : 'Total net:'} </span>
-              <span className="font-mono font-black text-slate-900 text-lg sm:text-xl">{netTotal.toFixed(2)} {config.currency}</span>
+              <span className="font-mono font-black text-slate-900 text-lg sm:text-xl">
+                {(activeType === 'facture' ? grandTotalWithPrevious : netTotal).toFixed(2)} {config.currency}
+              </span>
             </div>
 
-            <div className="flex items-center gap-3">
+            <div className="flex flex-wrap items-center justify-center sm:justify-end gap-2 sm:gap-3 w-full sm:w-auto">
               <button
                 type="button"
                 onClick={() => {
@@ -1125,11 +1674,12 @@ export default function CommercialDocuments({
                     tax: 0,
                     total: 0
                   }]);
-                  setFormDiscount(0);
+                  setFormDiscount('0');
+                  setFormPreviousBalance('');
                   setFormNotes('');
                   setProductSearch('');
                 }}
-                className="px-5 py-2.5 bg-slate-100 hover:bg-slate-200 text-slate-700 text-xs font-bold rounded-xl transition cursor-pointer flex items-center gap-1.5"
+                className="px-4 py-2.5 bg-slate-100 hover:bg-slate-200 text-slate-700 text-xs font-bold rounded-xl transition cursor-pointer flex items-center gap-1.5"
               >
                 <RefreshCw className="w-3.5 h-3.5" />
                 <span>{lang === 'ar' ? 'تفريغ الحقول' : 'Vider'}</span>
@@ -1138,7 +1688,7 @@ export default function CommercialDocuments({
               <button
                 type="button"
                 onClick={() => { setIsCreating(false); setEditingDoc(null); }}
-                className="px-5 py-2.5 bg-slate-100 hover:bg-slate-200 text-slate-700 text-xs font-bold rounded-xl transition cursor-pointer flex items-center gap-1.5"
+                className="px-4 py-2.5 bg-slate-100 hover:bg-slate-200 text-slate-700 text-xs font-bold rounded-xl transition cursor-pointer flex items-center gap-1.5"
               >
                 <X className="w-3.5 h-3.5" />
                 <span>{lang === 'ar' ? 'إلغاء والعودة' : 'Annuler'}</span>
@@ -1147,13 +1697,13 @@ export default function CommercialDocuments({
               <button
                 type="submit"
                 disabled={formItems.length === 0}
-                className={`px-7 py-2.5 ${visuals.buttonBg} text-white text-xs font-black rounded-xl transition cursor-pointer shadow-sm disabled:bg-slate-300 disabled:cursor-not-allowed flex items-center gap-2`}
+                className={`px-5 py-2.5 ${visuals.buttonBg} text-white text-xs font-black rounded-xl transition cursor-pointer shadow-sm disabled:bg-slate-300 disabled:cursor-not-allowed flex items-center gap-2`}
               >
                 <CheckCircle2 className="w-4 h-4" />
                 <span>
                   {editingDoc 
                     ? (lang === 'ar' ? 'تحديث وحفظ التعديلات' : 'Enregistrer modifications') 
-                    : (lang === 'ar' ? 'حفظ وتأكيد الوثيقة' : 'Enregistrer le document')}
+                    : (lang === 'ar' ? 'حفظ وتأكيد الوثيقة' : 'حفظ وتأكيد الوثيقة')}
                 </span>
               </button>
             </div>
@@ -1174,19 +1724,18 @@ export default function CommercialDocuments({
       )}
 
       {/* Top Header Card */}
-      {/* Top Header Card */}
       <div className="bg-white p-6 rounded-3xl border border-slate-100 shadow-xs flex flex-col md:flex-row md:items-center justify-between gap-4">
         <div>
           <h1 className="text-xl font-black text-slate-900 tracking-tight flex items-center gap-2.5">
             <div className="p-2.5 bg-indigo-50 text-indigo-600 rounded-2xl">
               <ClipboardList className="w-6 h-6" />
             </div>
-            <span>{lang === 'ar' ? 'إدارة الوثائق التجارية (Devis / BC / BL / Facture)' : 'Commercial Documents Management'}</span>
+            <span>{lang === 'ar' ? 'إدارة الوثائق التجارية (Facture / Devis / BC / BL)' : 'Commercial Documents Management'}</span>
           </h1>
           <p className="text-xs text-slate-500 mt-1 font-medium">
             {lang === 'ar' 
-              ? 'إنشاء عروض الأسعار، وسندات الطلب، وسندات التسليم مع إمكانية تحويل أي وثيقة بضغطة زر إلى فاتورة رسمية' 
-              : 'Create Devis, Purchase Orders & Delivery Notes with 1-click conversion to Official Invoice'}
+              ? 'إصدار الفواتير الرسمية، عروض الأسعار، سندات الطلب، وسندات التسليم مع إمكانية التحويل المباشر' 
+              : 'Create Official Invoices, Devis, Purchase Orders & Delivery Notes with 1-click conversion'}
           </p>
         </div>
 
@@ -1197,17 +1746,31 @@ export default function CommercialDocuments({
         >
           <Plus className="w-4 h-4" />
           <span>
+            {activeType === 'facture' && (lang === 'ar' ? '+ إنشاء فاتورة جديدة (Facture)' : '+ Nouvelle Facture')}
             {activeType === 'devis' && (lang === 'ar' ? '+ إنشاء عرض سعر جديد (Devis)' : '+ Nouveau Devis')}
             {activeType === 'bon_commande' && (lang === 'ar' ? '+ إنشاء سند طلبية جديد (Bon de commande)' : '+ Nouveau Bon de commande')}
             {activeType === 'bon_livraison' && (lang === 'ar' ? '+ إنشاء سند تسليم جديد (Bon de livraison)' : '+ Nouveau Bon de livraison')}
-            {activeType === 'facture' && (lang === 'ar' ? '+ إنشاء فاتورة جديدة (Facture)' : '+ Nouvelle Facture')}
           </span>
         </button>
       </div>
 
-      {/* Document Type Selector Cards Bar - Elegant & Clear Redesign */}
+      {/* Document Type Selector Cards Bar - Official Invoice (facture) FIRST as requested */}
       <div className="grid grid-cols-2 lg:grid-cols-4 gap-3 sm:gap-4">
         {[
+          {
+            id: 'facture' as CommercialDocType,
+            titleAr: 'الفواتير الرسمية',
+            subAr: 'Factures • الفواتير النهائية',
+            titleFr: 'Factures de Vente',
+            subFr: 'Factures officielles',
+            icon: Receipt,
+            activeBorder: 'border-emerald-500 ring-2 ring-emerald-500/20 shadow-sm',
+            activeIndicator: 'bg-emerald-500',
+            activeBadge: 'bg-emerald-500 text-white',
+            iconActive: 'bg-emerald-500 text-white shadow-xs',
+            iconInactive: 'bg-emerald-50 text-emerald-600',
+            count: documents.filter(d => d.docType === 'facture').length
+          },
           {
             id: 'devis' as CommercialDocType,
             titleAr: 'عروض الأسعار',
@@ -1249,20 +1812,6 @@ export default function CommercialDocuments({
             iconActive: 'bg-indigo-500 text-white shadow-xs',
             iconInactive: 'bg-indigo-50 text-indigo-600',
             count: documents.filter(d => d.docType === 'bon_livraison').length
-          },
-          {
-            id: 'facture' as CommercialDocType,
-            titleAr: 'الفواتير الرسمية',
-            subAr: 'Factures • الفواتير النهائية',
-            titleFr: 'Factures de Vente',
-            subFr: 'Factures officielles',
-            icon: Receipt,
-            activeBorder: 'border-emerald-500 ring-2 ring-emerald-500/20 shadow-sm',
-            activeIndicator: 'bg-emerald-500',
-            activeBadge: 'bg-emerald-500 text-white',
-            iconActive: 'bg-emerald-500 text-white shadow-xs',
-            iconInactive: 'bg-emerald-50 text-emerald-600',
-            count: documents.filter(d => d.docType === 'facture').length
           },
         ].map((tab) => {
           const isActive = activeType === tab.id;
@@ -1311,38 +1860,262 @@ export default function CommercialDocuments({
         })}
       </div>
 
-      {/* Search & Status Filters Bar */}
-      <div className="bg-white p-4 rounded-3xl border border-slate-100 shadow-xs flex flex-col sm:flex-row gap-3 items-center justify-between">
-        <div className="relative flex-1 w-full">
-          <span className={`absolute inset-y-0 ${isRTL ? 'right-3.5' : 'left-3.5'} flex items-center text-slate-400 pointer-events-none`}>
-            <Search className="w-4 h-4" />
-          </span>
-          <input
-            type="text"
-            placeholder={lang === 'ar' ? 'بحث برقم الوثيقة، اسم الزبون، رقم الهاتف...' : 'Search by doc number, client name, phone...'}
-            value={search}
-            onChange={(e) => setSearch(e.target.value)}
-            className={`w-full py-2.5 ${isRTL ? 'pr-10 pl-4' : 'pl-10 pr-4'} bg-slate-50 border border-slate-200 rounded-xl text-xs font-bold text-slate-800 placeholder-slate-400 focus:outline-none focus:ring-2 focus:ring-indigo-500 focus:bg-white transition`}
-          />
+      {/* Search & Status & Date Filters Bar */}
+      <div className="bg-white p-4 rounded-3xl border border-slate-100 shadow-xs space-y-3">
+        <div className="flex flex-col sm:flex-row gap-3 items-center justify-between">
+          <div className="relative flex-1 w-full">
+            <span className={`absolute inset-y-0 ${isRTL ? 'right-3.5' : 'left-3.5'} flex items-center text-slate-400 pointer-events-none`}>
+              <Search className="w-4 h-4" />
+            </span>
+            <input
+              type="text"
+              placeholder={lang === 'ar' ? 'بحث برقم الوثيقة، اسم الزبون، رقم الهاتف...' : 'Search by doc number, client name, phone...'}
+              value={search}
+              onChange={(e) => setSearch(e.target.value)}
+              className={`w-full py-2.5 ${isRTL ? 'pr-10 pl-4' : 'pl-10 pr-4'} bg-slate-50 border border-slate-200 rounded-xl text-xs font-bold text-slate-800 placeholder-slate-400 focus:outline-none focus:ring-2 focus:ring-indigo-500 focus:bg-white transition`}
+            />
+          </div>
+
+          <div className="flex items-center gap-2 w-full sm:w-auto shrink-0">
+            <select
+              value={statusFilter}
+              onChange={(e) => setStatusFilter(e.target.value)}
+              className="w-full sm:w-auto bg-slate-50 border border-slate-200 rounded-xl px-3 py-2 text-xs font-bold text-slate-700 focus:outline-none focus:ring-1 focus:ring-indigo-500 cursor-pointer"
+            >
+              <option value="all">{lang === 'ar' ? 'جميع الحالات' : 'Tous les états'}</option>
+              <option value="draft">{lang === 'ar' ? 'مسودة' : 'Brouillon'}</option>
+              <option value="validated">{lang === 'ar' ? 'مؤكد / ساري' : 'Validé'}</option>
+              <option value="converted">{lang === 'ar' ? 'تم التحويل' : 'Converti'}</option>
+              <option value="cancelled">{lang === 'ar' ? 'ملغى' : 'Annulé'}</option>
+            </select>
+          </div>
         </div>
 
-        <div className="flex items-center gap-2 w-full sm:w-auto shrink-0">
-          <select
-            value={statusFilter}
-            onChange={(e) => setStatusFilter(e.target.value)}
-            className="w-full sm:w-auto bg-slate-50 border border-slate-200 rounded-xl px-3 py-2 text-xs font-bold text-slate-700 focus:outline-none focus:ring-1 focus:ring-indigo-500 cursor-pointer"
-          >
-            <option value="all">{lang === 'ar' ? 'جميع الحالات' : 'Tous les états'}</option>
-            <option value="draft">{lang === 'ar' ? 'مسودة' : 'Brouillon'}</option>
-            <option value="validated">{lang === 'ar' ? 'مؤكد / ساري' : 'Validé'}</option>
-            <option value="converted">{lang === 'ar' ? 'تم التحويل' : 'Converti'}</option>
-            <option value="cancelled">{lang === 'ar' ? 'ملغى' : 'Annulé'}</option>
-          </select>
+        <div className="flex flex-wrap items-center gap-2.5 pt-2 border-t border-slate-100 text-xs">
+          <div className="flex items-center gap-1.5 bg-slate-50 px-3 py-1.5 rounded-xl border border-slate-200">
+            <Calendar className="w-3.5 h-3.5 text-indigo-600 shrink-0" />
+            <span className="font-bold text-slate-600">{lang === 'ar' ? 'بحث بشهر معين:' : 'Mois:'}</span>
+            <input
+              type="month"
+              value={selectedMonth}
+              onChange={(e) => {
+                setSelectedMonth(e.target.value);
+                if (e.target.value) {
+                  setFromDate('');
+                  setToDate('');
+                }
+              }}
+              className="font-bold text-slate-800 bg-transparent focus:outline-none cursor-pointer"
+            />
+          </div>
+
+          <div className="flex items-center gap-1.5 bg-slate-50 px-3 py-1.5 rounded-xl border border-slate-200">
+            <span className="font-bold text-slate-600">{lang === 'ar' ? 'من تاريخ:' : 'Du:'}</span>
+            <input
+              type="date"
+              value={fromDate}
+              onChange={(e) => {
+                setFromDate(e.target.value);
+                if (e.target.value) setSelectedMonth('');
+              }}
+              className="font-bold text-slate-800 bg-transparent focus:outline-none cursor-pointer"
+            />
+          </div>
+
+          <div className="flex items-center gap-1.5 bg-slate-50 px-3 py-1.5 rounded-xl border border-slate-200">
+            <span className="font-bold text-slate-600">{lang === 'ar' ? 'إلى تاريخ:' : 'Au:'}</span>
+            <input
+              type="date"
+              value={toDate}
+              onChange={(e) => {
+                setToDate(e.target.value);
+                if (e.target.value) setSelectedMonth('');
+              }}
+              className="font-bold text-slate-800 bg-transparent focus:outline-none cursor-pointer"
+            />
+          </div>
+
+          {(selectedMonth || fromDate || toDate) && (
+            <button
+              type="button"
+              onClick={() => {
+                setSelectedMonth('');
+                setFromDate('');
+                setToDate('');
+              }}
+              className="px-3 py-1.5 bg-rose-50 hover:bg-rose-100 text-rose-700 border border-rose-200 rounded-xl font-bold transition cursor-pointer"
+            >
+              {lang === 'ar' ? 'إعادة تعيين التاريخ' : 'Réinitialiser'}
+            </button>
+          )}
         </div>
       </div>
 
-      {/* Documents Table */}
-      <div className="bg-white rounded-3xl border border-slate-100 shadow-xs overflow-hidden">
+      {/* MOBILE / IPHONE DOCUMENTS CARDS VIEW (< md) */}
+      <div className="md:hidden space-y-3">
+        {filteredDocs.length > 0 ? (
+          filteredDocs.map((doc) => {
+            const docProfit = doc.docType === 'facture' ? calculateDocProfit(doc) : null;
+            const prevBal = Number(doc.previousBalance || 0);
+            return (
+              <div
+                key={doc.id}
+                className="bg-white rounded-2xl border border-slate-200/90 p-3.5 shadow-2xs space-y-3"
+              >
+                <div className="flex items-start justify-between gap-2 border-b border-slate-100 pb-2.5">
+                  <div className="space-y-0.5 text-start">
+                    <div className="flex items-center gap-1.5 flex-wrap">
+                      <span className="font-mono font-black text-sm text-indigo-700 bg-indigo-50 px-2 py-0.5 rounded-lg border border-indigo-100">
+                        {doc.docNumber}
+                      </span>
+                      <span className="font-black text-slate-800 text-xs">{doc.customerName}</span>
+                    </div>
+                    <p className="text-[11px] text-slate-400 font-mono">
+                      {doc.date ? new Date(doc.date).toLocaleDateString() : ''} • {doc.items.length} {lang === 'ar' ? 'مواد' : 'art.'}
+                    </p>
+                  </div>
+
+                  <div className="flex flex-col items-end gap-1 shrink-0">
+                    {getStatusBadge(doc.status)}
+                    {docProfit !== null && (
+                      <span
+                        className={`inline-flex items-center gap-1 px-2 py-0.5 rounded-md text-[10px] font-black font-mono border whitespace-nowrap ${
+                          docProfit >= 0
+                            ? 'bg-emerald-50 text-emerald-700 border-emerald-200'
+                            : 'bg-rose-50 text-rose-700 border-rose-200'
+                        }`}
+                      >
+                        <span>{lang === 'ar' ? 'الربح:' : 'Profit:'}</span>
+                        <span>{docProfit >= 0 ? '+' : ''}{docProfit.toFixed(2)} {config.currency}</span>
+                      </span>
+                    )}
+                  </div>
+                </div>
+
+                <div className="flex items-center justify-between bg-slate-50 px-3 py-2 rounded-xl border border-slate-100 text-xs">
+                  <div>
+                    <span className="text-[10px] text-slate-400 font-bold block">{lang === 'ar' ? 'المبلغ الإجمالي' : 'Total'}</span>
+                    <span className="font-mono font-black text-indigo-700 text-sm">
+                      {Number(doc.total || 0).toFixed(2)} {config.currency}
+                    </span>
+                    {prevBal > 0 && (
+                      <span className="block text-[10px] text-amber-600 font-bold font-mono">
+                        +{prevBal.toFixed(2)} {lang === 'ar' ? 'كريدي قديم' : 'ancien'}
+                      </span>
+                    )}
+                  </div>
+
+                  <div className="flex flex-wrap items-center justify-end gap-1">
+                    {doc.convertedTo ? (
+                      <span className="text-[10px] font-bold text-emerald-700 bg-emerald-50 border border-emerald-200 px-2 py-0.5 rounded-lg inline-flex items-center gap-1">
+                        <Check className="w-3 h-3 text-emerald-600" />
+                        <span>{doc.convertedTo.docNumber}</span>
+                      </span>
+                    ) : (
+                      <>
+                        {doc.docType === 'devis' && (
+                          <>
+                            <button
+                              type="button"
+                              onClick={() => handleConvertToBC(doc)}
+                              className="px-2 py-1 bg-blue-50 text-blue-700 border border-blue-200 rounded-lg text-[10px] font-black cursor-pointer"
+                            >
+                              → BC
+                            </button>
+                            <button
+                              type="button"
+                              onClick={() => handleConvertToBL(doc)}
+                              className="px-2 py-1 bg-indigo-50 text-indigo-700 border border-indigo-200 rounded-lg text-[10px] font-black cursor-pointer"
+                            >
+                              → BL
+                            </button>
+                            <button
+                              type="button"
+                              onClick={() => handleConvertToFacture(doc)}
+                              className="px-2 py-1 bg-emerald-600 text-white rounded-lg text-[10px] font-black cursor-pointer"
+                            >
+                              {lang === 'ar' ? '→ فاتورة' : '→ Facture'}
+                            </button>
+                          </>
+                        )}
+                        {doc.docType === 'bon_commande' && (
+                          <>
+                            <button
+                              type="button"
+                              onClick={() => handleConvertToBL(doc)}
+                              className="px-2 py-1 bg-indigo-50 text-indigo-700 border border-indigo-200 rounded-lg text-[10px] font-black cursor-pointer"
+                            >
+                              → BL
+                            </button>
+                            <button
+                              type="button"
+                              onClick={() => handleConvertToFacture(doc)}
+                              className="px-2 py-1 bg-emerald-600 text-white rounded-lg text-[10px] font-black cursor-pointer"
+                            >
+                              {lang === 'ar' ? '→ فاتورة' : '→ Facture'}
+                            </button>
+                          </>
+                        )}
+                        {doc.docType === 'bon_livraison' && (
+                          <button
+                            type="button"
+                            onClick={() => handleConvertToFacture(doc)}
+                            className="px-2.5 py-1 bg-emerald-600 text-white rounded-lg text-[10px] font-black cursor-pointer"
+                          >
+                            {lang === 'ar' ? '→ تحويل لفاتورة' : '→ Facture'}
+                          </button>
+                        )}
+                      </>
+                    )}
+                  </div>
+                </div>
+
+                <div className="flex flex-wrap items-center gap-1.5 pt-0.5">
+                  <button
+                    type="button"
+                    onClick={() => setViewingDoc(doc)}
+                    className="flex-1 py-2 px-2.5 bg-indigo-50 hover:bg-indigo-100 text-indigo-700 rounded-xl border border-indigo-200 text-xs font-black flex items-center justify-center gap-1.5 transition cursor-pointer"
+                  >
+                    <Eye className="w-3.5 h-3.5 shrink-0" />
+                    <span>{lang === 'ar' ? 'معاينة وطباعة' : 'Aperçu'}</span>
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => handleExportDocPdf(doc)}
+                    className="py-2 px-3 bg-rose-50 hover:bg-rose-100 text-rose-700 rounded-xl border border-rose-200 text-xs font-black flex items-center justify-center gap-1 transition cursor-pointer"
+                  >
+                    <FileDown className="w-3.5 h-3.5 shrink-0" />
+                    <span>PDF</span>
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => handleOpenEdit(doc)}
+                    className="py-2 px-3 bg-blue-50 hover:bg-blue-100 text-blue-700 rounded-xl border border-blue-200 text-xs font-black flex items-center justify-center gap-1 transition cursor-pointer"
+                  >
+                    <Edit className="w-3.5 h-3.5 shrink-0" />
+                    <span>{lang === 'ar' ? 'تعديل' : 'Modifier'}</span>
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => setDeletingId(doc.id)}
+                    className="p-2 text-rose-600 bg-rose-50/60 hover:bg-rose-100 rounded-xl border border-rose-200/70 transition cursor-pointer"
+                  >
+                    <Trash2 className="w-4 h-4" />
+                  </button>
+                </div>
+              </div>
+            );
+          })
+        ) : (
+          <div className="bg-white rounded-2xl border border-slate-100 text-center py-12 text-slate-400">
+            <FileText className="w-10 h-10 stroke-[1.2] mx-auto text-slate-300 mb-2" />
+            <p className="text-xs font-bold">{lang === 'ar' ? `لا توجد وثائق مسجلة في قسم ${getDocTypeLabel(activeType)}` : `Aucun document trouvé dans ${getDocTypeLabel(activeType)}`}</p>
+          </div>
+        )}
+      </div>
+
+      {/* DESKTOP DOCUMENTS TABLE (md+) */}
+      <div className="hidden md:block bg-white rounded-3xl border border-slate-100 shadow-xs overflow-hidden">
         <div className="overflow-x-auto">
           <table className="w-full text-xs text-start">
             <thead className="bg-slate-50 text-slate-500 font-black uppercase text-[10px] border-b border-slate-200">
@@ -1352,143 +2125,175 @@ export default function CommercialDocuments({
                 <th className="py-3.5 px-4 text-start">{lang === 'ar' ? 'الزبون' : 'Client'}</th>
                 <th className="py-3.5 px-4 text-center">{lang === 'ar' ? 'المواد' : 'Articles'}</th>
                 <th className="py-3.5 px-4 text-end">{lang === 'ar' ? 'المبلغ الإجمالي' : 'Total'}</th>
-                <th className="py-3.5 px-4 text-center">{lang === 'ar' ? 'الحالة' : 'État'}</th>
+                <th className="py-3.5 px-4 text-center">{lang === 'ar' ? 'الحالة والربح' : 'État & Profit'}</th>
                 <th className="py-3.5 px-4 text-center">{lang === 'ar' ? 'التحويل والمتابعة' : 'Conversion'}</th>
                 <th className="py-3.5 px-4 text-center">{lang === 'ar' ? 'إجراءات' : 'Actions'}</th>
               </tr>
             </thead>
             <tbody className="divide-y divide-slate-100 bg-white font-semibold">
               {filteredDocs.length > 0 ? (
-                filteredDocs.map((doc) => (
-                  <tr key={doc.id} className="hover:bg-slate-50/70 transition">
-                    <td className="py-3.5 px-4 font-mono font-black text-slate-900">
-                      {doc.docNumber}
-                    </td>
-                    <td className="py-3.5 px-4 text-slate-500">
-                      {doc.date ? new Date(doc.date).toLocaleDateString() : ''}
-                    </td>
-                    <td className="py-3.5 px-4 text-slate-900 font-bold">
-                      {doc.customerName}
-                      {doc.customerPhone && (
-                        <span className="block text-[10px] text-slate-400 font-mono">{doc.customerPhone}</span>
-                      )}
-                    </td>
-                    <td className="py-3.5 px-4 text-center font-mono">
-                      <span className="px-2 py-0.5 rounded-full bg-slate-100 text-slate-700 text-[10px] font-bold">
-                        {doc.items.length} {lang === 'ar' ? 'مواد' : 'art.'}
-                      </span>
-                    </td>
-                    <td className="py-3.5 px-4 text-end font-mono font-black text-indigo-700 text-xs">
-                      {doc.total.toFixed(2)} {config.currency}
-                    </td>
-                    <td className="py-3.5 px-4 text-center">
-                      {getStatusBadge(doc.status)}
-                    </td>
-                    <td className="py-3.5 px-4 text-center">
-                      {doc.convertedTo ? (
-                        <span className="text-[10px] font-bold text-emerald-700 bg-emerald-50 border border-emerald-200 px-2 py-0.5 rounded-lg inline-flex items-center gap-1">
-                          <Check className="w-3 h-3 text-emerald-600" />
-                          <span>{doc.convertedTo.docNumber}</span>
+                filteredDocs.map((doc) => {
+                  const docProfit = doc.docType === 'facture' ? calculateDocProfit(doc) : null;
+                  const prevBal = Number(doc.previousBalance || 0);
+                  return (
+                    <tr key={doc.id} className="hover:bg-slate-50/70 transition">
+                      <td className="py-3.5 px-4 font-mono font-black text-slate-900">
+                        {doc.docNumber}
+                      </td>
+                      <td className="py-3.5 px-4 text-slate-500">
+                        {doc.date ? new Date(doc.date).toLocaleDateString() : ''}
+                      </td>
+                      <td className="py-3.5 px-4 text-slate-900 font-bold">
+                        {doc.customerName}
+                        {doc.customerPhone && (
+                          <span className="block text-[10px] text-slate-400 font-mono">{doc.customerPhone}</span>
+                        )}
+                      </td>
+                      <td className="py-3.5 px-4 text-center font-mono">
+                        <span className="px-2 py-0.5 rounded-full bg-slate-100 text-slate-700 text-[10px] font-bold">
+                          {doc.items.length} {lang === 'ar' ? 'مواد' : 'art.'}
                         </span>
-                      ) : (
-                        <div className="flex items-center justify-center gap-1">
-                          {/* Quick Convert Buttons */}
-                          {doc.docType === 'devis' && (
-                            <>
-                              <button
-                                type="button"
-                                onClick={() => handleConvertToBC(doc)}
-                                className="px-2 py-1 bg-blue-50 hover:bg-blue-100 text-blue-700 border border-blue-200 rounded-lg text-[10px] font-black cursor-pointer transition shadow-2xs hover:scale-105 active:scale-95"
-                                title={lang === 'ar' ? 'تحويل إلى سند طلبية (Bon de commande)' : 'Convertir en Bon de Commande'}
-                              >
-                                → BC
-                              </button>
-                              <button
-                                type="button"
-                                onClick={() => handleConvertToBL(doc)}
-                                className="px-2 py-1 bg-indigo-50 hover:bg-indigo-100 text-indigo-700 border border-indigo-200 rounded-lg text-[10px] font-black cursor-pointer transition shadow-2xs hover:scale-105 active:scale-95"
-                                title={lang === 'ar' ? 'تحويل إلى سند تسليم (Bon de livraison)' : 'Convertir en Bon de Livraison'}
-                              >
-                                → BL
-                              </button>
-                              <button
-                                type="button"
-                                onClick={() => handleConvertToFacture(doc)}
-                                className="px-2 py-1 bg-emerald-600 hover:bg-emerald-700 text-white rounded-lg text-[10px] font-black cursor-pointer transition shadow-2xs hover:scale-105 active:scale-95"
-                                title={lang === 'ar' ? 'تحويل إلى فاتورة رسمية' : 'Convertir en Facture'}
-                              >
-                                {lang === 'ar' ? '→ فاتورة' : '→ Facture'}
-                              </button>
-                            </>
-                          )}
-                          {doc.docType === 'bon_commande' && (
-                            <>
-                              <button
-                                type="button"
-                                onClick={() => handleConvertToBL(doc)}
-                                className="px-2 py-1 bg-indigo-50 hover:bg-indigo-100 text-indigo-700 border border-indigo-200 rounded-lg text-[10px] font-black cursor-pointer transition shadow-2xs hover:scale-105 active:scale-95"
-                                title={lang === 'ar' ? 'تحويل إلى سند تسليم (Bon de livraison)' : 'Convertir en Bon de Livraison'}
-                              >
-                                → BL
-                              </button>
-                              <button
-                                type="button"
-                                onClick={() => handleConvertToFacture(doc)}
-                                className="px-2 py-1 bg-emerald-600 hover:bg-emerald-700 text-white rounded-lg text-[10px] font-black cursor-pointer transition shadow-2xs hover:scale-105 active:scale-95"
-                                title={lang === 'ar' ? 'تحويل إلى فاتورة رسمية' : 'Convertir en Facture'}
-                              >
-                                {lang === 'ar' ? '→ فاتورة' : '→ Facture'}
-                              </button>
-                            </>
-                          )}
-                          {doc.docType === 'bon_livraison' && (
-                            <button
-                              type="button"
-                              onClick={() => handleConvertToFacture(doc)}
-                              className="px-2.5 py-1 bg-emerald-600 hover:bg-emerald-700 text-white rounded-lg text-[10px] font-black cursor-pointer transition shadow-2xs hover:scale-105 active:scale-95"
-                              title={lang === 'ar' ? 'تحويل إلى فاتورة رسمية' : 'Convertir en Facture'}
+                      </td>
+                      <td className="py-3.5 px-4 text-end font-mono font-black text-indigo-700 text-xs">
+                        {Number(doc.total || 0).toFixed(2)} {config.currency}
+                        {prevBal > 0 && (
+                          <span className="block text-[10px] text-amber-600 font-bold">
+                            +{prevBal.toFixed(2)} {lang === 'ar' ? 'قديم' : 'ancien'}
+                          </span>
+                        )}
+                      </td>
+                      <td className="py-3.5 px-4 text-center">
+                        <div className="flex flex-col items-center justify-center gap-1">
+                          {getStatusBadge(doc.status)}
+                          {docProfit !== null && (
+                            <span
+                              className={`inline-flex items-center gap-1 px-2 py-0.5 rounded-md text-[10px] font-black font-mono border whitespace-nowrap ${
+                                docProfit >= 0
+                                  ? 'bg-emerald-50 text-emerald-700 border-emerald-200'
+                                  : 'bg-rose-50 text-rose-700 border-rose-200'
+                              }`}
                             >
-                              {lang === 'ar' ? '→ تحويل لفاتورة' : '→ Facture'}
-                            </button>
-                          )}
-                          {doc.docType === 'facture' && (
-                            <span className="text-[10px] text-slate-400 font-bold bg-slate-50 px-2 py-0.5 rounded-lg border border-slate-200">
-                              {lang === 'ar' ? 'فاتورة نهائية' : 'Facture Finale'}
+                              <span>{lang === 'ar' ? 'الربح:' : 'Profit:'}</span>
+                              <span>{docProfit >= 0 ? '+' : ''}{docProfit.toFixed(2)} {config.currency}</span>
                             </span>
                           )}
                         </div>
-                      )}
-                    </td>
-                    <td className="py-3.5 px-4 text-center">
-                      <div className="flex items-center justify-center gap-1.5">
-                        <button
-                          type="button"
-                          onClick={() => setViewingDoc(doc)}
-                          className="p-1.5 bg-slate-100 hover:bg-slate-200 text-slate-700 rounded-lg transition cursor-pointer"
-                          title={lang === 'ar' ? 'معاينة وطباعة' : 'Aperçu & Imprimer'}
-                        >
-                          <Eye className="w-3.5 h-3.5" />
-                        </button>
-                        <button
-                          type="button"
-                          onClick={() => handleOpenEdit(doc)}
-                          className="p-1.5 bg-slate-100 hover:bg-slate-200 text-slate-700 rounded-lg transition cursor-pointer"
-                          title={lang === 'ar' ? 'تعديل' : 'Modifier'}
-                        >
-                          <Edit className="w-3.5 h-3.5" />
-                        </button>
-                        <button
-                          type="button"
-                          onClick={() => setDeletingId(doc.id)}
-                          className="p-1.5 text-rose-600 hover:bg-rose-50 rounded-lg transition cursor-pointer"
-                          title={lang === 'ar' ? 'حذف' : 'Supprimer'}
-                        >
-                          <Trash2 className="w-3.5 h-3.5" />
-                        </button>
-                      </div>
-                    </td>
-                  </tr>
-                ))
+                      </td>
+                      <td className="py-3.5 px-4 text-center">
+                        {doc.convertedTo ? (
+                          <span className="text-[10px] font-bold text-emerald-700 bg-emerald-50 border border-emerald-200 px-2 py-0.5 rounded-lg inline-flex items-center gap-1">
+                            <Check className="w-3 h-3 text-emerald-600" />
+                            <span>{doc.convertedTo.docNumber}</span>
+                          </span>
+                        ) : (
+                          <div className="flex items-center justify-center gap-1">
+                            {/* Quick Convert Buttons */}
+                            {doc.docType === 'devis' && (
+                              <>
+                                <button
+                                  type="button"
+                                  onClick={() => handleConvertToBC(doc)}
+                                  className="px-2 py-1 bg-blue-50 hover:bg-blue-100 text-blue-700 border border-blue-200 rounded-lg text-[10px] font-black cursor-pointer transition shadow-2xs hover:scale-105 active:scale-95"
+                                  title={lang === 'ar' ? 'تحويل إلى سند طلبية (Bon de commande)' : 'Convertir en Bon de Commande'}
+                                >
+                                  → BC
+                                </button>
+                                <button
+                                  type="button"
+                                  onClick={() => handleConvertToBL(doc)}
+                                  className="px-2 py-1 bg-indigo-50 hover:bg-indigo-100 text-indigo-700 border border-indigo-200 rounded-lg text-[10px] font-black cursor-pointer transition shadow-2xs hover:scale-105 active:scale-95"
+                                  title={lang === 'ar' ? 'تحويل إلى سند تسليم (Bon de livraison)' : 'Convertir en Bon de Livraison'}
+                                >
+                                  → BL
+                                </button>
+                                <button
+                                  type="button"
+                                  onClick={() => handleConvertToFacture(doc)}
+                                  className="px-2 py-1 bg-emerald-600 hover:bg-emerald-700 text-white rounded-lg text-[10px] font-black cursor-pointer transition shadow-2xs hover:scale-105 active:scale-95"
+                                  title={lang === 'ar' ? 'تحويل إلى فاتورة رسمية' : 'Convertir en Facture'}
+                                >
+                                  {lang === 'ar' ? '→ فاتورة' : '→ Facture'}
+                                </button>
+                              </>
+                            )}
+                            {doc.docType === 'bon_commande' && (
+                              <>
+                                <button
+                                  type="button"
+                                  onClick={() => handleConvertToBL(doc)}
+                                  className="px-2 py-1 bg-indigo-50 hover:bg-indigo-100 text-indigo-700 border border-indigo-200 rounded-lg text-[10px] font-black cursor-pointer transition shadow-2xs hover:scale-105 active:scale-95"
+                                  title={lang === 'ar' ? 'تحويل إلى سند تسليم (Bon de livraison)' : 'Convertir en Bon de Livraison'}
+                                >
+                                  → BL
+                                </button>
+                                <button
+                                  type="button"
+                                  onClick={() => handleConvertToFacture(doc)}
+                                  className="px-2 py-1 bg-emerald-600 hover:bg-emerald-700 text-white rounded-lg text-[10px] font-black cursor-pointer transition shadow-2xs hover:scale-105 active:scale-95"
+                                  title={lang === 'ar' ? 'تحويل إلى فاتورة رسمية' : 'Convertir en Facture'}
+                                >
+                                  {lang === 'ar' ? '→ فاتورة' : '→ Facture'}
+                                </button>
+                              </>
+                            )}
+                            {doc.docType === 'bon_livraison' && (
+                              <button
+                                type="button"
+                                onClick={() => handleConvertToFacture(doc)}
+                                className="px-2.5 py-1 bg-emerald-600 hover:bg-emerald-700 text-white rounded-lg text-[10px] font-black cursor-pointer transition shadow-2xs hover:scale-105 active:scale-95"
+                                title={lang === 'ar' ? 'تحويل إلى فاتورة رسمية' : 'Convertir en Facture'}
+                              >
+                                {lang === 'ar' ? '→ تحويل لفاتورة' : '→ Facture'}
+                              </button>
+                            )}
+                            {doc.docType === 'facture' && (
+                              <span className="text-[10px] text-slate-400 font-bold bg-slate-50 px-2 py-0.5 rounded-lg border border-slate-200">
+                                {lang === 'ar' ? 'فاتورة نهائية' : 'Facture Finale'}
+                              </span>
+                            )}
+                          </div>
+                        )}
+                      </td>
+                      <td className="py-3.5 px-4 text-center">
+                        <div className="flex items-center justify-center gap-1.5">
+                          <button
+                            type="button"
+                            onClick={() => setViewingDoc(doc)}
+                            className="p-1.5 bg-slate-100 hover:bg-slate-200 text-slate-700 rounded-lg transition cursor-pointer"
+                            title={lang === 'ar' ? 'معاينة وطباعة' : 'Aperçu & Imprimer'}
+                          >
+                            <Eye className="w-3.5 h-3.5" />
+                          </button>
+                          <button
+                            type="button"
+                            onClick={() => handleExportDocPdf(doc)}
+                            className="px-2 py-1 bg-rose-50 hover:bg-rose-100 text-rose-700 border border-rose-200 rounded-lg text-[10px] font-black flex items-center gap-1 transition cursor-pointer"
+                            title={lang === 'ar' ? 'حفظ / مشاركة PDF' : 'Save / Share PDF'}
+                          >
+                            <FileDown className="w-3 h-3" />
+                            <span>PDF</span>
+                          </button>
+                          <button
+                            type="button"
+                            onClick={() => handleOpenEdit(doc)}
+                            className="p-1.5 bg-slate-100 hover:bg-slate-200 text-slate-700 rounded-lg transition cursor-pointer"
+                            title={lang === 'ar' ? 'تعديل' : 'Modifier'}
+                          >
+                            <Edit className="w-3.5 h-3.5" />
+                          </button>
+                          <button
+                            type="button"
+                            onClick={() => setDeletingId(doc.id)}
+                            className="p-1.5 text-rose-600 hover:bg-rose-50 rounded-lg transition cursor-pointer"
+                            title={lang === 'ar' ? 'حذف' : 'Supprimer'}
+                          >
+                            <Trash2 className="w-3.5 h-3.5" />
+                          </button>
+                        </div>
+                      </td>
+                    </tr>
+                  );
+                })
               ) : (
                 <tr>
                   <td colSpan={8} className="py-12 text-center text-slate-400 font-bold">
@@ -1507,41 +2312,48 @@ export default function CommercialDocuments({
       {/* MODAL 2: VIEW & PRINT A4 DOCUMENT WITH DIRECT CONVERSION */}
       {viewingDoc && createPortal(
         <div 
-          className="fixed inset-0 bg-slate-900/70 backdrop-blur-xs flex items-center justify-center p-3 sm:p-6 z-[100] overflow-y-auto"
+          className="fixed inset-0 bg-slate-900/70 backdrop-blur-xs flex items-center justify-center p-2 sm:p-6 z-[100] overflow-y-auto safe-modal-overlay"
           onClick={() => setViewingDoc(null)}
         >
           <div 
             onClick={(e) => e.stopPropagation()}
-            className="bg-white rounded-3xl shadow-2xl border border-slate-200 w-full max-w-4xl max-h-[94vh] flex flex-col overflow-hidden animate-fade-in my-auto text-start"
+            className="bg-white rounded-3xl shadow-2xl border border-slate-200 w-full max-w-4xl max-h-[92vh] flex flex-col overflow-hidden animate-fade-in my-auto text-start"
           >
-            {/* Top Bar with Clear Close Button and Conversion Actions */}
-            <div className="flex flex-wrap justify-between items-center bg-slate-50 px-6 py-4 border-b border-slate-200 gap-3 shrink-0">
+            {/* Top Bar with Clear Back Button and Conversion Actions */}
+            <div className="flex flex-wrap justify-between items-center bg-slate-50 px-4 sm:px-6 py-3.5 border-b border-slate-200 gap-2.5 shrink-0">
               <div className="flex items-center gap-2">
-                <FileCheck className="w-5 h-5 text-indigo-600" />
+                <button
+                  type="button"
+                  onClick={() => setViewingDoc(null)}
+                  className="px-3 py-1.5 bg-white hover:bg-slate-100 text-slate-800 border border-slate-300 rounded-xl text-xs font-black flex items-center gap-1.5 cursor-pointer transition shadow-2xs"
+                >
+                  <ArrowRight className={`w-4 h-4 ${isRTL ? '' : 'rotate-180'}`} />
+                  <span>{lang === 'ar' ? 'رجوع' : 'Retour'}</span>
+                </button>
                 <span className="font-mono font-bold text-slate-800 text-xs">
                   {viewingDoc.docNumber} • {getDocTypeLabel(viewingDoc.docType)}
                 </span>
               </div>
 
-              <div className="flex flex-wrap items-center gap-2">
+              <div className="flex flex-wrap items-center gap-1.5">
                 {/* 1-Click Convert Actions inside modal */}
                 {viewingDoc.docType === 'devis' && (
                   <>
                     <button
                       type="button"
                       onClick={() => handleConvertToBC(viewingDoc)}
-                      className="px-3 py-1.5 bg-amber-50 hover:bg-amber-100 text-amber-700 border border-amber-200 rounded-xl text-xs font-black flex items-center gap-1 cursor-pointer transition shadow-2xs"
+                      className="px-2.5 py-1.5 bg-amber-50 hover:bg-amber-100 text-amber-700 border border-amber-200 rounded-xl text-xs font-black flex items-center gap-1 cursor-pointer transition shadow-2xs"
                     >
                       <ArrowRightLeft className="w-3.5 h-3.5" />
-                      <span>{lang === 'ar' ? 'تحويل إلى Bon de commande (-> BC)' : 'Convertir en BC'}</span>
+                      <span>{lang === 'ar' ? 'تحويل إلى BC' : 'Convertir en BC'}</span>
                     </button>
                     <button
                       type="button"
                       onClick={() => handleConvertToFacture(viewingDoc)}
-                      className="px-3.5 py-1.5 bg-emerald-600 hover:bg-emerald-700 text-white rounded-xl text-xs font-black flex items-center gap-1 cursor-pointer transition shadow-xs"
+                      className="px-3 py-1.5 bg-emerald-600 hover:bg-emerald-700 text-white rounded-xl text-xs font-black flex items-center gap-1 cursor-pointer transition shadow-xs"
                     >
                       <CheckCircle2 className="w-3.5 h-3.5 text-emerald-200" />
-                      <span>{lang === 'ar' ? 'تحويل إلى فاتورة (-> Facture)' : 'Convertir en Facture'}</span>
+                      <span>{lang === 'ar' ? 'تحويل لفاتورة' : 'Convertir en Facture'}</span>
                     </button>
                   </>
                 )}
@@ -1551,18 +2363,18 @@ export default function CommercialDocuments({
                     <button
                       type="button"
                       onClick={() => handleConvertToBL(viewingDoc)}
-                      className="px-3 py-1.5 bg-blue-50 hover:bg-blue-100 text-blue-700 border border-blue-200 rounded-xl text-xs font-black flex items-center gap-1 cursor-pointer transition shadow-2xs"
+                      className="px-2.5 py-1.5 bg-blue-50 hover:bg-blue-100 text-blue-700 border border-blue-200 rounded-xl text-xs font-black flex items-center gap-1 cursor-pointer transition shadow-2xs"
                     >
                       <Truck className="w-3.5 h-3.5" />
-                      <span>{lang === 'ar' ? 'تحويل إلى Bon de livraison (-> BL)' : 'Convertir en BL'}</span>
+                      <span>{lang === 'ar' ? 'تحويل إلى BL' : 'Convertir en BL'}</span>
                     </button>
                     <button
                       type="button"
                       onClick={() => handleConvertToFacture(viewingDoc)}
-                      className="px-3.5 py-1.5 bg-emerald-600 hover:bg-emerald-700 text-white rounded-xl text-xs font-black flex items-center gap-1 cursor-pointer transition shadow-xs"
+                      className="px-3 py-1.5 bg-emerald-600 hover:bg-emerald-700 text-white rounded-xl text-xs font-black flex items-center gap-1 cursor-pointer transition shadow-xs"
                     >
                       <CheckCircle2 className="w-3.5 h-3.5 text-emerald-200" />
-                      <span>{lang === 'ar' ? 'تحويل إلى فاتورة (-> Facture)' : 'Convertir en Facture'}</span>
+                      <span>{lang === 'ar' ? 'تحويل لفاتورة' : 'Convertir en Facture'}</span>
                     </button>
                   </>
                 )}
@@ -1571,37 +2383,37 @@ export default function CommercialDocuments({
                   <button
                     type="button"
                     onClick={() => handleConvertToFacture(viewingDoc)}
-                    className="px-3.5 py-1.5 bg-emerald-600 hover:bg-emerald-700 text-white rounded-xl text-xs font-black flex items-center gap-1 cursor-pointer transition shadow-xs"
+                    className="px-3 py-1.5 bg-emerald-600 hover:bg-emerald-700 text-white rounded-xl text-xs font-black flex items-center gap-1 cursor-pointer transition shadow-xs"
                   >
                     <CheckCircle2 className="w-3.5 h-3.5 text-emerald-200" />
-                    <span>{lang === 'ar' ? 'تحويل إلى فاتورة رسمية (-> Facture)' : 'Convertir en Facture'}</span>
+                    <span>{lang === 'ar' ? 'تحويل لفاتورة' : 'Convertir en Facture'}</span>
                   </button>
                 )}
+
+                {/* PDF button */}
+                <button
+                  type="button"
+                  onClick={() => handleExportDocPdf(viewingDoc)}
+                  className="px-3 py-1.5 bg-rose-600 hover:bg-rose-700 text-white rounded-xl text-xs font-black flex items-center gap-1.5 cursor-pointer transition shadow-xs"
+                >
+                  <FileDown className="w-3.5 h-3.5" />
+                  <span>PDF</span>
+                </button>
 
                 {/* Print button */}
                 <button
                   type="button"
-                  onClick={triggerPrint}
-                  className="px-4 py-1.5 bg-slate-900 hover:bg-slate-800 text-white rounded-xl text-xs font-black flex items-center gap-1.5 cursor-pointer transition shadow-xs"
+                  onClick={() => triggerPrint(viewingDoc)}
+                  className="px-3.5 py-1.5 bg-slate-900 hover:bg-slate-800 text-white rounded-xl text-xs font-black flex items-center gap-1.5 cursor-pointer transition shadow-xs"
                 >
                   <Printer className="w-3.5 h-3.5" />
                   <span>{lang === 'ar' ? 'طباعة' : 'Imprimer'}</span>
-                </button>
-
-                {/* Explicit Close Button */}
-                <button
-                  type="button"
-                  onClick={() => setViewingDoc(null)}
-                  className="px-3.5 py-1.5 bg-rose-50 hover:bg-rose-100 text-rose-700 border border-rose-200 rounded-xl text-xs font-black flex items-center gap-1 cursor-pointer transition"
-                >
-                  <X className="w-4 h-4" />
-                  <span>{lang === 'ar' ? 'إغلاق الصفحة' : 'Fermer'}</span>
                 </button>
               </div>
             </div>
 
             {/* Printable A4 Sheet Body */}
-            <div className="p-8 space-y-6 overflow-y-auto flex-1 bg-white" id="printable-commercial-doc">
+            <div className="p-4 sm:p-8 space-y-6 overflow-y-auto flex-1 bg-white" id="printable-commercial-doc">
               {/* Header: Store Info + Document Metadata */}
               <div className="flex flex-col sm:flex-row justify-between items-start gap-4 pb-6 border-b-2 border-slate-200">
                 <div>
@@ -1667,16 +2479,16 @@ export default function CommercialDocuments({
               </div>
 
               {/* Items Table */}
-              <div className="border border-slate-200 rounded-2xl overflow-hidden text-xs shadow-2xs">
+              <div className="border border-slate-200 rounded-2xl overflow-x-auto text-[11px] sm:text-xs shadow-2xs">
                 <table className="w-full">
-                  <thead className="bg-slate-100 text-slate-700 font-black border-b border-slate-200 text-[11px]">
+                  <thead className="bg-slate-100 text-slate-700 font-black border-b border-slate-200 text-[10px] sm:text-[11px]">
                     <tr>
-                      <th className="px-4 py-3 text-start w-12">#</th>
-                      <th className="px-4 py-3 text-start">{lang === 'ar' ? 'البيان / المادة' : 'Désignation'}</th>
-                      <th className="px-4 py-3 text-center w-24">{lang === 'ar' ? 'الكمية' : 'Quantité'}</th>
-                      <th className="px-4 py-3 text-center w-32">{lang === 'ar' ? 'سعر الوحدة' : 'Prix Unitaire'}</th>
-                      <th className="px-4 py-3 text-center w-20">{lang === 'ar' ? 'خصم %' : 'Remise'}</th>
-                      <th className="px-4 py-3 text-end w-32">{lang === 'ar' ? 'المجموع' : 'Total'}</th>
+                      <th className="px-2 sm:px-4 py-2.5 sm:py-3 text-start w-8 sm:w-12">#</th>
+                      <th className="px-2 sm:px-4 py-2.5 sm:py-3 text-start">{lang === 'ar' ? 'البيان / المادة' : 'Désignation'}</th>
+                      <th className="px-2 sm:px-4 py-2.5 sm:py-3 text-center w-14 sm:w-24">{lang === 'ar' ? 'الكمية' : 'Quantité'}</th>
+                      <th className="px-2 sm:px-4 py-2.5 sm:py-3 text-center w-20 sm:w-32">{lang === 'ar' ? 'سعر الوحدة' : 'Prix Unitaire'}</th>
+                      <th className="px-2 sm:px-4 py-2.5 sm:py-3 text-center w-14 sm:w-20">{lang === 'ar' ? 'خصم%' : 'Remise'}</th>
+                      <th className="px-2 sm:px-4 py-2.5 sm:py-3 text-end w-24 sm:w-32">{lang === 'ar' ? 'المجموع' : 'Total'}</th>
                     </tr>
                   </thead>
                   <tbody className="divide-y divide-slate-100 font-semibold bg-white">
@@ -1686,12 +2498,12 @@ export default function CommercialDocuments({
                       const itemTotal = Number(item.total ?? (itemPrice * (item.quantity || 1)));
                       return (
                         <tr key={idx} className="hover:bg-slate-50/60 transition">
-                          <td className="px-4 py-3 text-slate-400 text-start">{idx + 1}</td>
-                          <td className="px-4 py-3 text-slate-900 font-bold">{item.productName || 'منتج'}</td>
-                          <td className="px-4 py-3 text-center font-mono font-bold text-slate-800">{item.quantity || 1}</td>
-                          <td className="px-4 py-3 text-center font-mono text-slate-600">{itemPrice.toFixed(2)} {config.currency}</td>
-                          <td className="px-4 py-3 text-center font-mono text-slate-600">{itemDiscount > 0 ? `${itemDiscount}%` : '-'}</td>
-                          <td className="px-4 py-3 text-end font-black text-slate-900 font-mono">
+                          <td className="px-2 sm:px-4 py-2.5 sm:py-3 text-slate-400 text-start">{idx + 1}</td>
+                          <td className="px-2 sm:px-4 py-2.5 sm:py-3 text-slate-900 font-bold">{item.productName || 'منتج'}</td>
+                          <td className="px-2 sm:px-4 py-2.5 sm:py-3 text-center font-mono font-bold text-slate-800">{item.quantity || 1}</td>
+                          <td className="px-2 sm:px-4 py-2.5 sm:py-3 text-center font-mono text-slate-600">{itemPrice.toFixed(2)} {config.currency}</td>
+                          <td className="px-2 sm:px-4 py-2.5 sm:py-3 text-center font-mono text-slate-600">{itemDiscount > 0 ? `${itemDiscount}%` : '-'}</td>
+                          <td className="px-2 sm:px-4 py-2.5 sm:py-3 text-end font-black text-slate-900 font-mono whitespace-nowrap">
                             {itemTotal.toFixed(2)} {config.currency}
                           </td>
                         </tr>
@@ -1715,7 +2527,7 @@ export default function CommercialDocuments({
 
                 <div className="w-full sm:w-80 space-y-2 text-xs font-bold text-slate-700 bg-slate-50/80 p-4 rounded-2xl border border-slate-200">
                   <div className="flex justify-between items-center text-slate-600">
-                    <span>{lang === 'ar' ? 'المجموع الفرعي (HT):' : 'Total HT:'}</span>
+                    <span>{lang === 'ar' ? 'المجموع:' : 'Total HT:'}</span>
                     <span className="font-mono text-slate-900">{Number(viewingDoc.subtotal || 0).toFixed(2)} {config.currency}</span>
                   </div>
                   {Number(viewingDoc.discount || 0) > 0 && (
@@ -1734,6 +2546,20 @@ export default function CommercialDocuments({
                     <span>{lang === 'ar' ? 'الصافي الإجمالي (TTC):' : 'Net TTC:'}</span>
                     <span className="text-xl font-black text-indigo-700 font-mono">{Number(viewingDoc.total || 0).toFixed(2)} {config.currency}</span>
                   </div>
+                  {Number(viewingDoc.previousBalance || 0) > 0 && (
+                    <>
+                      <div className="flex justify-between items-center text-amber-800 pt-1">
+                        <span>{lang === 'ar' ? 'كريدي قديم / مبلغ سابق:' : 'Ancien crédit / Solde:'}</span>
+                        <span className="font-mono font-bold">+{Number(viewingDoc.previousBalance || 0).toFixed(2)} {config.currency}</span>
+                      </div>
+                      <div className="flex justify-between items-center border-t border-amber-200 pt-2 text-slate-950 font-black text-sm">
+                        <span>{lang === 'ar' ? 'المجموع الكلي مع السابق:' : 'Total général avec solde:'}</span>
+                        <span className="text-xl font-black text-emerald-700 font-mono">
+                          {(Number(viewingDoc.total || 0) + Number(viewingDoc.previousBalance || 0)).toFixed(2)} {config.currency}
+                        </span>
+                      </div>
+                    </>
+                  )}
                 </div>
               </div>
 
@@ -1758,24 +2584,34 @@ export default function CommercialDocuments({
             </div>
 
             {/* Bottom Modal Actions */}
-            <div className="bg-slate-50 px-6 py-4 border-t border-slate-200 flex flex-wrap items-center justify-between gap-3 shrink-0">
+            <div className="bg-slate-50 px-4 sm:px-6 py-3.5 border-t border-slate-200 flex flex-wrap items-center justify-between gap-2.5 shrink-0">
               <button
                 type="button"
                 onClick={() => setViewingDoc(null)}
-                className="px-6 py-2.5 bg-slate-200 hover:bg-slate-300 text-slate-800 rounded-xl text-xs font-black transition cursor-pointer flex items-center gap-1.5"
+                className="px-4 py-2 bg-white hover:bg-slate-100 text-slate-800 border border-slate-300 rounded-xl text-xs font-black transition cursor-pointer flex items-center gap-1.5 shadow-2xs"
               >
-                <X className="w-4 h-4 text-slate-600" />
-                <span>{lang === 'ar' ? 'إغلاق الصفحة' : 'Fermer'}</span>
+                <ArrowRight className={`w-4 h-4 ${isRTL ? '' : 'rotate-180'}`} />
+                <span>{lang === 'ar' ? 'رجوع للقائمة' : 'Retour'}</span>
               </button>
 
-              <button
-                type="button"
-                onClick={triggerPrint}
-                className="px-6 py-2.5 bg-indigo-600 hover:bg-indigo-700 text-white rounded-xl text-xs font-black flex items-center gap-2 cursor-pointer transition shadow-xs"
-              >
-                <Printer className="w-4 h-4" />
-                <span>{lang === 'ar' ? 'طباعة الوثيقة' : 'Imprimer'}</span>
-              </button>
+              <div className="flex flex-wrap items-center gap-2">
+                <button
+                  type="button"
+                  onClick={() => handleExportDocPdf(viewingDoc)}
+                  className="px-4 py-2 bg-rose-600 hover:bg-rose-700 text-white rounded-xl text-xs font-black flex items-center gap-1.5 cursor-pointer transition shadow-xs"
+                >
+                  <FileDown className="w-4 h-4" />
+                  <span>{lang === 'ar' ? 'حفظ PDF' : 'Enregistrer PDF'}</span>
+                </button>
+                <button
+                  type="button"
+                  onClick={() => triggerPrint(viewingDoc)}
+                  className="px-5 py-2 bg-indigo-600 hover:bg-indigo-700 text-white rounded-xl text-xs font-black flex items-center gap-1.5 cursor-pointer transition shadow-xs"
+                >
+                  <Printer className="w-4 h-4" />
+                  <span>{lang === 'ar' ? 'طباعة الوثيقة' : 'Imprimer'}</span>
+                </button>
+              </div>
             </div>
           </div>
         </div>,

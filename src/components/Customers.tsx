@@ -6,9 +6,10 @@
 import React, { useState } from 'react';
 import { Customer, Invoice, Language, StoreConfig, ActivityLog } from '../types';
 import { languages } from '../languages';
-import { UserPlus, Search, Phone, Mail, DollarSign, Edit3, Trash2, X, Receipt, CheckCircle, MessageCircle } from 'lucide-react';
+import { UserPlus, Search, Phone, Mail, DollarSign, Edit3, Trash2, X, Receipt, CheckCircle, MessageCircle, Printer, FileDown } from 'lucide-react';
 import CustomerLedger from './CustomerLedger';
 import { parseDecimal, sanitizeDecimalInput } from '../utils/numberInput';
+import { printHtmlContent, exportStructuredPdf, PdfDocumentMeta } from '../utils/printService';
 
 interface CustomersProps {
   customers: Customer[];
@@ -116,6 +117,153 @@ export default function Customers({ customers, invoices, onSaveCustomer, onDelet
     );
   }
 
+  const buildCustomerDebtsReportData = () => {
+    const customersWithDebt = filteredCustomers.filter((c) => Number(c.debt || 0) > 0);
+    const totalActiveDebt = customersWithDebt.reduce((sum, c) => sum + Number(c.debt || 0), 0);
+    const storeTitle = config.name || 'Smart POS';
+
+    const debtsPdfMeta: PdfDocumentMeta = {
+      title: lang === 'ar' ? 'تقرير ديون الزبائن الشامل' : 'Customer Debts Statement',
+      docNumber: `DEBTS-${new Date().toISOString().slice(0, 10)}`,
+      date: new Date().toLocaleString('fr-FR'),
+      storeName: storeTitle,
+      storePhone: config.phone,
+      storeAddress: config.address,
+      storeEmail: config.email,
+      storeRegNumber: config.registrationNumber,
+      customerLabel: lang === 'ar' ? 'عدد الزبائن المدينين:' : 'Customers with Debt:',
+      customerName: `${customersWithDebt.length} ${lang === 'ar' ? 'زبون' : 'customers'}`,
+      currency: config.currency,
+      mode: 'a4',
+      isRTL,
+      summaryCards: [
+        {
+          label: lang === 'ar' ? 'إجمالي عدد الزبائن' : 'Total Customers',
+          value: String(filteredCustomers.length),
+          color: '#0f172a'
+        },
+        {
+          label: lang === 'ar' ? 'الزبائن المدينون (كريدي)' : 'Customers With Debt',
+          value: String(customersWithDebt.length),
+          color: '#d97706'
+        },
+        {
+          label: lang === 'ar' ? 'مجموع الديون المستحقة' : 'Total Outstanding Debt',
+          value: `${totalActiveDebt.toFixed(2)} ${config.currency}`,
+          color: '#be123c'
+        }
+      ],
+      customTableHeaders: {
+        name: lang === 'ar' ? 'اسم الزبون' : 'Customer Name',
+        qty: lang === 'ar' ? 'رقم الهاتف' : 'Phone',
+        price: lang === 'ar' ? 'عدد الفواتير' : 'Invoices',
+        total: lang === 'ar' ? 'مبلغ الدين المستحق' : 'Debt Amount'
+      },
+      items: (customersWithDebt.length > 0 ? customersWithDebt : filteredCustomers).map((c) => {
+        const custInvs = getCustomerInvoices(c.id);
+        return {
+          name: c.name,
+          quantity: c.phone || '-',
+          unitPrice: custInvs.length,
+          total: Number(c.debt || 0)
+        };
+      }),
+      subtotal: totalActiveDebt,
+      total: totalActiveDebt,
+      remainingDebt: totalActiveDebt
+    };
+
+    const html = `
+      <style>
+        .smartpos-debts-report { font-family: 'Cairo', 'Tajawal', 'Segoe UI', Tahoma, Arial, sans-serif; color: #0f172a; background: #fff; font-size: 12px; direction: ${isRTL ? 'rtl' : 'ltr'}; }
+        .smartpos-debts-report * { box-sizing: border-box; }
+        .smartpos-debts-report .header { display: flex; justify-content: space-between; align-items: center; border-bottom: 2px solid #0f172a; padding-bottom: 12px; margin-bottom: 16px; }
+        .smartpos-debts-report .title { font-size: 18px; font-weight: 900; margin: 0; color: #1e1b4b; }
+        .smartpos-debts-report .subtitle { font-size: 11px; color: #475569; margin-top: 4px; font-weight: 700; }
+        .smartpos-debts-report .kpi-grid { display: grid; grid-template-columns: repeat(3, 1fr); gap: 10px; margin-bottom: 16px; }
+        .smartpos-debts-report .kpi-box { border: 1px solid #cbd5e1; border-radius: 8px; padding: 10px; background: #f8fafc; }
+        .smartpos-debts-report .kpi-label { font-size: 10px; color: #64748b; font-weight: 700; }
+        .smartpos-debts-report .kpi-val { font-size: 15px; font-weight: 900; margin-top: 3px; font-family: monospace; }
+        .smartpos-debts-report table { width: 100%; border-collapse: collapse; margin-top: 10px; }
+        .smartpos-debts-report th, .smartpos-debts-report td { border: 1px solid #cbd5e1; padding: 8px 10px; text-align: ${isRTL ? 'right' : 'left'}; font-size: 12px; }
+        .smartpos-debts-report th { background: #f1f5f9; font-weight: 800; color: #1e293b; }
+        .smartpos-debts-report .debt { color: #be123c; font-weight: 900; font-family: monospace; }
+      </style>
+      <div class="smartpos-debts-report" dir="${isRTL ? 'rtl' : 'ltr'}">
+        <div class="header">
+          <div>
+            <h1 class="title">${storeTitle} - ${lang === 'ar' ? 'تقرير ديون الزبائن الشامل' : 'Customer Debts Statement'}</h1>
+            <div class="subtitle">${lang === 'ar' ? 'تاريخ الطباعة:' : 'Printed:'} ${new Date().toLocaleString('fr-FR')}</div>
+          </div>
+          <div style="text-align:${isRTL ? 'left' : 'right'}; font-size:11px; font-weight:700;">
+            <div>${config.phone || ''}</div>
+            <div>${config.address || ''}</div>
+          </div>
+        </div>
+        <div class="kpi-grid">
+          <div class="kpi-box">
+            <div class="kpi-label">${lang === 'ar' ? 'إجمالي عدد الزبائن' : 'Total Customers'}</div>
+            <div class="kpi-val">${filteredCustomers.length}</div>
+          </div>
+          <div class="kpi-box">
+            <div class="kpi-label">${lang === 'ar' ? 'الزبائن المدينون (كريدي)' : 'Customers With Debt'}</div>
+            <div class="kpi-val" style="color:#d97706;">${customersWithDebt.length}</div>
+          </div>
+          <div class="kpi-box">
+            <div class="kpi-label">${lang === 'ar' ? 'مجموع الديون المستحقة' : 'Total Outstanding Debt'}</div>
+            <div class="kpi-val debt">${totalActiveDebt.toFixed(2)} ${config.currency}</div>
+          </div>
+        </div>
+        <table>
+          <thead>
+            <tr>
+              <th>#</th>
+              <th>${lang === 'ar' ? 'اسم الزبون' : 'Customer Name'}</th>
+              <th>${lang === 'ar' ? 'رقم الهاتف' : 'Phone'}</th>
+              <th>${lang === 'ar' ? 'عدد الفواتير' : 'Invoices'}</th>
+              <th>${lang === 'ar' ? 'مبلغ الدين المستحق' : 'Outstanding Debt'}</th>
+            </tr>
+          </thead>
+          <tbody>
+            ${(customersWithDebt.length > 0 ? customersWithDebt : filteredCustomers)
+              .map(
+                (c, i) => `
+              <tr>
+                <td>${i + 1}</td>
+                <td><b>${c.name}</b></td>
+                <td>${c.phone || '-'}</td>
+                <td>${getCustomerInvoices(c.id).length}</td>
+                <td class="debt">${Number(c.debt || 0).toFixed(2)} ${config.currency}</td>
+              </tr>
+            `
+              )
+              .join('')}
+          </tbody>
+        </table>
+      </div>
+    `;
+
+    return { html, debtsPdfMeta };
+  };
+
+  const handlePrintDebtsReport = () => {
+    const { html, debtsPdfMeta } = buildCustomerDebtsReportData();
+    printHtmlContent(
+      {
+        title: `${debtsPdfMeta.title} - ${config.name || 'Smart POS'}`,
+        html,
+        isRTL,
+        mode: 'a4'
+      },
+      debtsPdfMeta
+    );
+  };
+
+  const handleExportDebtsPdf = async () => {
+    const { debtsPdfMeta } = buildCustomerDebtsReportData();
+    await exportStructuredPdf(debtsPdfMeta, `Customer-Debts-${new Date().toISOString().slice(0, 10)}.pdf`);
+  };
+
   return (
     <div className="space-y-6" id="customers-sec">
       {/* Header */}
@@ -126,17 +274,37 @@ export default function Customers({ customers, invoices, onSaveCustomer, onDelet
             {t.customer.title}
           </h1>
           <p className="text-sm text-slate-500 mt-1">
-            Manage your client directory, debts, and ledger balances in one screen.
+            {lang === 'ar'
+              ? 'إدارة قائمة الزبائن، متابعة الكريدي والديون، وطباعة كشوفات الحساب.'
+              : 'Manage your client directory, debts, and ledger balances in one screen.'}
           </p>
         </div>
-        <button
-          id="btn-add-cust"
-          onClick={handleStartAdd}
-          className="flex items-center gap-2 px-5 py-2.5 bg-indigo-600 hover:bg-indigo-700 text-white font-medium rounded-xl transition duration-200 shadow-sm"
-        >
-          <UserPlus className="w-5 h-5" />
-          {t.customer.addCustomer}
-        </button>
+        <div className="flex flex-wrap items-center gap-2 w-full sm:w-auto">
+          <button
+            type="button"
+            onClick={handlePrintDebtsReport}
+            className="flex items-center gap-1.5 px-3.5 py-2.5 bg-slate-800 hover:bg-slate-900 text-white text-xs font-black rounded-xl transition cursor-pointer shadow-xs"
+          >
+            <Printer className="w-4 h-4" />
+            <span>{lang === 'ar' ? 'طباعة تقرير الديون' : 'Print Debts Report'}</span>
+          </button>
+          <button
+            type="button"
+            onClick={handleExportDebtsPdf}
+            className="flex items-center gap-1.5 px-3.5 py-2.5 bg-emerald-600 hover:bg-emerald-700 text-white text-xs font-black rounded-xl transition cursor-pointer shadow-xs"
+          >
+            <FileDown className="w-4 h-4" />
+            <span>PDF</span>
+          </button>
+          <button
+            id="btn-add-cust"
+            onClick={handleStartAdd}
+            className="flex items-center gap-2 px-4 py-2.5 bg-indigo-600 hover:bg-indigo-700 text-white text-xs font-black rounded-xl transition duration-200 shadow-sm cursor-pointer"
+          >
+            <UserPlus className="w-4 h-4" />
+            <span>{t.customer.addCustomer}</span>
+          </button>
+        </div>
       </div>
 
       {/* Controls */}

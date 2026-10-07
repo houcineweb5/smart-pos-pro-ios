@@ -169,6 +169,12 @@ export async function initDB() {
     // Column already exists
   }
 
+  try {
+    await db.exec('ALTER TABLE invoices ADD COLUMN previousBalance REAL');
+  } catch (e) {
+    // Column already exists
+  }
+
   // 6. config
   await db.exec(`
     CREATE TABLE IF NOT EXISTS config (
@@ -260,6 +266,9 @@ export async function initDB() {
       discount REAL,
       tax REAL,
       total REAL,
+      amountPaid REAL,
+      previousBalance REAL,
+      paymentMethod TEXT,
       status TEXT,
       notes TEXT,
       convertedTo TEXT,
@@ -267,6 +276,16 @@ export async function initDB() {
       sellerName TEXT
     )
   `);
+
+  try {
+    await db.exec('ALTER TABLE commercial_documents ADD COLUMN amountPaid REAL');
+  } catch (e) {}
+  try {
+    await db.exec('ALTER TABLE commercial_documents ADD COLUMN previousBalance REAL');
+  } catch (e) {}
+  try {
+    await db.exec('ALTER TABLE commercial_documents ADD COLUMN paymentMethod TEXT');
+  } catch (e) {}
 
   // Ensure default store config exists
   const configExists = await db.get('SELECT COUNT(*) as count FROM config WHERE key = ?', ['store_config']);
@@ -356,6 +375,15 @@ export async function getData() {
     convertedFrom: d.convertedFrom ? JSON.parse(d.convertedFrom) : undefined
   }));
 
+  const deletedRow = await database.get('SELECT value FROM config WHERE key = ?', ['deleted_ids']);
+  let deletedIds: string[] = [];
+  if (deletedRow && deletedRow.value) {
+    try {
+      const parsed = JSON.parse(deletedRow.value);
+      if (Array.isArray(parsed)) deletedIds = parsed;
+    } catch {}
+  }
+
   return {
     products,
     customers,
@@ -367,8 +395,31 @@ export async function getData() {
     logs,
     repairs,
     expenses: expenses || [],
-    commercialDocuments: commercialDocuments || []
+    commercialDocuments: commercialDocuments || [],
+    deletedIds
   };
+}
+
+export async function getCloudConfigFromDB() {
+  const database = await initDB();
+  const row = await database.get('SELECT value FROM config WHERE key = ?', ['cloud_sync_config']);
+  if (row && row.value) {
+    try {
+      return JSON.parse(row.value);
+    } catch {
+      return null;
+    }
+  }
+  return null;
+}
+
+export async function saveCloudConfigToDB(cfg: any) {
+  const database = await initDB();
+  await database.run('INSERT OR REPLACE INTO config (key, value) VALUES (?, ?)', [
+    'cloud_sync_config',
+    JSON.stringify(cfg || {}),
+  ]);
+  return { ok: true };
 }
 
 export async function saveData(data: any) {
@@ -429,10 +480,10 @@ export async function saveData(data: any) {
       await database.run('DELETE FROM invoices');
       for (const inv of data.invoices) {
         await database.run(
-          'INSERT INTO invoices (id, invoiceNumber, date, customerId, customerName, items, subtotal, discount, tax, total, amountPaid, paymentMethod, status, notes, returnedItems, sellerId, sellerName) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)',
+          'INSERT INTO invoices (id, invoiceNumber, date, customerId, customerName, items, subtotal, discount, tax, total, amountPaid, previousBalance, paymentMethod, status, notes, returnedItems, sellerId, sellerName) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)',
           [
             inv.id, inv.invoiceNumber, inv.date, inv.customerId || '', inv.customerName, JSON.stringify(inv.items),
-            inv.subtotal, inv.discount, inv.tax, inv.total, inv.amountPaid, inv.paymentMethod, inv.status, inv.notes || '',
+            inv.subtotal, inv.discount, inv.tax, inv.total, inv.amountPaid, Number(inv.previousBalance || 0), inv.paymentMethod, inv.status, inv.notes || '',
             inv.returnedItems ? JSON.stringify(inv.returnedItems) : '[]',
             inv.sellerId || '', inv.sellerName || ''
           ]
@@ -443,6 +494,10 @@ export async function saveData(data: any) {
     // 6. Config
     if (data.config) {
       await database.run('INSERT OR REPLACE INTO config (key, value) VALUES (?, ?)', ['store_config', JSON.stringify(data.config)]);
+    }
+
+    if (Array.isArray(data.deletedIds)) {
+      await database.run('INSERT OR REPLACE INTO config (key, value) VALUES (?, ?)', ['deleted_ids', JSON.stringify(data.deletedIds.slice(-1000))]);
     }
 
     // 7. Employees
@@ -498,11 +553,14 @@ export async function saveData(data: any) {
       await database.run('DELETE FROM commercial_documents');
       for (const d of data.commercialDocuments) {
         await database.run(
-          'INSERT INTO commercial_documents (id, docType, docNumber, date, validUntil, customerId, customerName, customerPhone, customerAddress, items, subtotal, discount, tax, total, status, notes, convertedTo, convertedFrom, sellerName) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)',
+          'INSERT INTO commercial_documents (id, docType, docNumber, date, validUntil, customerId, customerName, customerPhone, customerAddress, items, subtotal, discount, tax, total, amountPaid, previousBalance, paymentMethod, status, notes, convertedTo, convertedFrom, sellerName) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)',
           [
             d.id, d.docType, d.docNumber, d.date, d.validUntil || '',
             d.customerId || '', d.customerName || '', d.customerPhone || '', d.customerAddress || '',
             JSON.stringify(d.items || []), d.subtotal || 0, d.discount || 0, d.tax || 0, d.total || 0,
+            d.amountPaid !== undefined ? Number(d.amountPaid) : (d.total || 0),
+            Number(d.previousBalance || 0),
+            d.paymentMethod || 'cash',
             d.status || 'draft', d.notes || '',
             d.convertedTo ? JSON.stringify(d.convertedTo) : '',
             d.convertedFrom ? JSON.stringify(d.convertedFrom) : '',
@@ -517,6 +575,44 @@ export async function saveData(data: any) {
   } catch (error) {
     await database.run('ROLLBACK');
     console.error('Error saving data to SQLite:', error);
+    throw error;
+  }
+}
+
+export async function resetDB(zeroPayload?: any) {
+  const database = await initDB();
+  await database.run('BEGIN TRANSACTION');
+  try {
+    await database.run('DELETE FROM products');
+    await database.run('DELETE FROM customers');
+    await database.run('DELETE FROM suppliers');
+    await database.run('DELETE FROM purchases');
+    await database.run('DELETE FROM invoices');
+    await database.run('DELETE FROM repairs');
+    await database.run('DELETE FROM expenses');
+    await database.run('DELETE FROM commercial_documents');
+    await database.run('DELETE FROM logs');
+
+    const customersToInsert = Array.isArray(zeroPayload?.customers) && zeroPayload.customers.length > 0
+      ? zeroPayload.customers
+      : INITIAL_CUSTOMERS;
+    for (const c of customersToInsert) {
+      await database.run(
+        'INSERT INTO customers (id, name, phone, email, debt, notes, createdAt) VALUES (?, ?, ?, ?, ?, ?, ?)',
+        [c.id, c.name, c.phone || '', c.email || '', c.debt || 0, c.notes || '', c.createdAt || new Date().toISOString()]
+      );
+    }
+
+    await database.run(
+      'INSERT INTO logs (id, timestamp, userId, userName, action, details) VALUES (?, ?, ?, ?, ?, ?)',
+      ['log_' + Date.now(), new Date().toISOString(), 'admin', 'Administrator', 'تهيئة النظام', 'تمت فرمتة النظام وإعادة التعيين من الصفر بنجاح']
+    );
+
+    await database.run('COMMIT');
+    return { success: true };
+  } catch (error) {
+    await database.run('ROLLBACK');
+    console.error('Error resetting SQLite database:', error);
     throw error;
   }
 }

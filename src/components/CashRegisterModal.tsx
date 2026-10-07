@@ -8,9 +8,10 @@ import { Invoice, StoreConfig, Language, Expense, Employee } from '../types';
 import { 
   Lock, Printer, X, DollarSign, Calculator, AlertTriangle, 
   CheckCircle2, TrendingUp, TrendingDown, ArrowUpRight, 
-  Calendar, Clock, User
+  Calendar, Clock, User, FileDown, ArrowRight
 } from 'lucide-react';
 import { parseDecimal, sanitizeDecimalInput } from '../utils/numberInput';
+import { printHtmlContent, exportStructuredPdf } from '../utils/printService';
 
 interface CashRegisterModalProps {
   isOpen: boolean;
@@ -75,137 +76,99 @@ export default function CashRegisterModal({
   const expectedCash = openingVal + cashSales - totalCashExpensesToday;
   const difference = actualVal !== null ? actualVal - expectedCash : null;
 
+  const buildZReportPdfMeta = () => ({
+    title: lang === 'ar' ? 'تقرير إغلاق الصندوق (Z-Report)' : 'Rapport Z de Caisse',
+    docNumber: `Z-${now.toISOString().slice(0, 10)}`,
+    date: `${now.toLocaleDateString('fr-FR')} ${now.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}`,
+    storeName: config.name || 'المتجر',
+    storePhone: config.phone,
+    storeAddress: config.address,
+    customerLabel: lang === 'ar' ? 'المسؤول' : 'Caissier',
+    customerName: currentUser?.name || 'Administrator',
+    currency: config.currency,
+    mode: '80mm' as const,
+    isRTL,
+    items: [
+      { name: lang === 'ar' ? 'رصيد بداية اليوم (+)' : 'Fond de caisse (+)', quantity: 1, unitPrice: openingVal, total: openingVal },
+      { name: lang === 'ar' ? 'مبيعات نقدية (+)' : 'Ventes Espèces (+)', quantity: todayInvoices.filter(i => i.paymentMethod === 'cash').length, unitPrice: cashSales, total: cashSales },
+      { name: lang === 'ar' ? 'مبيعات بطاقة (•)' : 'Ventes Carte (•)', quantity: todayInvoices.filter(i => i.paymentMethod === 'card').length, unitPrice: cardSales, total: cardSales },
+      { name: lang === 'ar' ? 'ديون مؤجلة (•)' : 'Ventes Crédit (•)', quantity: todayInvoices.filter(i => i.paymentMethod === 'debt' || i.total > i.amountPaid).length, unitPrice: debtSales, total: debtSales },
+      { name: lang === 'ar' ? 'مصاريف الصندوق (-)' : 'Dépenses (-)', quantity: todayExpenses.length, unitPrice: totalCashExpensesToday, total: -totalCashExpensesToday },
+    ],
+    subtotal: expectedCash,
+    total: expectedCash,
+    amountPaid: actualVal !== null ? actualVal : expectedCash,
+    notes: notes || undefined,
+    footerText: 'APEX SALES & INVOICING SYSTEM'
+  });
+
+  const handleExportZReportPdf = async () => {
+    await exportStructuredPdf(buildZReportPdfMeta());
+  };
+
   // Print Thermal 80mm Z-Report
   const handlePrintZReport = () => {
-    const printWindow = window.open('', '_blank', 'width=400,height=700');
-    if (!printWindow) return;
-
     const html = `
-      <!DOCTYPE html>
-      <html dir="${isRTL ? 'rtl' : 'ltr'}">
-      <head>
-        <meta charset="utf-8">
-        <title>Z-Report - ${now.toLocaleDateString()}</title>
-        <style>
-          @page { size: 80mm auto; margin: 4mm; }
-          body {
-            font-family: monospace, sans-serif;
-            width: 72mm;
-            margin: 0 auto;
-            color: #000;
-            font-size: 11px;
-            line-height: 1.4;
-          }
-          .text-center { text-align: center; }
-          .text-end { text-align: ${isRTL ? 'left' : 'right'}; }
-          .text-start { text-align: ${isRTL ? 'right' : 'left'}; }
-          .bold { font-weight: bold; }
-          .title { font-size: 14px; font-weight: 900; margin-bottom: 2px; }
-          .divider { border-top: 1px dashed #000; margin: 6px 0; }
-          .double-divider { border-top: 2px solid #000; margin: 8px 0; }
-          .row { display: flex; justify-content: space-between; margin: 2px 0; }
-          .highlight { font-size: 12px; font-weight: 900; }
-          .badge { border: 1px solid #000; padding: 2px 4px; display: inline-block; margin-top: 4px; }
-        </style>
-      </head>
-      <body>
-        <div class="text-center">
-          <div class="title">${config.name}</div>
+      <div style="font-family: monospace, sans-serif; width: 72mm; margin: 0 auto; color: #000; font-size: 11px; line-height: 1.4; direction: ${isRTL ? 'rtl' : 'ltr'};">
+        <div style="text-align: center;">
+          <div style="font-size: 14px; font-weight: 900; margin-bottom: 2px;">${config.name}</div>
           <div>${config.address || ''}</div>
           <div>TEL: ${config.phone || ''}</div>
-          <div class="divider"></div>
-          <div class="bold" style="font-size: 13px;">=== RAPPORT Z / تقرير إغلاق الصندوق ===</div>
+          <div style="border-top: 1px dashed #000; margin: 6px 0;"></div>
+          <div style="font-weight: bold; font-size: 13px;">=== RAPPORT Z / تقرير إغلاق الصندوق ===</div>
           <div>${now.toLocaleDateString()} - ${now.toLocaleTimeString()}</div>
           <div>المسؤول / Caissier: ${currentUser?.name || 'Administrator'}</div>
         </div>
-
-        <div class="divider"></div>
-
-        <div class="row">
+        <div style="border-top: 1px dashed #000; margin: 6px 0;"></div>
+        <div style="display: flex; justify-content: space-between; margin: 2px 0;">
           <span>عدد المبيعات / Nb Ventes:</span>
-          <span class="bold">${todayInvoices.length}</span>
+          <b>${todayInvoices.length}</b>
         </div>
-        <div class="row">
+        <div style="display: flex; justify-content: space-between; margin: 2px 0;">
           <span>إجمالي المبيعات / Total Ventes:</span>
-          <span class="bold">${totalSalesToday.toFixed(2)} ${config.currency}</span>
+          <b>${totalSalesToday.toFixed(2)} ${config.currency}</b>
         </div>
-
-        <div class="divider"></div>
-
-        <div class="bold" style="margin-bottom: 4px;">تفاصيل المداخيل / Encaissements:</div>
-        <div class="row">
-          <span>(+) رصيد البداية / Fond de caisse:</span>
+        <div style="border-top: 1px dashed #000; margin: 6px 0;"></div>
+        <div style="display: flex; justify-content: space-between; margin: 2px 0;">
+          <span>(+) رصيد البداية:</span>
           <span>${openingVal.toFixed(2)} ${config.currency}</span>
         </div>
-        <div class="row">
-          <span>(+) مبيعات نقدية / Ventes Espèces:</span>
-          <span class="bold">${cashSales.toFixed(2)} ${config.currency}</span>
+        <div style="display: flex; justify-content: space-between; margin: 2px 0;">
+          <span>(+) مبيعات نقدية:</span>
+          <b>${cashSales.toFixed(2)} ${config.currency}</b>
         </div>
-        <div class="row">
-          <span>(•) مبيعات بنكية / Ventes Carte:</span>
-          <span>${cardSales.toFixed(2)} ${config.currency}</span>
-        </div>
-        <div class="row">
-          <span>(•) ديون مؤجلة / Ventes Crédit:</span>
-          <span>${debtSales.toFixed(2)} ${config.currency}</span>
-        </div>
-        <div class="row">
-          <span>(-) مصاريف الصندوق / Dépenses:</span>
+        <div style="display: flex; justify-content: space-between; margin: 2px 0;">
+          <span>(-) مصاريف الصندوق:</span>
           <span>-${totalCashExpensesToday.toFixed(2)} ${config.currency}</span>
         </div>
-
-        <div class="divider"></div>
-
-        <div class="row highlight">
-          <span>المتوقع في الصندوق / Espèces Théorique:</span>
+        <div style="border-top: 1px dashed #000; margin: 6px 0;"></div>
+        <div style="display: flex; justify-content: space-between; font-size: 12px; font-weight: 900;">
+          <span>المتوقع في الصندوق:</span>
           <span>${expectedCash.toFixed(2)} ${config.currency}</span>
         </div>
-
         ${actualVal !== null ? `
-          <div class="row highlight">
-            <span>الفعلي في الدرج / Espèces Réel:</span>
+          <div style="display: flex; justify-content: space-between; font-size: 12px; font-weight: 900;">
+            <span>الفعلي في الدرج:</span>
             <span>${actualVal.toFixed(2)} ${config.currency}</span>
           </div>
-          <div class="row highlight" style="margin-top: 4px;">
-            <span>الفارق / Écart de caisse:</span>
+          <div style="display: flex; justify-content: space-between; font-size: 12px; font-weight: 900; margin-top: 4px;">
+            <span>الفارق:</span>
             <span>${(difference || 0) > 0 ? '+' : ''}${(difference || 0).toFixed(2)} ${config.currency}</span>
           </div>
-          <div class="text-center">
-            <span class="badge">
-              ${(difference || 0) === 0 ? 'صندوق مطابق تماماً / Conforme' : (difference || 0) > 0 ? 'فائض نقدي / Excédent' : 'عجز في الصندوق / Déficit'}
-            </span>
-          </div>
         ` : ''}
-
-        ${notes ? `
-          <div class="divider"></div>
-          <div><b>ملاحظات:</b> ${notes}</div>
-        ` : ''}
-
-        <div class="double-divider"></div>
-        <div class="text-center" style="margin-top: 15px;">
-          <div>توقيع المسؤول / Signature du caissier</div>
-          <div style="height: 35px;"></div>
-          <div>_____________________</div>
-        </div>
-        <div class="text-center" style="margin-top: 10px; font-size: 9px;">
-          APEX SALES & INVOICING SYSTEM
-        </div>
-      </body>
-      </html>
+        ${notes ? `<div style="border-top: 1px dashed #000; margin: 6px 0;"></div><div><b>ملاحظات:</b> ${notes}</div>` : ''}
+      </div>
     `;
-
-    printWindow.document.open();
-    printWindow.document.write(html);
-    printWindow.document.close();
-    setTimeout(() => {
-      printWindow.focus();
-      printWindow.print();
-    }, 400);
+    printHtmlContent({
+      title: `Z-Report - ${now.toLocaleDateString()}`,
+      html,
+      isRTL,
+      mode: '80mm'
+    });
   };
 
   return (
-    <div className="fixed inset-0 bg-slate-900/60 backdrop-blur-xs flex items-center justify-center p-4 z-50 animate-fade-in">
+    <div className="fixed inset-0 bg-slate-900/60 backdrop-blur-xs flex items-center justify-center p-2 sm:p-4 z-50 animate-fade-in safe-modal-overlay">
       <div className="bg-white rounded-2xl shadow-2xl border border-slate-100 w-full max-w-lg overflow-hidden flex flex-col max-h-[92vh]">
         {/* Modal Header */}
         <div className="bg-slate-900 text-white p-5 flex items-center justify-between shrink-0">
@@ -390,23 +353,34 @@ export default function CashRegisterModal({
         </div>
 
         {/* Modal Footer Actions */}
-        <div className="p-4 bg-slate-50 border-t border-slate-200 flex justify-between items-center gap-3 shrink-0">
+        <div className="p-4 bg-slate-50 border-t border-slate-200 flex flex-wrap justify-between items-center gap-2 shrink-0">
           <button
             type="button"
             onClick={onClose}
-            className="px-4 py-2.5 border border-slate-200 rounded-xl text-xs font-bold text-slate-600 hover:bg-slate-100 transition cursor-pointer"
+            className="px-4 py-2.5 bg-white border border-slate-300 rounded-xl text-xs font-black text-slate-800 hover:bg-slate-100 transition cursor-pointer flex items-center gap-1.5"
           >
-            {lang === 'ar' ? 'إلغاء' : 'Cancel'}
+            <ArrowRight className={`w-4 h-4 ${isRTL ? '' : 'rotate-180'}`} />
+            <span>{lang === 'ar' ? 'رجوع' : 'Back'}</span>
           </button>
 
-          <button
-            type="button"
-            onClick={handlePrintZReport}
-            className="flex items-center gap-2 px-5 py-2.5 bg-slate-900 hover:bg-black text-white rounded-xl text-xs font-black shadow-md transition active:scale-95 cursor-pointer"
-          >
-            <Printer className="w-4 h-4 text-emerald-400" />
-            <span>{lang === 'ar' ? 'طباعة تقرير Z للإغلاق (80mm)' : 'Print Z-Report (80mm)'}</span>
-          </button>
+          <div className="flex flex-wrap items-center gap-2">
+            <button
+              type="button"
+              onClick={handleExportZReportPdf}
+              className="flex items-center gap-1.5 px-4 py-2.5 bg-rose-600 hover:bg-rose-700 text-white rounded-xl text-xs font-black shadow-xs transition active:scale-95 cursor-pointer"
+            >
+              <FileDown className="w-4 h-4" />
+              <span>PDF</span>
+            </button>
+            <button
+              type="button"
+              onClick={handlePrintZReport}
+              className="flex items-center gap-2 px-4 py-2.5 bg-slate-900 hover:bg-black text-white rounded-xl text-xs font-black shadow-md transition active:scale-95 cursor-pointer"
+            >
+              <Printer className="w-4 h-4 text-emerald-400" />
+              <span>{lang === 'ar' ? 'طباعة تقرير Z (80mm)' : 'Print Z-Report (80mm)'}</span>
+            </button>
+          </div>
         </div>
       </div>
     </div>

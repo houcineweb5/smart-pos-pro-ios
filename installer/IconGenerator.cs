@@ -2,142 +2,103 @@ using System;
 using System.Drawing;
 using System.Drawing.Drawing2D;
 using System.Drawing.Imaging;
-using System.Drawing.Text;
 using System.IO;
 
 public class IconGenerator
 {
-    public static Bitmap RenderSPBitmap(int size)
+    private static string SourceImagePath = @"C:\Users\Houcine\.gemini\antigravity\brain\878069ee-1c54-4308-8384-155d63b68452\.user_uploaded\media_1791284952983.jpg";
+
+    private static Rectangle GetLogoBoundingBox(Bitmap bmp)
     {
-        // Render at 512x512 first for supersampled anti-aliasing, then scale down
-        int canvasSize = 512;
-        using (Bitmap master = new Bitmap(canvasSize, canvasSize, PixelFormat.Format32bppArgb))
+        int minX = bmp.Width, minY = bmp.Height, maxX = 0, maxY = 0;
+        bool found = false;
+        for (int y = 0; y < bmp.Height; y++)
+        {
+            for (int x = 0; x < bmp.Width; x++)
+            {
+                Color c = bmp.GetPixel(x, y);
+                // Detect any pixel that is not near-pure white
+                if (c.A > 20 && (c.R < 244 || c.G < 244 || c.B < 244))
+                {
+                    if (x < minX) minX = x;
+                    if (x > maxX) maxX = x;
+                    if (y < minY) minY = y;
+                    if (y > maxY) maxY = y;
+                    found = true;
+                }
+            }
+        }
+        if (!found || maxX <= minX || maxY <= minY)
+        {
+            return new Rectangle(0, 0, bmp.Width, bmp.Height);
+        }
+        return new Rectangle(minX, minY, maxX - minX + 1, maxY - minY + 1);
+    }
+
+    public static Bitmap RenderLuxuryBitmap(int size, bool fullBleedForIOS = false)
+    {
+        int canvasSize = 1024;
+        PixelFormat fmt = fullBleedForIOS ? PixelFormat.Format24bppRgb : PixelFormat.Format32bppArgb;
+        using (Bitmap master = new Bitmap(canvasSize, canvasSize, fmt))
         using (Graphics g = Graphics.FromImage(master))
         {
             g.SmoothingMode = SmoothingMode.HighQuality;
             g.InterpolationMode = InterpolationMode.HighQualityBicubic;
             g.PixelOffsetMode = PixelOffsetMode.HighQuality;
-            g.TextRenderingHint = TextRenderingHint.AntiAliasGridFit;
-            g.Clear(Color.Transparent);
+            g.CompositingQuality = CompositingQuality.HighQuality;
+            g.Clear(fullBleedForIOS ? Color.White : Color.Transparent);
 
-            // 1. Rounded Squircle Background
-            Rectangle rect = new Rectangle(24, 24, 464, 464);
-            using (GraphicsPath bgPath = CreateRoundedRect(rect, 112))
+            if (File.Exists(SourceImagePath))
             {
-                using (LinearGradientBrush bgBrush = new LinearGradientBrush(
-                    rect,
-                    Color.FromArgb(255, 79, 70, 229),   // Indigo 600
-                    Color.FromArgb(255, 15, 23, 42),    // Slate 900
-                    LinearGradientMode.ForwardDiagonal))
+                using (Bitmap srcBmp = new Bitmap(SourceImagePath))
                 {
-                    ColorBlend cb = new ColorBlend();
-                    cb.Positions = new float[] { 0.0f, 0.52f, 1.0f };
-                    cb.Colors = new Color[] {
-                        Color.FromArgb(255, 99, 102, 241),
-                        Color.FromArgb(255, 55, 48, 163),
-                        Color.FromArgb(255, 15, 23, 42)
-                    };
-                    bgBrush.InterpolationColors = cb;
-                    g.FillPath(bgBrush, bgPath);
-                }
+                    Rectangle cropBox = GetLogoBoundingBox(srcBmp);
 
-                // Subtle top-left gloss highlight
-                using (GraphicsPath glossPath = new GraphicsPath())
-                {
-                    glossPath.AddEllipse(-60, -90, 480, 320);
-                    g.SetClip(bgPath);
-                    using (SolidBrush glossBrush = new SolidBrush(Color.FromArgb(28, 255, 255, 255)))
+                    // Calculate destination rectangle that preserves aspect ratio and fills ~93% of the icon
+                    double targetMaxDim = fullBleedForIOS ? (canvasSize * 0.92) : (canvasSize * 0.93);
+                    double scale = Math.Min(targetMaxDim / cropBox.Width, targetMaxDim / cropBox.Height);
+                    int destW = (int)Math.Round(cropBox.Width * scale);
+                    int destH = (int)Math.Round(cropBox.Height * scale);
+                    int destX = (canvasSize - destW) / 2;
+                    int destY = (canvasSize - destH) / 2;
+                    Rectangle destRect = new Rectangle(destX, destY, destW, destH);
+
+                    if (fullBleedForIOS)
                     {
-                        g.FillPath(glossBrush, glossPath);
+                        g.DrawImage(srcBmp, destRect, cropBox, GraphicsUnit.Pixel);
                     }
-                    g.ResetClip();
-                }
-
-                // Glowing Outer Border
-                using (Pen borderPen = new Pen(Color.FromArgb(210, 129, 140, 248), 10f))
-                {
-                    g.DrawPath(borderPen, bgPath);
-                }
-            }
-
-            // Inner subtle frame
-            Rectangle innerRect = new Rectangle(42, 42, 428, 428);
-            using (GraphicsPath innerPath = CreateRoundedRect(innerRect, 94))
-            using (Pen innerPen = new Pen(Color.FromArgb(35, 255, 255, 255), 3f))
-            {
-                g.DrawPath(innerPen, innerPath);
-            }
-
-            // 2. Draw Merged "SP" Monogram
-            // We create two paths for 'S' and 'P' positioned so they interlock & merge seamlessly
-            using (FontFamily ff = new FontFamily("Arial"))
-            {
-                // Drop shadow for the merged SP
-                using (GraphicsPath shadowPath = new GraphicsPath())
-                {
-                    shadowPath.AddString("S", ff, (int)FontStyle.Bold, 315f, new PointF(64f, 84f), StringFormat.GenericTypographic);
-                    shadowPath.AddString("P", ff, (int)FontStyle.Bold, 315f, new PointF(218f, 114f), StringFormat.GenericTypographic);
-                    using (Matrix m = new Matrix())
+                    else
                     {
-                        m.Translate(0, 12);
-                        shadowPath.Transform(m);
-                    }
-                    using (SolidBrush shadowBrush = new SolidBrush(Color.FromArgb(115, 0, 0, 0)))
-                    {
-                        g.FillPath(shadowBrush, shadowPath);
-                    }
-                }
+                        // Full-size rounded squircle mask for Windows Desktop & Web icon (minimal outer margin)
+                        Rectangle bounds = new Rectangle(4, 4, canvasSize - 8, canvasSize - 8);
+                        using (GraphicsPath clipPath = CreateRoundedRect(bounds, 220))
+                        {
+                            using (SolidBrush whiteBrush = new SolidBrush(Color.White))
+                            {
+                                g.FillPath(whiteBrush, clipPath);
+                            }
+                            g.SetClip(clipPath);
+                            g.DrawImage(srcBmp, destRect, cropBox, GraphicsUnit.Pixel);
+                            g.ResetClip();
 
-                // Letter 'P' (Cyan/Sky-Blue gradient, merged on the right & interlocking with S)
-                using (GraphicsPath pPath = new GraphicsPath())
-                {
-                    pPath.AddString("P", ff, (int)FontStyle.Bold, 315f, new PointF(218f, 114f), StringFormat.GenericTypographic);
-                    using (LinearGradientBrush pBrush = new LinearGradientBrush(
-                        new Rectangle(200, 100, 260, 320),
-                        Color.FromArgb(255, 56, 189, 248),  // Sky 400
-                        Color.FromArgb(255, 129, 140, 248), // Indigo 400
-                        LinearGradientMode.Vertical))
-                    {
-                        g.FillPath(pBrush, pPath);
-                    }
-                    using (Pen pOutline = new Pen(Color.FromArgb(140, 255, 255, 255), 3f))
-                    {
-                        pOutline.LineJoin = LineJoin.Round;
-                        g.DrawPath(pOutline, pPath);
-                    }
-                }
-
-                // Letter 'S' (Crisp White-to-Ice gradient, overlapping & fused with P's vertical spine)
-                using (GraphicsPath sPath = new GraphicsPath())
-                {
-                    sPath.AddString("S", ff, (int)FontStyle.Bold, 315f, new PointF(64f, 84f), StringFormat.GenericTypographic);
-
-                    // Subtle dark separation aura right where S overlaps P for depth while keeping them fused
-                    using (Pen sepPen = new Pen(Color.FromArgb(90, 15, 23, 42), 12f))
-                    {
-                        sepPen.LineJoin = LineJoin.Round;
-                        g.DrawPath(sepPen, sPath);
-                    }
-
-                    using (LinearGradientBrush sBrush = new LinearGradientBrush(
-                        new Rectangle(60, 70, 250, 320),
-                        Color.FromArgb(255, 255, 255, 255),
-                        Color.FromArgb(255, 224, 231, 255),
-                        LinearGradientMode.Vertical))
-                    {
-                        g.FillPath(sBrush, sPath);
+                            // Crisp purple-gold border rim
+                            using (Pen borderPen = new Pen(Color.FromArgb(240, 124, 58, 237), 12f))
+                            {
+                                g.DrawPath(borderPen, clipPath);
+                            }
+                        }
                     }
                 }
             }
 
-            // Scale down to target size
-            Bitmap result = new Bitmap(size, size, PixelFormat.Format32bppArgb);
+            Bitmap result = new Bitmap(size, size, fmt);
             using (Graphics rg = Graphics.FromImage(result))
             {
                 rg.SmoothingMode = SmoothingMode.HighQuality;
                 rg.InterpolationMode = InterpolationMode.HighQualityBicubic;
                 rg.PixelOffsetMode = PixelOffsetMode.HighQuality;
-                rg.Clear(Color.Transparent);
+                rg.CompositingQuality = CompositingQuality.HighQuality;
+                rg.Clear(fullBleedForIOS ? Color.White : Color.Transparent);
                 rg.DrawImage(master, new Rectangle(0, 0, size, size));
             }
             return result;
@@ -167,7 +128,7 @@ public class IconGenerator
         byte[][] pngBuffers = new byte[sizes.Length][];
         for (int i = 0; i < sizes.Length; i++)
         {
-            using (Bitmap bmp = RenderSPBitmap(sizes[i]))
+            using (Bitmap bmp = RenderLuxuryBitmap(sizes[i], false))
             using (MemoryStream ms = new MemoryStream())
             {
                 bmp.Save(ms, ImageFormat.Png);
@@ -178,23 +139,22 @@ public class IconGenerator
         using (FileStream fs = new FileStream(icoPath, FileMode.Create, FileAccess.Write))
         using (BinaryWriter bw = new BinaryWriter(fs))
         {
-            // ICONDIR header
-            bw.Write((ushort)0); // Reserved
-            bw.Write((ushort)1); // Type 1 = ICO
-            bw.Write((ushort)sizes.Length); // Count
+            bw.Write((ushort)0);
+            bw.Write((ushort)1);
+            bw.Write((ushort)sizes.Length);
 
             int offset = 6 + (16 * sizes.Length);
             for (int i = 0; i < sizes.Length; i++)
             {
                 int s = sizes[i];
-                bw.Write((byte)(s >= 256 ? 0 : s)); // Width
-                bw.Write((byte)(s >= 256 ? 0 : s)); // Height
-                bw.Write((byte)0); // Color count
-                bw.Write((byte)0); // Reserved
-                bw.Write((ushort)1); // Planes
-                bw.Write((ushort)32); // Bits per pixel
-                bw.Write((uint)pngBuffers[i].Length); // Size of image data
-                bw.Write((uint)offset); // Offset
+                bw.Write((byte)(s >= 256 ? 0 : s));
+                bw.Write((byte)(s >= 256 ? 0 : s));
+                bw.Write((byte)0);
+                bw.Write((byte)0);
+                bw.Write((ushort)1);
+                bw.Write((ushort)32);
+                bw.Write((uint)pngBuffers[i].Length);
+                bw.Write((uint)offset);
                 offset += pngBuffers[i].Length;
             }
 
@@ -209,11 +169,35 @@ public class IconGenerator
     {
         int[] sizes = new int[] { 256, 128, 64, 48, 32, 16 };
         SaveMultiSizeIcon(@"installer\SmartPOS.ico", sizes);
+        SaveMultiSizeIcon(@"SmartPOS.ico", sizes);
         SaveMultiSizeIcon(@"public\favicon.ico", sizes);
-        using (Bitmap preview = RenderSPBitmap(256))
+
+        using (Bitmap preview = RenderLuxuryBitmap(512, false))
         {
             preview.Save(@"public\sp-icon.png", ImageFormat.Png);
         }
-        Console.WriteLine("Icons generated successfully!");
+
+        string iosIconSetDir = @"ios\App\App\Assets.xcassets\AppIcon.appiconset";
+        if (Directory.Exists(iosIconSetDir))
+        {
+            foreach (string file in Directory.GetFiles(iosIconSetDir, "*.png"))
+            {
+                int targetW = 1024;
+                try
+                {
+                    using (Bitmap existing = new Bitmap(file))
+                    {
+                        targetW = existing.Width;
+                    }
+                }
+                catch { }
+                using (Bitmap iosBmp = RenderLuxuryBitmap(targetW, true))
+                {
+                    iosBmp.Save(file, ImageFormat.Png);
+                }
+            }
+        }
+
+        Console.WriteLine("Luxury Icons generated successfully!");
     }
 }

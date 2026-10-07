@@ -4,8 +4,9 @@ import { languages } from '../languages';
 import { 
   Wrench, Search, Plus, Trash2, Edit3, Clock, CheckCircle2, 
   DollarSign, AlertCircle, Printer, X, Smartphone, Check, 
-  RotateCcw, FileText, Phone, Shield, Calendar, Receipt, ChevronRight, User
+  RotateCcw, FileText, Phone, Shield, Calendar, Receipt, ChevronRight, User, ArrowRight, FileDown
 } from 'lucide-react';
+import { printHtmlContent, exportStructuredPdf } from '../utils/printService';
 
 interface RepairsManagementProps {
   repairs: RepairOrder[];
@@ -746,58 +747,77 @@ export default function RepairsManagement({ repairs, config, onSaveRepair, onDel
 
       {/* Printable Small A80 Claim ticket format Modal Dialog */}
       {showPrintModal && printTarget && (
-        <div className="fixed inset-0 bg-slate-900/60 backdrop-blur-xs flex items-center justify-center p-4 z-50">
-          <div className="bg-white rounded-2xl shadow-xl border border-slate-100 w-full max-w-sm overflow-hidden animate-fade-in flex flex-col max-h-[90vh]">
+        <div className="fixed inset-0 bg-slate-900/60 backdrop-blur-xs flex items-center justify-center p-3 sm:p-4 z-50 safe-modal-overlay">
+          <div className="bg-white rounded-2xl shadow-xl border border-slate-100 w-full max-w-sm overflow-hidden animate-fade-in flex flex-col max-h-[88vh]">
             {/* Action Bar */}
-            <div className="bg-slate-900 text-white p-4 flex items-center justify-between shrink-0">
-              <span className="text-xs font-mono font-bold">{printTarget.orderNumber}</span>
-              <div className="flex items-center gap-2">
+            <div className="bg-slate-900 text-white p-3.5 flex items-center justify-between gap-2 shrink-0">
+              <button
+                id="btn-claim-print-close"
+                type="button"
+                onClick={() => setShowPrintModal(false)}
+                className="px-2.5 py-1.5 bg-slate-800 hover:bg-slate-700 text-white rounded-lg text-xs font-bold flex items-center gap-1 transition cursor-pointer shrink-0"
+              >
+                <ArrowRight className={`w-3.5 h-3.5 ${isRTL ? '' : 'rotate-180'}`} />
+                <span>{lang === 'ar' ? 'رجوع' : 'Retour'}</span>
+              </button>
+
+              <span className="text-xs font-mono font-bold truncate">{printTarget.orderNumber}</span>
+
+              <div className="flex items-center gap-1.5 shrink-0">
                 <button
-                  id="btn-claim-print-trigger"
+                  type="button"
                   onClick={() => {
-                    const printContents = document.getElementById('sav-claim-ticket-thermal-print')?.innerHTML;
-                    const originalContents = document.body.innerHTML;
-                    if (printContents) {
-                      const printWindow = window.open('', '_blank');
-                      if (printWindow) {
-                        printWindow.document.write(`
-                          <html>
-                            <head>
-                              <title>PRINT CLAIM TICKET ${printTarget.orderNumber}</title>
-                              <style>
-                                @media print {
-                                  body { width: 80mm; margin: 0; padding: 4mm; font-family: 'Inter', sans-serif; font-size: 11px; }
-                                }
-                                body { width: 80mm; padding: 4px; font-family: sans-serif; font-size: 11px; line-height: 1.4; color: #000; }
-                                .dotted-hr { border-top: 1px dashed #000; margin: 8px 0; }
-                                .text-center { text-align: center; }
-                                .bold { font-weight: bold; }
-                                .flex-between { display: flex; justify-content: space-between; }
-                              </style>
-                            </head>
-                            <body onload="window.print(); window.close();">
-                              ${printContents}
-                            </body>
-                          </html>
-                        `);
-                        printWindow.document.close();
-                      } else {
-                        // Fallback browser standard direct window print
-                        window.print();
-                      }
-                    }
+                    exportStructuredPdf({
+                      title: lang === 'ar' ? 'وصل استلام صيانة (SAV)' : 'Ticket de Réparation SAV',
+                      docNumber: printTarget.orderNumber,
+                      date: new Date(printTarget.createdAt).toLocaleDateString('fr-FR'),
+                      storeName: config.name || 'المتجر',
+                      storePhone: config.phone,
+                      storeAddress: config.address,
+                      customerLabel: lang === 'ar' ? 'العميل' : 'Client',
+                      customerName: printTarget.customerName,
+                      customerPhone: printTarget.customerPhone,
+                      currency: config.currency,
+                      mode: '80mm',
+                      isRTL,
+                      items: [
+                        {
+                          name: `${printTarget.itemName} (${printTarget.issueDescription})`,
+                          quantity: 1,
+                          unitPrice: Number(printTarget.estimatedCost || 0),
+                          total: Number(printTarget.estimatedCost || 0)
+                        }
+                      ],
+                      subtotal: Number(printTarget.estimatedCost || 0),
+                      total: Number(printTarget.estimatedCost || 0),
+                      amountPaid: Number(printTarget.amountPaid || 0),
+                      remainingDebt: Math.max(0, Number(printTarget.estimatedCost || 0) - Number(printTarget.amountPaid || 0)),
+                      notes: printTarget.notes
+                    });
                   }}
-                  className="flex items-center gap-1 px-3 py-1.5 bg-indigo-600 hover:bg-indigo-700 text-white text-xs font-bold rounded-lg transition"
+                  className="flex items-center gap-1 px-2.5 py-1.5 bg-rose-600 hover:bg-rose-700 text-white text-xs font-bold rounded-lg transition cursor-pointer"
                 >
-                  <Printer className="w-3.5 h-3.5" />
-                  <span>{lang === 'ar' ? 'اطبع الآن' : 'Print'}</span>
+                  <FileDown className="w-3.5 h-3.5" />
+                  <span>PDF</span>
                 </button>
                 <button
-                  id="btn-claim-print-close"
-                  onClick={() => setShowPrintModal(false)}
-                  className="text-slate-400 hover:text-white transition cursor-pointer"
+                  id="btn-claim-print-trigger"
+                  type="button"
+                  onClick={() => {
+                    const printContents = document.getElementById('sav-claim-ticket-thermal-print')?.innerHTML;
+                    if (printContents) {
+                      printHtmlContent({
+                        title: `SAV ${printTarget.orderNumber}`,
+                        html: `<div style="width:76mm; margin:0 auto; font-family:-apple-system,BlinkMacSystemFont,'Cairo',sans-serif; font-size:11px; line-height:1.4; color:#000; direction:${isRTL ? 'rtl' : 'ltr'};">${printContents}</div>`,
+                        isRTL,
+                        mode: '80mm'
+                      });
+                    }
+                  }}
+                  className="flex items-center gap-1 px-3 py-1.5 bg-indigo-600 hover:bg-indigo-700 text-white text-xs font-bold rounded-lg transition cursor-pointer"
                 >
-                  <X className="w-4 h-4" />
+                  <Printer className="w-3.5 h-3.5" />
+                  <span>{lang === 'ar' ? 'طباعة' : 'Print'}</span>
                 </button>
               </div>
             </div>

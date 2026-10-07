@@ -17,10 +17,12 @@ if errorlevel 1 (
 )
 
 echo.
-echo [2/3] Creation du depot 'smart-pos-pro-ios' et envoi du code...
-"C:\Program Files\GitHub CLI\gh.exe" repo create smart-pos-pro-ios --private --source=. --remote=origin --push
+echo [2/3] Enregistrement des dernieres modifications et envoi vers GitHub...
+"%LOCALAPPDATA%\Programs\MinGit\cmd\git.exe" add -A
+"%LOCALAPPDATA%\Programs\MinGit\cmd\git.exe" commit -m "Update Smart POS Pro iOS with latest features" >nul 2>&1
+"C:\Program Files\GitHub CLI\gh.exe" repo create smart-pos-pro-ios --private --source=. --remote=origin --push >nul 2>&1
 if errorlevel 1 (
-    echo Le depot existe deja, mise a jour du code...
+    echo Mise a jour du code sur GitHub...
     "%LOCALAPPDATA%\Programs\MinGit\cmd\git.exe" push -u origin main
 )
 

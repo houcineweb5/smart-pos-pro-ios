@@ -244,7 +244,7 @@ export default function BackupManagement({
             <input
               ref={fileInputRef}
               type="file"
-              accept=".json"
+              accept=".json,application/json,text/plain"
               className="hidden"
               onChange={handleFileImport}
               id="backup-file-picker"
@@ -357,7 +357,20 @@ export default function BackupManagement({
                 type="button"
                 onClick={async () => {
                   setShowResetDialog(false);
-                  await onResetToDefaults();
+                  try {
+                    await onResetToDefaults();
+                    showSuccess(
+                      lang === 'ar'
+                        ? 'تمت فرمتة قاعدة البيانات وإعادة ضبط النظام من الصفر بنجاح!'
+                        : 'La base de données a été formatée et réinitialisée avec succès !'
+                    );
+                  } catch (err) {
+                    showError(
+                      lang === 'ar'
+                        ? 'حدث خطأ أثناء فرمتة البيانات.'
+                        : 'Erreur lors de la réinitialisation.'
+                    );
+                  }
                 }}
                 className="px-5 py-2.5 bg-rose-600 hover:bg-rose-700 text-white font-bold rounded-xl text-xs sm:text-sm transition cursor-pointer flex items-center gap-2 shadow-xs active:scale-95"
               >

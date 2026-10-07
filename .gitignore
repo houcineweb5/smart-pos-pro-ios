@@ -8,6 +8,8 @@ coverage/
 !.env.example
 
 Final-Release/
+iOS-Release/
+installer/IconGenerator.exe
 SmartPOS.exe
 database.rar
 database.sqlite

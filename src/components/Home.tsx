@@ -396,19 +396,19 @@ export default function Home({
             </div>
           </button>
 
-          {/* Action 3: Repairs */}
+          {/* Action 3: Sales Invoices Management */}
           <button
-            id="shortcut-new-repair"
-            onClick={() => onNavigate('repairs')}
+            id="shortcut-sales-invoices"
+            onClick={() => onNavigate('invoices')}
             className="group p-4 bg-white border border-slate-100 rounded-xl shadow-xs text-start transition duration-200 hover:border-amber-200 hover:shadow-sm cursor-pointer flex flex-col justify-between h-28"
           >
             <span className="p-2 bg-amber-50 text-amber-600 rounded-xl transition duration-300 group-hover:scale-105 shrink-0 self-start">
-              <PenTool className="w-4.5 h-4.5" />
+              <ClipboardList className="w-4.5 h-4.5" />
             </span>
             <div className="flex justify-between items-end w-full">
               <div>
-                <h3 className="font-bold text-slate-800 text-xs leading-snug">{lang === 'ar' ? 'تذاكر الصيانة (SAV)' : 'Maintenance Tickets'}</h3>
-                <p className="text-[9px] text-slate-400 font-medium mt-0.5">{lang === 'ar' ? 'تسجيل جهاز للإصلاح' : 'Log a repair order'}</p>
+                <h3 className="font-bold text-slate-800 text-xs leading-snug">{lang === 'ar' ? 'إدارة فواتير المبيعات' : lang === 'fr' ? 'Gestion des Factures' : 'Sales Invoices Management'}</h3>
+                <p className="text-[9px] text-slate-400 font-medium mt-0.5">{lang === 'ar' ? 'عرض وتعديل فواتير المبيعات' : lang === 'fr' ? 'Consulter et modifier les factures' : 'View and edit sales invoices'}</p>
               </div>
               <ArrowRight className="w-3.5 h-3.5 text-slate-400 transition duration-300 group-hover:translate-x-1 text-amber-600 rtl:rotate-180 rtl:group-hover:-translate-x-1" />
             </div>

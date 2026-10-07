@@ -23,6 +23,11 @@ namespace SmartPOS
         private string localIp;
         private int port = 3000;
 
+        private bool allowVisible = false;
+        private bool isExiting = false;
+        private int hasAutoLaunched = 0;
+        private int serverStartedFlag = 0;
+
         public MainForm()
         {
             baseDir = AppDomain.CurrentDomain.BaseDirectory;
@@ -33,6 +38,7 @@ namespace SmartPOS
             this.StartPosition = FormStartPosition.CenterScreen;
             this.FormBorderStyle = FormBorderStyle.FixedSingle;
             this.MaximizeBox = false;
+            this.ShowInTaskbar = false;
             this.RightToLeft = RightToLeft.Yes;
             this.RightToLeftLayout = true;
             this.BackColor = Color.FromArgb(15, 23, 42);
@@ -55,7 +61,7 @@ namespace SmartPOS
             this.Controls.Add(titleLabel);
 
             statusLabel = new Label();
-            statusLabel.Text = "⏳ جاري تشغيل الخادم وقاعدة البيانات...";
+            statusLabel.Text = "🟢 النظام يعمل في الخلفية بنجاح";
             statusLabel.Font = new Font("Tahoma", 10f, FontStyle.Bold);
             statusLabel.ForeColor = Color.FromArgb(52, 211, 153);
             statusLabel.AutoSize = false;
@@ -81,7 +87,10 @@ namespace SmartPOS
             openAppBtn.FlatAppearance.BorderSize = 0;
             openAppBtn.Bounds = new Rectangle(35, 120, 395, 44);
             openAppBtn.Cursor = Cursors.Hand;
-            openAppBtn.Click += (s, e) => OpenAppWindow("http://localhost:" + port);
+            openAppBtn.Click += (s, e) => {
+                Interlocked.Exchange(ref hasAutoLaunched, 1);
+                OpenAppWindow("http://localhost:" + port);
+            };
             this.Controls.Add(openAppBtn);
 
             openMobileSyncBtn = new Button();
@@ -123,7 +132,7 @@ namespace SmartPOS
             this.Controls.Add(exitBtn);
 
             Label footerLabel = new Label();
-            footerLabel.Text = "ملاحظة: أبقِ هذه النافذة مفتوحة أو مصغرة أثناء العمل على البرنامج";
+            footerLabel.Text = "يعمل النظام تلقائياً في الخلفية بجانب الساعة دون الحاجة لإبقاء هذه النافذة مفتوحة";
             footerLabel.Font = new Font("Tahoma", 8f, FontStyle.Regular);
             footerLabel.ForeColor = Color.FromArgb(100, 116, 139);
             footerLabel.AutoSize = false;
@@ -131,32 +140,70 @@ namespace SmartPOS
             footerLabel.Bounds = new Rectangle(20, 272, 425, 20);
             this.Controls.Add(footerLabel);
 
+            ContextMenu trayMenu = new ContextMenu();
+            trayMenu.MenuItems.Add("🖥️ فتح شاشة البرنامج", (s, e) => {
+                Interlocked.Exchange(ref hasAutoLaunched, 1);
+                OpenAppWindow("http://localhost:" + port);
+            });
+            trayMenu.MenuItems.Add("⚙️ إظهار نافذة مشغل النظام", (s, e) => ShowLauncherForm());
+            trayMenu.MenuItems.Add("📂 مجلد قاعدة البيانات", (s, e) => {
+                try { Process.Start("explorer.exe", baseDir); } catch { }
+            });
+            trayMenu.MenuItems.Add("-");
+            trayMenu.MenuItems.Add("🔴 إيقاف الخادم وإغلاق البرنامج", (s, e) => CleanExit());
+
             trayIcon = new NotifyIcon();
-            trayIcon.Text = "Smart Pos";
+            trayIcon.Text = "Smart Pos - يعمل في الخلفية";
             try { trayIcon.Icon = this.Icon ?? SystemIcons.Application; } catch { trayIcon.Icon = SystemIcons.Application; }
+            trayIcon.ContextMenu = trayMenu;
             trayIcon.Visible = true;
             trayIcon.DoubleClick += (s, e) => {
-                this.Show();
-                this.WindowState = FormWindowState.Normal;
-                this.Activate();
+                Interlocked.Exchange(ref hasAutoLaunched, 1);
+                OpenAppWindow("http://localhost:" + port);
             };
 
-            this.Load += MainForm_Load;
             this.FormClosing += MainForm_FormClosing;
+
+            EnsureBackgroundServerStarted();
         }
 
-        private void MainForm_Load(object sender, EventArgs e)
+        protected override void SetVisibleCore(bool value)
         {
-            Thread starterThread = new Thread(StartServerAndLaunch);
-            starterThread.IsBackground = true;
-            starterThread.Start();
+            if (!allowVisible)
+            {
+                value = false;
+                if (!this.IsHandleCreated)
+                {
+                    CreateHandle();
+                }
+            }
+            base.SetVisibleCore(value);
+        }
+
+        private void ShowLauncherForm()
+        {
+            allowVisible = true;
+            this.ShowInTaskbar = true;
+            this.Show();
+            this.WindowState = FormWindowState.Normal;
+            this.Activate();
+        }
+
+        private void EnsureBackgroundServerStarted()
+        {
+            if (Interlocked.CompareExchange(ref serverStartedFlag, 1, 0) == 0)
+            {
+                Thread starterThread = new Thread(StartServerAndLaunch);
+                starterThread.IsBackground = true;
+                starterThread.Start();
+            }
         }
 
         private void StartServerAndLaunch()
         {
             try
             {
-                if (!IsServerResponding())
+                if (!IsPortListening(port))
                 {
                     string nodePath = Path.Combine(baseDir, "runtime", "node.exe");
                     if (!File.Exists(nodePath))
@@ -180,10 +227,6 @@ namespace SmartPOS
 
                     if (!File.Exists(serverScript))
                     {
-                        this.Invoke((MethodInvoker)delegate {
-                            statusLabel.Text = "❌ لم يتم العثور على ملف الخادم dist/server.cjs";
-                            statusLabel.ForeColor = Color.FromArgb(248, 113, 113);
-                        });
                         return;
                     }
 
@@ -199,38 +242,35 @@ namespace SmartPOS
                     serverProcess = Process.Start(psi);
                 }
 
-                // Wait up to 8 seconds for server to respond
+                // Wait up to 6 seconds for TCP port 3000 to accept connections
                 for (int i = 0; i < 40; i++)
                 {
-                    if (IsServerResponding()) break;
-                    Thread.Sleep(200);
+                    if (IsPortListening(port)) break;
+                    Thread.Sleep(150);
                 }
 
-                this.Invoke((MethodInvoker)delegate {
-                    statusLabel.Text = "🟢 النظام يعمل بنجاح (متصل بقاعدة البيانات والمزامنة)";
-                    statusLabel.ForeColor = Color.FromArgb(52, 211, 153);
-                });
-
-                OpenAppWindow("http://localhost:" + port);
+                // Open the application window strictly ONCE on initial startup
+                if (Interlocked.CompareExchange(ref hasAutoLaunched, 1, 0) == 0)
+                {
+                    OpenAppWindow("http://localhost:" + port);
+                }
             }
-            catch (Exception ex)
+            catch
             {
-                this.Invoke((MethodInvoker)delegate {
-                    statusLabel.Text = "⚠️ خطأ في التشغيل: " + ex.Message;
-                    statusLabel.ForeColor = Color.FromArgb(248, 113, 113);
-                });
             }
         }
 
-        private bool IsServerResponding()
+        public static bool IsPortListening(int targetPort)
         {
             try
             {
-                HttpWebRequest req = (HttpWebRequest)WebRequest.Create("http://localhost:" + port + "/api/data");
-                req.Timeout = 600;
-                using (HttpWebResponse res = (HttpWebResponse)req.GetResponse())
+                using (TcpClient client = new TcpClient())
                 {
-                    return res.StatusCode == HttpStatusCode.OK;
+                    IAsyncResult result = client.BeginConnect("127.0.0.1", targetPort, null, null);
+                    bool success = result.AsyncWaitHandle.WaitOne(TimeSpan.FromMilliseconds(250));
+                    if (!success) return false;
+                    client.EndConnect(result);
+                    return true;
                 }
             }
             catch
@@ -239,7 +279,7 @@ namespace SmartPOS
             }
         }
 
-        private void OpenAppWindow(string url)
+        public static void OpenAppWindow(string url)
         {
             try
             {
@@ -295,8 +335,9 @@ namespace SmartPOS
 
         private void CleanExit()
         {
+            isExiting = true;
             StopServer();
-            trayIcon.Visible = false;
+            if (trayIcon != null) trayIcon.Visible = false;
             Application.Exit();
         }
 
@@ -315,16 +356,35 @@ namespace SmartPOS
 
         private void MainForm_FormClosing(object sender, FormClosingEventArgs e)
         {
+            if (!isExiting && e.CloseReason == CloseReason.UserClosing)
+            {
+                e.Cancel = true;
+                allowVisible = false;
+                this.ShowInTaskbar = false;
+                this.Hide();
+                return;
+            }
             StopServer();
-            trayIcon.Visible = false;
+            if (trayIcon != null) trayIcon.Visible = false;
         }
 
         [STAThread]
         public static void Main()
         {
-            Application.EnableVisualStyles();
-            Application.SetCompatibleTextRenderingDefault(false);
-            Application.Run(new MainForm());
+            bool createdNew = false;
+            using (Mutex mutex = new Mutex(true, @"Global\SmartPOS_SingleInstance_Mutex", out createdNew))
+            {
+                if (!createdNew)
+                {
+                    // Another instance is already running in the background -> just open the window once and exit!
+                    OpenAppWindow("http://localhost:3000");
+                    return;
+                }
+
+                Application.EnableVisualStyles();
+                Application.SetCompatibleTextRenderingDefault(false);
+                Application.Run(new MainForm());
+            }
         }
     }
 }

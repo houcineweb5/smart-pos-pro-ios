@@ -6,7 +6,8 @@
 import React, { useState } from 'react';
 import { Invoice, Product, Customer, Language, StoreConfig, Supplier, Expense } from '../types';
 import { languages } from '../languages';
-import { TrendingUp, AlertCircle, ShoppingBag, ArrowUpRight, ArrowDownRight, Award, DollarSign, Layers, ReceiptText } from 'lucide-react';
+import { TrendingUp, AlertCircle, ShoppingBag, ArrowUpRight, ArrowDownRight, Award, DollarSign, Layers, ReceiptText, Printer, FileDown } from 'lucide-react';
+import { printHtmlContent, exportStructuredPdf, PdfDocumentMeta } from '../utils/printService';
 
 interface DashboardProps {
   invoices: Invoice[];
@@ -64,19 +65,73 @@ export default function Dashboard({ invoices, products, customers, suppliers = [
 
   const periodInvoices = getFilteredInvoices();
 
+  const resolveUnitCost = (item: Invoice['items'][number]) => {
+    if (Number(item.purchasePrice) > 0) return Number(item.purchasePrice);
+    const cleanName = String(item.productName || '').trim().toLowerCase();
+    const matched = products.find(
+      (p) =>
+        (item.productId && p.id === item.productId) ||
+        (cleanName && p.name.trim().toLowerCase() === cleanName)
+    );
+    return Number(matched?.purchasePrice || 0);
+  };
+
+  const getInvoiceNetFigures = (inv: Invoice) => {
+    const returns = inv.returnedItems || [];
+    const refundSum = returns.reduce((acc, r) => acc + Number(r.refundAmount || 0), 0);
+    const netRev = Math.max(0, Number(inv.total || 0) - refundSum);
+
+    let itemsProfit = 0;
+    let registeredCount = 0;
+    (inv.items || []).forEach((item) => {
+      const qty = Number(item.quantity || 0);
+      if (qty <= 0) return;
+      const matchedProd = item.productId
+        ? products.find((p) => p && p.id === item.productId)
+        : undefined;
+      // Unregistered items (without productId) do not enter into profits
+      if (!item.productId || (!matchedProd && !(Number(item.purchasePrice) > 0))) {
+        return;
+      }
+      const returnedQty = returns
+        .filter((r) => r.productId === item.productId || r.productName === item.productName)
+        .reduce((acc, r) => acc + Number(r.quantity || 0), 0);
+      const effectiveQty = Math.max(0, qty - returnedQty);
+      if (effectiveQty <= 0) return;
+
+      registeredCount++;
+      const unitCost = resolveUnitCost(item);
+      const rawSelling = Number(item.sellingPrice) || 0;
+      const discPct = Number(item.discount) || 0;
+      const netUnitSelling =
+        item.total !== undefined && item.total !== null && qty > 0
+          ? Number(item.total) / qty
+          : rawSelling * (1 - discPct / 100);
+      itemsProfit += (netUnitSelling - unitCost) * effectiveQty;
+    });
+
+    if (registeredCount === 0) {
+      return { netRev, netProfit: 0 };
+    }
+
+    const subtotal = Number(inv.subtotal) || 0;
+    const rawDiscount = Number(inv.discount) || 0;
+    const itemDiscountsSum = (inv.items || []).reduce(
+      (s, it) => s + (Number(it.sellingPrice) || 0) * ((Number(it.discount) || 0) / 100) * (Number(it.quantity) || 0),
+      0
+    );
+    const extraFlatDiscount = Math.max(0, rawDiscount - itemDiscountsSum);
+    const netProfit = itemsProfit - (subtotal > 0 ? extraFlatDiscount : 0);
+
+    return { netRev, netProfit };
+  };
+
   // Advanced financial metrics
-  const totalRevenue = periodInvoices.reduce((sum, inv) => sum + inv.total, 0);
+  const totalRevenue = periodInvoices.reduce((sum, inv) => sum + getInvoiceNetFigures(inv).netRev, 0);
   const totalTransactions = periodInvoices.length;
   
   // Calculate true net profit = selling total - purchase total (including raw item quantities & custom discounts)
-  const totalProfit = periodInvoices.reduce((sum, inv) => {
-    let invoiceCost = 0;
-    inv.items.forEach((item) => {
-      invoiceCost += (item.purchasePrice * item.quantity);
-    });
-    // Profit is total revenue (including taxes) minus the purchase cost of sold inventory
-    return sum + (inv.total - invoiceCost);
-  }, 0);
+  const totalProfit = periodInvoices.reduce((sum, inv) => sum + getInvoiceNetFigures(inv).netProfit, 0);
 
   // Debt sum
   const totalDebt = customers.reduce((sum, c) => sum + Math.max(0, c.debt), 0);
@@ -142,10 +197,9 @@ export default function Dashboard({ invoices, products, customers, suppliers = [
     invoices.forEach((inv) => {
       const dateKey = new Date(inv.date).toDateString();
       if (salesMap[dateKey] !== undefined) {
-        let cost = 0;
-        inv.items.forEach((it) => { cost += (it.purchasePrice * it.quantity); });
-        salesMap[dateKey].revenue += inv.total;
-        salesMap[dateKey].profit += (inv.total - cost);
+        const { netRev, netProfit } = getInvoiceNetFigures(inv);
+        salesMap[dateKey].revenue += netRev;
+        salesMap[dateKey].profit += netProfit;
       }
     });
 
@@ -166,13 +220,23 @@ export default function Dashboard({ invoices, products, customers, suppliers = [
   // Compute Top product rankings
   const getTopProducts = () => {
     const productSales: Record<string, { quantity: number; revenue: number }> = {};
-    invoices.forEach((inv) => {
+    periodInvoices.forEach((inv) => {
+      const returns = inv.returnedItems || [];
       inv.items.forEach((item) => {
+        const returnedQty = returns
+          .filter((r) => r.productId === item.productId || r.productName === item.productName)
+          .reduce((acc, r) => acc + Number(r.quantity || 0), 0);
+        const returnedAmt = returns
+          .filter((r) => r.productId === item.productId || r.productName === item.productName)
+          .reduce((acc, r) => acc + Number(r.refundAmount || 0), 0);
+        const effQty = Math.max(0, Number(item.quantity || 0) - returnedQty);
+        const effRev = Math.max(0, Number(item.total || 0) - returnedAmt);
+        if (effQty <= 0) return;
         if (!productSales[item.productName]) {
           productSales[item.productName] = { quantity: 0, revenue: 0 };
         }
-        productSales[item.productName].quantity += item.quantity;
-        productSales[item.productName].revenue += item.total;
+        productSales[item.productName].quantity += effQty;
+        productSales[item.productName].revenue += effRev;
       });
     });
 
@@ -189,12 +253,21 @@ export default function Dashboard({ invoices, products, customers, suppliers = [
     const shares: Record<string, number> = {};
     let grandTotal = 0;
 
-    invoices.forEach((inv) => {
+    periodInvoices.forEach((inv) => {
+      const returns = inv.returnedItems || [];
       inv.items.forEach((item) => {
-        const prod = products.find((p) => p.id === item.productId);
+        const returnedAmt = returns
+          .filter((r) => r.productId === item.productId || r.productName === item.productName)
+          .reduce((acc, r) => acc + Number(r.refundAmount || 0), 0);
+        const effRev = Math.max(0, Number(item.total || 0) - returnedAmt);
+        if (effRev <= 0) return;
+        const cleanName = String(item.productName || '').trim().toLowerCase();
+        const prod = products.find(
+          (p) => (item.productId && p.id === item.productId) || (cleanName && p.name.trim().toLowerCase() === cleanName)
+        );
         const cat = prod ? prod.category : 'General';
-        shares[cat] = (shares[cat] || 0) + item.total;
-        grandTotal += item.total;
+        shares[cat] = (shares[cat] || 0) + effRev;
+        grandTotal += effRev;
       });
     });
 
@@ -221,6 +294,368 @@ export default function Dashboard({ invoices, products, customers, suppliers = [
   };
   const themePrimary = getThemePrimaryColor(config.themeColor);
 
+  const getPeriodMetrics = (mode: 'today' | 'week' | 'month' | 'all') => {
+    const now = new Date();
+    const invs = invoices.filter((inv) => {
+      const invDate = new Date(inv.date);
+      if (mode === 'today') return invDate.toDateString() === now.toDateString();
+      if (mode === 'week') {
+        const oneWeekAgo = new Date(now);
+        oneWeekAgo.setDate(now.getDate() - 7);
+        return invDate >= oneWeekAgo;
+      }
+      if (mode === 'month') {
+        const oneMonthAgo = new Date(now);
+        oneMonthAgo.setMonth(now.getMonth() - 1);
+        return invDate >= oneMonthAgo;
+      }
+      return true;
+    });
+    const exps = (expenses || []).filter((exp) => {
+      const expDate = new Date(exp.date);
+      if (mode === 'today') return expDate.toDateString() === now.toDateString();
+      if (mode === 'week') {
+        const oneWeekAgo = new Date(now);
+        oneWeekAgo.setDate(now.getDate() - 7);
+        return expDate >= oneWeekAgo;
+      }
+      if (mode === 'month') {
+        return expDate.getMonth() === now.getMonth() && expDate.getFullYear() === now.getFullYear();
+      }
+      return true;
+    });
+    const rev = invs.reduce((s, inv) => s + getInvoiceNetFigures(inv).netRev, 0);
+    const grossProfit = invs.reduce((s, inv) => s + getInvoiceNetFigures(inv).netProfit, 0);
+    const expSum = exps.reduce((s, e) => s + Number(e.amount || 0), 0);
+    return {
+      count: invs.length,
+      rev,
+      grossProfit,
+      expSum,
+      netProfit: grossProfit - expSum,
+    };
+  };
+
+  const buildSalesAndDebtsReportData = () => {
+    const daily = getPeriodMetrics('today');
+    const weekly = getPeriodMetrics('week');
+    const monthly = getPeriodMetrics('month');
+    const allTime = getPeriodMetrics('all');
+
+    const periodLabel =
+      timeFilter === 'today'
+        ? (lang === 'ar' ? 'اليوم' : 'Today')
+        : timeFilter === 'week'
+        ? (lang === 'ar' ? 'الأسبوع (آخر 7 أيام)' : 'This Week')
+        : timeFilter === 'month'
+        ? (lang === 'ar' ? 'الشهر' : 'This Month')
+        : timeFilter === 'custom'
+        ? `${fromDate || '...'} -> ${toDate || '...'}`
+        : (lang === 'ar' ? 'الكل (شامل)' : 'All Time');
+
+    const customersWithDebt = customers.filter((c) => Number(c.debt || 0) > 0);
+    const suppliersWithDebt = suppliers.filter((s) => Number(s.debt || 0) > 0);
+    const storeTitle = config.name || 'Smart POS';
+
+    const reportPdfMeta: PdfDocumentMeta = {
+      title: lang === 'ar' ? 'تقرير المبيعات والأرباح والديون' : 'Sales, Profits & Debts Report',
+      docNumber: `REP-${new Date().toISOString().slice(0, 10)}`,
+      date: new Date().toLocaleString('fr-FR'),
+      storeName: storeTitle,
+      storePhone: config.phone,
+      storeAddress: config.address,
+      storeEmail: config.email,
+      storeRegNumber: config.registrationNumber,
+      customerLabel: lang === 'ar' ? 'الفترة الزمنية للتقرير:' : 'Report Period:',
+      customerName: periodLabel,
+      currency: config.currency,
+      mode: 'a4',
+      isRTL,
+      summaryCards: [
+        {
+          label: lang === 'ar' ? `مبيعات الفترة (${periodLabel})` : `Period Sales (${periodLabel})`,
+          value: `${totalRevenue.toFixed(2)} ${config.currency} (${totalTransactions})`,
+          color: '#0f172a'
+        },
+        {
+          label: lang === 'ar' ? 'مجمل / صافي الربح' : 'Gross / Net Profit',
+          value: `${totalProfit.toFixed(2)} / ${trueNetOperatingProfit.toFixed(2)} ${config.currency}`,
+          color: '#047857'
+        },
+        {
+          label: lang === 'ar' ? 'ديون الزبائن / الموردين' : 'Customer / Supplier Debts',
+          value: `${totalDebt.toFixed(2)} / ${totalSupplierDebt.toFixed(2)} ${config.currency}`,
+          color: '#be123c'
+        }
+      ],
+      customTableHeaders: {
+        name: lang === 'ar' ? 'الزبون / رقم الفاتورة' : 'Customer / Invoice',
+        qty: lang === 'ar' ? 'التاريخ' : 'Date',
+        price: lang === 'ar' ? 'ربح الفاتورة' : 'Profit',
+        total: lang === 'ar' ? 'صافي الفاتورة' : 'Net Total'
+      },
+      items: periodInvoices.map((inv) => {
+        const figs = getInvoiceNetFigures(inv);
+        return {
+          name: `${inv.customerName || '-'} (${inv.invoiceNumber || '#' + inv.id.slice(0, 8)})`,
+          quantity: inv.date ? new Date(inv.date).toLocaleDateString('fr-FR') : '-',
+          unitPrice: figs.netProfit,
+          total: figs.netRev
+        };
+      }),
+      extraSections: [
+        {
+          title: lang === 'ar' ? '1. ملخص الأرباح والمبيعات (اليومي، الأسبوعي، الشهري، الشامل)' : '1. Sales & Profits Summary',
+          headers: [
+            lang === 'ar' ? 'الفترة' : 'Period',
+            lang === 'ar' ? 'الفواتير' : 'Invoices',
+            lang === 'ar' ? 'المبيعات' : 'Sales',
+            lang === 'ar' ? 'مجمل الربح' : 'Gross Profit',
+            lang === 'ar' ? 'صافي الربح' : 'Net Profit'
+          ],
+          rows: [
+            [
+              lang === 'ar' ? 'اليوم' : 'Today',
+              String(daily.count),
+              `${daily.rev.toFixed(2)} ${config.currency}`,
+              `${daily.grossProfit.toFixed(2)} ${config.currency}`,
+              `${daily.netProfit.toFixed(2)} ${config.currency}`
+            ],
+            [
+              lang === 'ar' ? 'الأسبوع (7 أيام)' : 'Weekly',
+              String(weekly.count),
+              `${weekly.rev.toFixed(2)} ${config.currency}`,
+              `${weekly.grossProfit.toFixed(2)} ${config.currency}`,
+              `${weekly.netProfit.toFixed(2)} ${config.currency}`
+            ],
+            [
+              lang === 'ar' ? 'الشهر (30 يوم)' : 'Monthly',
+              String(monthly.count),
+              `${monthly.rev.toFixed(2)} ${config.currency}`,
+              `${monthly.grossProfit.toFixed(2)} ${config.currency}`,
+              `${monthly.netProfit.toFixed(2)} ${config.currency}`
+            ],
+            [
+              lang === 'ar' ? 'الإجمالي العام' : 'All Time',
+              String(allTime.count),
+              `${allTime.rev.toFixed(2)} ${config.currency}`,
+              `${allTime.grossProfit.toFixed(2)} ${config.currency}`,
+              `${allTime.netProfit.toFixed(2)} ${config.currency}`
+            ]
+          ]
+        },
+        {
+          title: lang === 'ar' ? '2. بيان الديون المستحقة (ديون الزبائن والموردين)' : '2. Customer & Supplier Debts',
+          headers: [
+            lang === 'ar' ? 'الاسم' : 'Name',
+            lang === 'ar' ? 'الصفة' : 'Type',
+            lang === 'ar' ? 'الهاتف' : 'Phone',
+            lang === 'ar' ? 'مبلغ الدين' : 'Debt Amount'
+          ],
+          rows:
+            customersWithDebt.length === 0 && suppliersWithDebt.length === 0
+              ? [[lang === 'ar' ? 'لا توجد ديون مسجلة' : 'No active debts', '-', '-', `0.00 ${config.currency}`]]
+              : [
+                  ...customersWithDebt.map((c) => [
+                    c.name,
+                    lang === 'ar' ? 'زبون (كريدي)' : 'Customer',
+                    c.phone || '-',
+                    `${Number(c.debt || 0).toFixed(2)} ${config.currency}`
+                  ]),
+                  ...suppliersWithDebt.map((s) => [
+                    s.name,
+                    lang === 'ar' ? 'مورد' : 'Supplier',
+                    s.phone || '-',
+                    `${Number(s.debt || 0).toFixed(2)} ${config.currency}`
+                  ])
+                ]
+        }
+      ],
+      subtotal: totalRevenue,
+      total: totalRevenue,
+      remainingDebt: totalDebt,
+      notes: `${lang === 'ar' ? 'صافي الربح التشغيلي للفترة:' : 'Net Operating Profit:'} ${trueNetOperatingProfit.toFixed(2)} ${config.currency} | ${lang === 'ar' ? 'إجمالي ديون الزبائن:' : 'Customer Debts:'} ${totalDebt.toFixed(2)} ${config.currency}`
+    };
+
+    const html = `
+      <style>
+        .smartpos-report-print { font-family: 'Cairo', 'Tajawal', 'Segoe UI', Tahoma, Arial, sans-serif; color: #0f172a; background: #fff; font-size: 12px; direction: ${isRTL ? 'rtl' : 'ltr'}; }
+        .smartpos-report-print * { box-sizing: border-box; }
+        .smartpos-report-print .header { display: flex; justify-content: space-between; align-items: center; border-bottom: 2px solid #0f172a; padding-bottom: 12px; margin-bottom: 16px; }
+        .smartpos-report-print .title { font-size: 18px; font-weight: 900; margin: 0; color: #1e1b4b; }
+        .smartpos-report-print .subtitle { font-size: 11px; color: #475569; margin-top: 4px; font-weight: 700; }
+        .smartpos-report-print .section-title { font-size: 13px; font-weight: 800; margin: 16px 0 8px; padding: 6px 10px; background: #f1f5f9; border-${isRTL ? 'right' : 'left'}: 4px solid #4f46e5; border-radius: 4px; }
+        .smartpos-report-print table { width: 100%; border-collapse: collapse; margin-bottom: 14px; }
+        .smartpos-report-print th, .smartpos-report-print td { border: 1px solid #cbd5e1; padding: 7px 9px; text-align: ${isRTL ? 'right' : 'left'}; font-size: 11px; }
+        .smartpos-report-print th { background: #f8fafc; font-weight: 800; color: #1e293b; }
+        .smartpos-report-print .kpi-grid { display: grid; grid-template-columns: repeat(3, 1fr); gap: 10px; margin-bottom: 14px; }
+        .smartpos-report-print .kpi-box { border: 1px solid #cbd5e1; border-radius: 8px; padding: 10px; background: #f8fafc; }
+        .smartpos-report-print .kpi-label { font-size: 10px; color: #64748b; font-weight: 700; }
+        .smartpos-report-print .kpi-val { font-size: 15px; font-weight: 900; margin-top: 3px; font-family: monospace; }
+        .smartpos-report-print .profit { color: #047857; font-weight: 800; }
+        .smartpos-report-print .debt { color: #be123c; font-weight: 800; }
+      </style>
+      <div class="smartpos-report-print" dir="${isRTL ? 'rtl' : 'ltr'}">
+        <div class="header">
+          <div>
+            <h1 class="title">${storeTitle} - ${lang === 'ar' ? 'تقرير المبيعات والأرباح والديون' : 'Sales, Profits & Debts Report'}</h1>
+            <div class="subtitle">${lang === 'ar' ? 'الفترة المحددة:' : 'Selected Period:'} ${periodLabel} | ${lang === 'ar' ? 'تاريخ الطباعة:' : 'Printed:'} ${new Date().toLocaleString('fr-FR')}</div>
+          </div>
+          <div style="text-align:${isRTL ? 'left' : 'right'}; font-size:11px; font-weight:700;">
+            <div>${config.phone || ''}</div>
+            <div>${config.address || ''}</div>
+          </div>
+        </div>
+
+        <div class="kpi-grid">
+          <div class="kpi-box">
+            <div class="kpi-label">${lang === 'ar' ? 'مبيعات الفترة المحددة' : 'Selected Period Sales'} (${periodLabel})</div>
+            <div class="kpi-val">${totalRevenue.toFixed(2)} ${config.currency} (${totalTransactions} ${lang === 'ar' ? 'فاتورة' : 'inv'})</div>
+          </div>
+          <div class="kpi-box">
+            <div class="kpi-label">${lang === 'ar' ? 'إجمالي وصافي ربح الفترة' : 'Period Gross / Net Profit'}</div>
+            <div class="kpi-val profit">${totalProfit.toFixed(2)} / ${trueNetOperatingProfit.toFixed(2)} ${config.currency}</div>
+          </div>
+          <div class="kpi-box">
+            <div class="kpi-label">${lang === 'ar' ? 'ديون الزبائن / ديون الموردين' : 'Customer / Supplier Debts'}</div>
+            <div class="kpi-val debt">${totalDebt.toFixed(2)} / ${totalSupplierDebt.toFixed(2)} ${config.currency}</div>
+          </div>
+        </div>
+
+        <div class="section-title">${lang === 'ar' ? '1. ملخص الأرباح والمبيعات (اليومية، الأسبوعية، الشهرية، والشاملة)' : '1. Daily, Weekly, Monthly & Total Sales and Profits'}</div>
+        <table>
+          <thead>
+            <tr>
+              <th>${lang === 'ar' ? 'الفترة الزمنية' : 'Period'}</th>
+              <th>${lang === 'ar' ? 'عدد الفواتير' : 'Invoices'}</th>
+              <th>${lang === 'ar' ? 'إجمالي المبيعات' : 'Total Sales'}</th>
+              <th>${lang === 'ar' ? 'مجمل الربح' : 'Gross Profit'}</th>
+              <th>${lang === 'ar' ? 'المصاريف' : 'Expenses'}</th>
+              <th>${lang === 'ar' ? 'صافي الربح الحقيقي' : 'True Net Profit'}</th>
+            </tr>
+          </thead>
+          <tbody>
+            <tr>
+              <td><b>${lang === 'ar' ? 'اليوم (يومي)' : 'Today (Daily)'}</b></td>
+              <td>${daily.count}</td>
+              <td>${daily.rev.toFixed(2)} ${config.currency}</td>
+              <td class="profit">${daily.grossProfit.toFixed(2)} ${config.currency}</td>
+              <td class="debt">${daily.expSum.toFixed(2)} ${config.currency}</td>
+              <td class="profit">${daily.netProfit.toFixed(2)} ${config.currency}</td>
+            </tr>
+            <tr>
+              <td><b>${lang === 'ar' ? 'الأسبوع (آخر 7 أيام)' : 'Weekly (Last 7 Days)'}</b></td>
+              <td>${weekly.count}</td>
+              <td>${weekly.rev.toFixed(2)} ${config.currency}</td>
+              <td class="profit">${weekly.grossProfit.toFixed(2)} ${config.currency}</td>
+              <td class="debt">${weekly.expSum.toFixed(2)} ${config.currency}</td>
+              <td class="profit">${weekly.netProfit.toFixed(2)} ${config.currency}</td>
+            </tr>
+            <tr>
+              <td><b>${lang === 'ar' ? 'الشهر (آخر 30 يوم)' : 'Monthly (Last 30 Days)'}</b></td>
+              <td>${monthly.count}</td>
+              <td>${monthly.rev.toFixed(2)} ${config.currency}</td>
+              <td class="profit">${monthly.grossProfit.toFixed(2)} ${config.currency}</td>
+              <td class="debt">${monthly.expSum.toFixed(2)} ${config.currency}</td>
+              <td class="profit">${monthly.netProfit.toFixed(2)} ${config.currency}</td>
+            </tr>
+            <tr>
+              <td><b>${lang === 'ar' ? 'الإجمالي العام (الكل)' : 'All Time Total'}</b></td>
+              <td>${allTime.count}</td>
+              <td>${allTime.rev.toFixed(2)} ${config.currency}</td>
+              <td class="profit">${allTime.grossProfit.toFixed(2)} ${config.currency}</td>
+              <td class="debt">${allTime.expSum.toFixed(2)} ${config.currency}</td>
+              <td class="profit">${allTime.netProfit.toFixed(2)} ${config.currency}</td>
+            </tr>
+          </tbody>
+        </table>
+
+        <div class="section-title">${lang === 'ar' ? '2. بيان الديون المستحقة (ديون الزبائن وديون الموردين)' : '2. Customer & Supplier Debts Statement'}</div>
+        <table>
+          <thead>
+            <tr>
+              <th>${lang === 'ar' ? 'الاسم (زبون / مورد)' : 'Name'}</th>
+              <th>${lang === 'ar' ? 'النوع' : 'Type'}</th>
+              <th>${lang === 'ar' ? 'الهاتف' : 'Phone'}</th>
+              <th>${lang === 'ar' ? 'مبلغ الدين' : 'Debt Amount'}</th>
+            </tr>
+          </thead>
+          <tbody>
+            ${customersWithDebt.map((c) => `
+              <tr>
+                <td><b>${c.name}</b></td>
+                <td>${lang === 'ar' ? 'زبون (كريدي)' : 'Customer'}</td>
+                <td>${c.phone || '-'}</td>
+                <td class="debt">${Number(c.debt || 0).toFixed(2)} ${config.currency}</td>
+              </tr>
+            `).join('')}
+            ${suppliersWithDebt.map((s) => `
+              <tr>
+                <td><b>${s.name}</b></td>
+                <td>${lang === 'ar' ? 'مورد' : 'Supplier'}</td>
+                <td>${s.phone || '-'}</td>
+                <td class="debt">${Number(s.debt || 0).toFixed(2)} ${config.currency}</td>
+              </tr>
+            `).join('')}
+            ${customersWithDebt.length === 0 && suppliersWithDebt.length === 0 ? `
+              <tr><td colspan="4" style="text-align:center;">${lang === 'ar' ? 'لا توجد ديون مسجلة حالياً' : 'No active debts'}</td></tr>
+            ` : ''}
+          </tbody>
+        </table>
+
+        <div class="section-title">${lang === 'ar' ? `3. تفاصيل فواتير المبيعات والأرباح (${periodLabel})` : `3. Sales Invoices & Profits (${periodLabel})`}</div>
+        <table>
+          <thead>
+            <tr>
+              <th>${lang === 'ar' ? 'رقم الفاتورة' : 'Invoice #'}</th>
+              <th>${lang === 'ar' ? 'التاريخ' : 'Date'}</th>
+              <th>${lang === 'ar' ? 'الزبون' : 'Customer'}</th>
+              <th>${lang === 'ar' ? 'مبلغ الفاتورة الصافي' : 'Net Total'}</th>
+              <th>${lang === 'ar' ? 'ربح الفاتورة' : 'Profit'}</th>
+            </tr>
+          </thead>
+          <tbody>
+            ${periodInvoices.map((inv) => {
+              const figs = getInvoiceNetFigures(inv);
+              return `
+                <tr>
+                  <td>${inv.invoiceNumber || '#' + inv.id.slice(0, 8)}</td>
+                  <td>${new Date(inv.date).toLocaleString('fr-FR', { dateStyle: 'short', timeStyle: 'short' })}</td>
+                  <td>${inv.customerName || '-'}</td>
+                  <td>${figs.netRev.toFixed(2)} ${config.currency}</td>
+                  <td class="profit">+${figs.netProfit.toFixed(2)} ${config.currency}</td>
+                </tr>
+              `;
+            }).join('')}
+            ${periodInvoices.length === 0 ? `
+              <tr><td colspan="5" style="text-align:center;">${lang === 'ar' ? 'لا توجد فواتير في هذه الفترة' : 'No invoices in this period'}</td></tr>
+            ` : ''}
+          </tbody>
+        </table>
+      </div>
+    `;
+
+    return { html, reportPdfMeta };
+  };
+
+  const handlePrintReport = () => {
+    const { html, reportPdfMeta } = buildSalesAndDebtsReportData();
+    printHtmlContent(
+      {
+        title: `${reportPdfMeta.title} - ${config.name || 'Smart POS'}`,
+        html,
+        isRTL,
+        mode: 'a4'
+      },
+      reportPdfMeta
+    );
+  };
+
+  const handleExportReportPdf = async () => {
+    const { reportPdfMeta } = buildSalesAndDebtsReportData();
+    await exportStructuredPdf(reportPdfMeta, `Sales-Debts-Report-${new Date().toISOString().slice(0, 10)}.pdf`);
+  };
+
   return (
     <div className="space-y-5 animate-fade-in" id="dashboard-sec">
       {/* Upper stats bar and time options */}
@@ -235,28 +670,48 @@ export default function Dashboard({ invoices, products, customers, suppliers = [
           </p>
         </div>
 
-        {/* Period Selector */}
-        <div className="flex items-center bg-slate-100 p-1 rounded-xl border border-slate-200/50 self-start sm:self-auto flex-wrap gap-1">
-          {['all', 'today', 'week', 'month', 'custom'].map((period) => (
-            <button
-              id={`report-time-${period}`}
-              key={period}
-              onClick={() => setTimeFilter(period as any)}
-              className={`px-3 py-1.5 rounded-lg text-[11px] font-bold transition whitespace-nowrap uppercase cursor-pointer ${
-                timeFilter === period ? 'bg-white text-indigo-600 shadow-xs' : 'text-slate-500 hover:text-slate-800'
-              }`}
-            >
-              {period === 'all'
-                ? t.reports.period + ' All'
-                : period === 'today'
-                ? t.reports.today
-                : period === 'week'
-                ? t.reports.week
-                : period === 'month'
-                ? t.reports.month
-                : (lang === 'ar' ? 'تاريخ مخصص' : 'Custom')}
-            </button>
-          ))}
+        {/* Period Selector & Print / PDF Buttons */}
+        <div className="flex items-center gap-2 self-start sm:self-auto flex-wrap">
+          <button
+            type="button"
+            onClick={handlePrintReport}
+            className="flex items-center gap-1.5 px-3.5 py-2 bg-indigo-600 hover:bg-indigo-700 text-white rounded-xl text-xs font-black shadow-sm transition cursor-pointer"
+          >
+            <Printer className="w-4 h-4" />
+            <span>{lang === 'ar' ? 'طباعة التقرير (المبيعات والديون)' : 'Print Report (Sales & Debts)'}</span>
+          </button>
+
+          <button
+            type="button"
+            onClick={handleExportReportPdf}
+            className="flex items-center gap-1.5 px-3.5 py-2 bg-emerald-600 hover:bg-emerald-700 text-white rounded-xl text-xs font-black shadow-sm transition cursor-pointer"
+          >
+            <FileDown className="w-4 h-4" />
+            <span>PDF</span>
+          </button>
+
+          <div className="flex items-center bg-slate-100 p-1 rounded-xl border border-slate-200/50 flex-wrap gap-1">
+            {['all', 'today', 'week', 'month', 'custom'].map((period) => (
+              <button
+                id={`report-time-${period}`}
+                key={period}
+                onClick={() => setTimeFilter(period as any)}
+                className={`px-3 py-1.5 rounded-lg text-[11px] font-bold transition whitespace-nowrap uppercase cursor-pointer ${
+                  timeFilter === period ? 'bg-white text-indigo-600 shadow-xs' : 'text-slate-500 hover:text-slate-800'
+                }`}
+              >
+                {period === 'all'
+                  ? t.reports.period + ' All'
+                  : period === 'today'
+                  ? t.reports.today
+                  : period === 'week'
+                  ? t.reports.week
+                  : period === 'month'
+                  ? t.reports.month
+                  : (lang === 'ar' ? 'تاريخ مخصص' : 'Custom')}
+              </button>
+            ))}
+          </div>
         </div>
       </div>
 

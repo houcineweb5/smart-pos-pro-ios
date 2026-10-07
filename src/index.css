@@ -2,17 +2,44 @@
 @import "tailwindcss";
 
 @theme {
-  --font-sans: "Tajawal", "Inter", ui-sans-serif, system-ui, sans-serif;
+  --font-sans: "Cairo", "Tajawal", "Inter", ui-sans-serif, system-ui, sans-serif;
   --font-heading: "Cairo", "Tajawal", ui-sans-serif, system-ui, sans-serif;
-  --font-mono: "JetBrains Mono", ui-monospace, SFMono-Regular, monospace;
+  --font-mono: "JetBrains Mono", "Cairo", "Tajawal", ui-monospace, SFMono-Regular, monospace;
 }
 
 body {
   font-family: var(--font-sans);
+  font-weight: 600;
+  color: #0f172a;
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
+  text-rendering: optimizeLegibility;
 }
 
 h1, h2, h3, h4, h5, h6, .font-heading {
   font-family: var(--font-heading);
+}
+
+select,
+option,
+input,
+textarea,
+button {
+  font-family: var(--font-sans);
+}
+
+select {
+  font-weight: 700;
+  color: #0f172a;
+}
+
+select option {
+  font-family: "Cairo", "Tajawal", "Segoe UI", Tahoma, sans-serif;
+  font-weight: 700;
+  font-size: 13.5px;
+  color: #0f172a;
+  background-color: #ffffff;
+  padding: 6px 10px;
 }
 
 @layer utilities {
@@ -469,3 +496,114 @@ h1, h2, h3, h4, h5, h6, .font-heading {
   border-style: solid !important;
 }
 
+/* iPhone / iOS Safe Area Support (Notch, Dynamic Island & Home Indicator) */
+:root {
+  --safe-top: env(safe-area-inset-top, 0px);
+  --safe-bottom: env(safe-area-inset-bottom, 0px);
+  --safe-left: env(safe-area-inset-left, 0px);
+  --safe-right: env(safe-area-inset-right, 0px);
+}
+
+.safe-top-header {
+  padding-top: max(0.65rem, env(safe-area-inset-top, 0px)) !important;
+}
+
+.safe-top-sidebar {
+  padding-top: env(safe-area-inset-top, 0px) !important;
+}
+
+.safe-modal-overlay {
+  padding-top: max(1rem, calc(env(safe-area-inset-top, 0px) + 0.5rem)) !important;
+  padding-bottom: max(1rem, calc(env(safe-area-inset-bottom, 0px) + 0.5rem)) !important;
+}
+
+/* Unified In-Page Print Mount (Off-screen on Screen, Active on Print) */
+#smartpos-print-mount {
+  position: fixed;
+  top: 0;
+  left: -20000px;
+  width: 210mm;
+  opacity: 1;
+  pointer-events: none;
+  z-index: -1;
+  overflow: hidden;
+  max-height: 0;
+}
+
+body.smartpos-printing-now #smartpos-print-mount {
+  display: block;
+  position: fixed;
+  top: 0;
+  left: -20000px;
+  width: 210mm;
+  max-height: none;
+  overflow: visible;
+  opacity: 1;
+  pointer-events: none;
+  z-index: -1;
+}
+
+@media print {
+  html, body {
+    background: #ffffff !important;
+    color: #000000 !important;
+    margin: 0 !important;
+    padding: 0 !important;
+    height: auto !important;
+    overflow: visible !important;
+    -webkit-print-color-adjust: exact !important;
+    print-color-adjust: exact !important;
+  }
+
+  .no-print,
+  [data-no-print="true"] {
+    display: none !important;
+  }
+
+  body > *:not(#smartpos-print-mount) {
+    display: none !important;
+  }
+
+  #smartpos-print-mount,
+  body.smartpos-printing-now #smartpos-print-mount {
+    display: block !important;
+    position: static !important;
+    top: auto !important;
+    left: auto !important;
+    max-height: none !important;
+    overflow: visible !important;
+    opacity: 1 !important;
+    visibility: visible !important;
+    z-index: 99999 !important;
+    width: 100% !important;
+    margin: 0 auto !important;
+    padding: 0 !important;
+    background: #ffffff !important;
+    color: #000000 !important;
+  }
+
+  #smartpos-print-mount .smartpos-print-sheet.sheet-80mm {
+    width: 72mm !important;
+    max-width: 72mm !important;
+    margin: 0 auto !important;
+    padding: 2mm 2mm !important;
+    font-family: 'Tajawal', 'Segoe UI', Tahoma, Arial, sans-serif !important;
+    font-size: 12px !important;
+    font-weight: 700 !important;
+    line-height: 1.4 !important;
+    color: #000000 !important;
+  }
+
+  #smartpos-print-mount .smartpos-print-sheet.sheet-80mm * {
+    color: #000000 !important;
+  }
+
+  #smartpos-print-mount .smartpos-print-sheet.sheet-a4 {
+    width: 100% !important;
+    max-width: 100% !important;
+    margin: 0 auto !important;
+    padding: 3mm 4mm !important;
+    font-family: 'Tajawal', 'Cairo', -apple-system, BlinkMacSystemFont, sans-serif !important;
+    box-sizing: border-box !important;
+  }
+}

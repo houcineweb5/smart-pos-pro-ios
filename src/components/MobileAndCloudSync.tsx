@@ -4,11 +4,15 @@
  */
 
 import React, { useState, useEffect } from 'react';
+import { createPortal } from 'react-dom';
 import { Language, StoreConfig } from '../types';
 import {
   CloudSyncConfig,
   getCloudSyncConfig,
   saveCloudSyncConfig,
+  loadCloudSyncConfigFromServer,
+  normalizeFirebaseUrl,
+  testCloudConnection,
   pushDataToCloud,
   pullDataFromCloud,
   mergeStoreDatasets,
@@ -63,6 +67,7 @@ export default function MobileAndCloudSync({
   const [statusMsg, setStatusMsg] = useState<{ text: string; type: 'success' | 'error' } | null>(null);
   const [copiedCode, setCopiedCode] = useState(false);
   const [copiedSql, setCopiedSql] = useState(false);
+  const [copiedFbRules, setCopiedFbRules] = useState(false);
   const [pastePairingInput, setPastePairingInput] = useState('');
   const [showQrScanner, setShowQrScanner] = useState(false);
   const [showIosInstallGuide, setShowIosInstallGuide] = useState(false);
@@ -78,18 +83,30 @@ export default function MobileAndCloudSync({
         }
       })
       .catch(() => {});
+
+    loadCloudSyncConfigFromServer().then((srvCfg) => {
+      if (srvCfg && (srvCfg.firebaseUrl || srvCfg.supabaseUrl)) {
+        setSyncCfg((prev) => (!prev.firebaseUrl && !prev.supabaseUrl ? srvCfg : prev));
+      }
+    });
   }, []);
 
   const showNotice = (text: string, type: 'success' | 'error' = 'success') => {
     setStatusMsg({ text, type });
     setTimeout(() => {
       setStatusMsg((prev) => (prev?.text === text ? null : prev));
-    }, 5000);
+    }, 6500);
   };
 
   const handleSaveSettings = (e: React.FormEvent) => {
     e.preventDefault();
-    saveCloudSyncConfig(syncCfg);
+    const cleaned = {
+      ...syncCfg,
+      firebaseUrl: syncCfg.firebaseUrl ? normalizeFirebaseUrl(syncCfg.firebaseUrl).url : '',
+      storeId: (syncCfg.storeId || 'store_01').trim(),
+    };
+    setSyncCfg(cleaned);
+    saveCloudSyncConfig(cleaned);
     showNotice(
       lang === 'ar'
         ? '✓ تم حفظ إعدادات المزامنة وتطبيق الهاتف الذكي بنجاح!'
@@ -97,19 +114,42 @@ export default function MobileAndCloudSync({
     );
   };
 
+  const handleTestConnection = async () => {
+    setIsSyncing(true);
+    const cleaned: CloudSyncConfig = {
+      ...syncCfg,
+      enabled: true,
+      firebaseUrl: syncCfg.firebaseUrl ? normalizeFirebaseUrl(syncCfg.firebaseUrl).url : '',
+      storeId: (syncCfg.storeId || 'store_01').trim(),
+    };
+    setSyncCfg(cleaned);
+    saveCloudSyncConfig(cleaned);
+    const res = await testCloudConnection(cleaned);
+    setIsSyncing(false);
+    showNotice(res.message, res.ok ? 'success' : 'error');
+  };
+
   const handlePushNow = async () => {
     setIsSyncing(true);
-    const nextCfg = { ...syncCfg, enabled: true };
+    const nextCfg: CloudSyncConfig = {
+      ...syncCfg,
+      enabled: true,
+      firebaseUrl: syncCfg.firebaseUrl ? normalizeFirebaseUrl(syncCfg.firebaseUrl).url : '',
+      storeId: (syncCfg.storeId || 'store_01').trim(),
+    };
     setSyncCfg(nextCfg);
     saveCloudSyncConfig(nextCfg);
     const res = await pushDataToCloud(allData, nextCfg);
     setIsSyncing(false);
     if (res.ok) {
+      if (res.mergedData) {
+        onUpdateAllData(res.mergedData);
+      }
       setSyncCfg(getCloudSyncConfig());
       showNotice(
         lang === 'ar'
-          ? '☁️ تم رفع ومزامنة كافة بيانات البرنامج (المنتجات، الفواتير، الزبائن، الصيانة، الوثائق) بنجاح!'
-          : '☁️ All store data pushed and synchronized successfully!'
+          ? '☁️ تم دمج ورفع كافة بيانات البرنامج (المنتجات، الفواتير، الزبائن، الصيانة، الوثائق) إلى Firebase بنجاح!'
+          : '☁️ All store data merged and pushed to Cloud successfully!'
       );
     } else {
       showNotice(res.error || 'فشل الاتصال بالسحابة أو السيرفر', 'error');
@@ -117,8 +157,15 @@ export default function MobileAndCloudSync({
   };
 
   const handlePullAndMergeNow = async (customCfg?: CloudSyncConfig) => {
-    const activeCfg = customCfg || { ...syncCfg, enabled: true };
+    const baseCfg = customCfg || syncCfg;
+    const activeCfg: CloudSyncConfig = {
+      ...baseCfg,
+      enabled: true,
+      firebaseUrl: baseCfg.firebaseUrl ? normalizeFirebaseUrl(baseCfg.firebaseUrl).url : '',
+      storeId: (baseCfg.storeId || 'store_01').trim(),
+    };
     setIsSyncing(true);
+    setSyncCfg(activeCfg);
     saveCloudSyncConfig(activeCfg);
     const res = await pullDataFromCloud(activeCfg);
     if (!res.ok) {
@@ -127,27 +174,33 @@ export default function MobileAndCloudSync({
       return;
     }
     if (!res.payload || !res.payload.data) {
+      // Nothing on Firebase yet: push local data automatically so the store node is created!
+      const pushRes = await pushDataToCloud(allData, activeCfg, { skipPreMerge: true });
       setIsSyncing(false);
-      showNotice(
-        lang === 'ar'
-          ? 'لا توجد بيانات مرفوعة بعد؛ اضغط "رفع البيانات الآن" من الحاسوب أولاً.'
-          : 'No remote data found yet; push data first.',
-        'error'
-      );
+      if (pushRes.ok) {
+        setSyncCfg(getCloudSyncConfig());
+        showNotice(
+          lang === 'ar'
+            ? '☁️ كانت القاعدة السحابية فارغة فتم رفع بيانات هذا الجهاز إليها وتفعيل المزامنة بنجاح!'
+            : '☁️ Cloud was empty; pushed local data and initialized sync!'
+        );
+      } else {
+        showNotice(pushRes.error || 'فشل تهيئة البيانات في السحابة', 'error');
+      }
       return;
     }
 
     const { merged, hasNewFromCloud } = mergeStoreDatasets(allData, res.payload.data, true);
     onUpdateAllData(merged);
-    await pushDataToCloud(merged, activeCfg);
+    await pushDataToCloud(merged, activeCfg, { skipPreMerge: true });
     setIsSyncing(false);
     setSyncCfg(getCloudSyncConfig());
 
     showNotice(
       lang === 'ar'
         ? hasNewFromCloud
-          ? '✅ تم سحب ودمج كافة البيانات والتحديثات بين الهاتف والحاسوب بنجاح!'
-          : '✓ البيانات متطابقة ومحدثة بالكامل على جميع الأجهزة!'
+          ? `✅ تم سحب ودمج البيانات بنجاح! (${(merged.products || []).length} منتج، ${(merged.invoices || []).length} فاتورة)`
+          : `✓ البيانات متطابقة ومحدثة بالكامل على جميع الأجهزة! (${(merged.products || []).length} منتج، ${(merged.invoices || []).length} فاتورة)`
         : '✓ Data synchronized across all devices!'
     );
   };
@@ -248,22 +301,37 @@ CREATE POLICY "Allow public sync" ON public.smartpos_sync FOR ALL USING (true) W
 
   return (
     <div dir={isRTL ? 'rtl' : 'ltr'} className="space-y-6 max-w-6xl mx-auto text-start animate-fade-in pb-12">
-      {statusMsg && (
-        <div
-          className={`fixed top-5 left-1/2 -translate-x-1/2 z-50 px-5 py-3 rounded-2xl shadow-2xl border flex items-center gap-2.5 text-xs font-black ${
-            statusMsg.type === 'success'
-              ? 'bg-slate-900 text-emerald-400 border-emerald-500/40'
-              : 'bg-slate-950 text-rose-400 border-rose-500/40'
-          }`}
-        >
-          {statusMsg.type === 'success' ? (
-            <CheckCircle2 className="w-4 h-4 shrink-0" />
-          ) : (
-            <AlertCircle className="w-4 h-4 shrink-0" />
-          )}
-          <span>{statusMsg.text}</span>
-        </div>
-      )}
+      {statusMsg &&
+        typeof document !== 'undefined' &&
+        createPortal(
+          <div
+            dir={isRTL ? 'rtl' : 'ltr'}
+            className="fixed top-14 sm:top-6 inset-x-0 z-[150] flex justify-center px-3 sm:px-6 pointer-events-none"
+          >
+            <div
+              className={`pointer-events-auto w-full max-w-lg px-4 py-3.5 rounded-2xl shadow-2xl border flex items-start gap-3 text-xs sm:text-sm font-bold leading-relaxed transition-all ${
+                statusMsg.type === 'success'
+                  ? 'bg-emerald-950/95 text-emerald-100 border-emerald-500/50'
+                  : 'bg-rose-950/95 text-rose-100 border-rose-500/50'
+              }`}
+            >
+              {statusMsg.type === 'success' ? (
+                <CheckCircle2 className="w-5 h-5 text-emerald-400 shrink-0 mt-0.5" />
+              ) : (
+                <AlertCircle className="w-5 h-5 text-rose-400 shrink-0 mt-0.5" />
+              )}
+              <div className="flex-1 break-words text-start">{statusMsg.text}</div>
+              <button
+                type="button"
+                onClick={() => setStatusMsg(null)}
+                className="text-white/60 hover:text-white font-black text-xs px-1.5 py-0.5 rounded-lg cursor-pointer shrink-0"
+              >
+                ✕
+              </button>
+            </div>
+          </div>,
+          document.body
+        )}
 
       {/* Hero Banner */}
       <div className="bg-gradient-to-r from-slate-900 via-indigo-950 to-slate-900 text-white p-5 sm:p-6 rounded-3xl shadow-lg flex flex-col lg:flex-row items-start lg:items-center justify-between gap-4">
@@ -449,7 +517,7 @@ CREATE POLICY "Allow public sync" ON public.smartpos_sync FOR ALL USING (true) W
                     {lang === 'ar' ? 'رابط Firebase Realtime Database URL:' : 'Firebase Database URL:'}
                   </label>
                   <input
-                    type="url"
+                    type="text"
                     dir="ltr"
                     placeholder="https://your-project-default-rtdb.firebaseio.com"
                     value={syncCfg.firebaseUrl}
@@ -470,12 +538,32 @@ CREATE POLICY "Allow public sync" ON public.smartpos_sync FOR ALL USING (true) W
                     className="w-full px-3.5 py-2 bg-white border border-slate-200 rounded-xl text-xs font-mono text-slate-800 focus:outline-none focus:ring-2 focus:ring-indigo-500"
                   />
                 </div>
-                <div className="text-[11px] text-slate-600 bg-white p-3 rounded-xl border border-slate-200 leading-relaxed">
-                  <b>💡 كيف تحصل على الرابط مجاناً في دقيقة؟</b> افتح موقع{' '}
-                  <a href="https://console.firebase.google.com" target="_blank" rel="noreferrer" className="text-indigo-600 underline font-bold">
-                    console.firebase.google.com
-                  </a>{' '}
-                  ← أنشئ مشروعاً مجانياً ← اختر <b>Realtime Database</b> ← اضغط <b>Create Database (Start in Test Mode)</b> ثم انسخ الرابط والصقه هنا!
+                <div className="text-[11px] text-slate-600 bg-white p-3 rounded-xl border border-slate-200 leading-relaxed space-y-2">
+                  <div>
+                    <b>💡 خطوتان فقط لتشغيل Firebase بنجاح بين الآيفون والحاسوب:</b>
+                    <br />
+                    1. من موقع{' '}
+                    <a href="https://console.firebase.google.com" target="_blank" rel="noreferrer" className="text-indigo-600 underline font-bold">
+                      console.firebase.google.com
+                    </a>{' '}
+                    ادخل إلى <b>Realtime Database</b> وانسخ الرابط الذي ينتهي بـ <code className="font-mono bg-slate-100 px-1 rounded">firebaseio.com</code> أو <code className="font-mono bg-slate-100 px-1 rounded">firebasedatabase.app</code>.
+                    <br />
+                    2. ادخل إلى تبويب <b>Rules</b> في Realtime Database وتأكد أن القواعد تسمح بالقراءة والكتابة <code className="font-mono bg-slate-100 px-1 rounded">true</code> ثم اضغط <b>Publish</b>:
+                  </div>
+                  <div className="flex items-center justify-between bg-slate-900 text-emerald-300 px-3 py-2 rounded-lg font-mono text-[10px]" dir="ltr">
+                    <span>{`{ "rules": { ".read": true, ".write": true } }`}</span>
+                    <button
+                      type="button"
+                      onClick={() => {
+                        navigator.clipboard.writeText(`{\n  "rules": {\n    ".read": true,\n    ".write": true\n  }\n}`);
+                        setCopiedFbRules(true);
+                        setTimeout(() => setCopiedFbRules(false), 2000);
+                      }}
+                      className="px-2 py-0.5 bg-indigo-600 hover:bg-indigo-500 text-white rounded text-[10px] font-sans font-bold cursor-pointer"
+                    >
+                      {copiedFbRules ? '✓ تم النسخ' : 'نسخ Rules'}
+                    </button>
+                  </div>
                 </div>
               </div>
             )}
@@ -485,7 +573,7 @@ CREATE POLICY "Allow public sync" ON public.smartpos_sync FOR ALL USING (true) W
                 <div>
                   <label className="block text-xs font-black text-slate-700 mb-1">Supabase Project URL:</label>
                   <input
-                    type="url"
+                    type="text"
                     dir="ltr"
                     placeholder="https://xyzcompany.supabase.co"
                     value={syncCfg.supabaseUrl || ''}
@@ -533,7 +621,7 @@ CREATE POLICY "Allow public sync" ON public.smartpos_sync FOR ALL USING (true) W
                     {lang === 'ar' ? 'رابط السيرفر الرئيسي أو الحاسوب (Server URL):' : 'Primary Server URL:'}
                   </label>
                   <input
-                    type="url"
+                    type="text"
                     dir="ltr"
                     placeholder={`http://${primaryIp}:${port}`}
                     value={syncCfg.serverUrl || defaultServerOrigin}
@@ -589,9 +677,19 @@ CREATE POLICY "Allow public sync" ON public.smartpos_sync FOR ALL USING (true) W
             <div className="flex flex-wrap items-center gap-2.5 pt-2">
               <button
                 type="submit"
-                className="px-5 py-2.5 bg-slate-900 hover:bg-slate-800 text-white text-xs font-black rounded-xl transition cursor-pointer"
+                className="px-4 py-2.5 bg-slate-900 hover:bg-slate-800 text-white text-xs font-black rounded-xl transition cursor-pointer"
               >
                 {lang === 'ar' ? 'حفظ الإعدادات' : 'Save Settings'}
+              </button>
+
+              <button
+                type="button"
+                disabled={isSyncing}
+                onClick={handleTestConnection}
+                className="px-4 py-2.5 bg-amber-500 hover:bg-amber-600 text-white text-xs font-black rounded-xl transition cursor-pointer flex items-center gap-1.5 disabled:opacity-50"
+              >
+                <RefreshCw className={`w-4 h-4 ${isSyncing ? 'animate-spin' : ''}`} />
+                <span>{lang === 'ar' ? 'فحص الاتصال بـ Firebase' : 'Test Connection'}</span>
               </button>
 
               <button
@@ -614,6 +712,31 @@ CREATE POLICY "Allow public sync" ON public.smartpos_sync FOR ALL USING (true) W
                 <span>{lang === 'ar' ? 'سحب ودمج التحديثات من الهواتف' : 'Pull & Merge Updates'}</span>
               </button>
             </div>
+
+            {statusMsg && (
+              <div
+                dir={isRTL ? 'rtl' : 'ltr'}
+                className={`mt-3 p-3.5 rounded-2xl border flex items-start gap-2.5 text-xs sm:text-sm font-bold leading-relaxed ${
+                  statusMsg.type === 'success'
+                    ? 'bg-emerald-50 text-emerald-900 border-emerald-300'
+                    : 'bg-rose-50 text-rose-900 border-rose-300'
+                }`}
+              >
+                {statusMsg.type === 'success' ? (
+                  <CheckCircle2 className="w-5 h-5 text-emerald-600 shrink-0 mt-0.5" />
+                ) : (
+                  <AlertCircle className="w-5 h-5 text-rose-600 shrink-0 mt-0.5" />
+                )}
+                <div className="flex-1 break-words text-start">{statusMsg.text}</div>
+                <button
+                  type="button"
+                  onClick={() => setStatusMsg(null)}
+                  className="text-slate-400 hover:text-slate-700 font-black text-xs px-1 cursor-pointer shrink-0"
+                >
+                  ✕
+                </button>
+              </div>
+            )}
           </form>
 
           {/* Native Android APK & iOS IPA Builder Card */}

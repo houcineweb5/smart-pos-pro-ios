@@ -6,6 +6,7 @@
 import React, { useState, useEffect } from 'react';
 import { StoreConfig, Language, ActivityLog, Employee } from '../types';
 import { languages } from '../languages';
+import { compressImageFile } from '../utils/cloudSync';
 import { 
   Settings as SettingsIcon, Save, Upload, 
   Palette, Building2, Coins, Keyboard, Check
@@ -46,15 +47,20 @@ export default function Settings({
 
   const [successMsg, setSuccessMsg] = useState('');
 
-  const handleLogoUpload = (e: React.ChangeEvent<HTMLInputElement>) => {
+  const handleLogoUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
     if (!file) return;
-    const reader = new FileReader();
-    reader.onload = (event) => {
-      const base64 = event.target?.result as string;
-      setFormConfig((prev) => ({ ...prev, logoUrl: base64 }));
-    };
-    reader.readAsDataURL(file);
+    try {
+      const compressed = await compressImageFile(file, 260, 0.78);
+      setFormConfig((prev) => ({ ...prev, logoUrl: compressed }));
+    } catch {
+      const reader = new FileReader();
+      reader.onload = (event) => {
+        const base64 = event.target?.result as string;
+        setFormConfig((prev) => ({ ...prev, logoUrl: base64 }));
+      };
+      reader.readAsDataURL(file);
+    }
   };
 
   const removeLogo = () => {

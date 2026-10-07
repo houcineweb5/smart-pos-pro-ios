@@ -7,8 +7,9 @@ import React, { useState } from 'react';
 import { Customer, Invoice, ActivityLog, Language, StoreConfig } from '../types';
 import { 
   ArrowLeft, Calendar, FileText, Printer, Search, TrendingUp, DollarSign, 
-  CreditCard, CreditCard as DebtIcon, ChevronDown, ChevronUp, Clock, CheckCircle, AlertCircle
+  CreditCard, CreditCard as DebtIcon, ChevronDown, ChevronUp, Clock, CheckCircle, AlertCircle, FileDown
 } from 'lucide-react';
+import { printHtmlContent, exportStructuredPdf } from '../utils/printService';
 
 interface CustomerLedgerProps {
   customer: Customer;
@@ -26,10 +27,37 @@ export default function CustomerLedger({ customer, invoices, logs, onClose, lang
   
   const [filter, setFilter] = useState<FilterType>('all');
   const [searchQuery, setSearchQuery] = useState('');
+  const [selectedMonth, setSelectedMonth] = useState('');
+  const [fromDate, setFromDate] = useState('');
+  const [toDate, setToDate] = useState('');
   const [expandedInvoiceIds, setExpandedInvoiceIds] = useState<Record<string, boolean>>({});
+
+  const hasDateFilter = Boolean(selectedMonth || fromDate || toDate);
+
+  const matchesDateFilter = (dateStr?: string) => {
+    if (!hasDateFilter) return true;
+    if (!dateStr) return false;
+    const d = new Date(dateStr);
+    if (isNaN(d.getTime())) return false;
+
+    if (selectedMonth) {
+      const yearMonth = `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}`;
+      if (yearMonth !== selectedMonth) return false;
+    }
+    if (fromDate) {
+      const start = new Date(`${fromDate}T00:00:00`).getTime();
+      if (d.getTime() < start) return false;
+    }
+    if (toDate) {
+      const end = new Date(`${toDate}T23:59:59.999`).getTime();
+      if (d.getTime() > end) return false;
+    }
+    return true;
+  };
 
   // 1. Get client invoices
   const clientInvoices = invoices.filter((inv) => inv.customerId === customer.id);
+  const dateFilteredClientInvoices = clientInvoices.filter((inv) => matchesDateFilter(inv.date));
 
   // 2. Extract debt settlements for this customer from raw activity logs
   const clientRepayments = logs.filter((log) => {
@@ -38,6 +66,7 @@ export default function CustomerLedger({ customer, invoices, logs, onClose, lang
                              log.details.includes(customer.id);
     return isDebtAction && mentionsCustomer;
   });
+  const dateFilteredRepayments = clientRepayments.filter((log) => matchesDateFilter(log.timestamp));
 
   // 3. Construct unified ledger timeline
   const ledgerItems = [
@@ -84,6 +113,7 @@ export default function CustomerLedger({ customer, invoices, logs, onClose, lang
                           item.subtitle.toLowerCase().includes(searchQuery.toLowerCase());
     
     if (!matchesSearch) return false;
+    if (!matchesDateFilter(item.date)) return false;
 
     // Filter type matching
     if (filter === 'all') return true;
@@ -92,11 +122,13 @@ export default function CustomerLedger({ customer, invoices, logs, onClose, lang
     return true;
   });
 
-  // Math metrics sums
-  const totalInvoicedSum = clientInvoices.reduce((sum, inv) => sum + inv.total, 0);
-  const totalInvoicedPaidSum = clientInvoices.reduce((sum, inv) => sum + inv.amountPaid, 0);
-  const totalOutstandingBillDebt = clientInvoices.reduce((sum, inv) => sum + (inv.total - inv.amountPaid), 0);
-  const totalDirectRepayments = clientRepayments.reduce((sum, log) => {
+  // Math metrics sums (respects date/month filter when active)
+  const activeInvoicesForStats = hasDateFilter ? dateFilteredClientInvoices : clientInvoices;
+  const activeRepaymentsForStats = hasDateFilter ? dateFilteredRepayments : clientRepayments;
+  const totalInvoicedSum = activeInvoicesForStats.reduce((sum, inv) => sum + inv.total, 0);
+  const totalInvoicedPaidSum = activeInvoicesForStats.reduce((sum, inv) => sum + inv.amountPaid, 0);
+  const totalOutstandingBillDebt = activeInvoicesForStats.reduce((sum, inv) => sum + (inv.total - inv.amountPaid), 0);
+  const totalDirectRepayments = activeRepaymentsForStats.reduce((sum, log) => {
     const match = log.details.match(/[\d.]+/);
     return sum + (match ? parseFloat(match[0]) : 0);
   }, 0);
@@ -112,100 +144,139 @@ export default function CustomerLedger({ customer, invoices, logs, onClose, lang
     const printContent = document.getElementById('printable-ledger-area')?.innerHTML;
     if (!printContent) return;
 
-    const printWindow = window.open('', '', 'width=850,height=950');
-    if (printWindow) {
-      printWindow.document.write(`
-        <html>
-          <head>
-            <title>${isRTL ? 'كشف حساب عميل تفصيلي' : 'Customer Account Statement'} - ${customer.name}</title>
-            <style>
-              body { 
-                font-family: 'Helvetica Neue', 'Arial', sans-serif; 
-                padding: 40px; 
-                color: #1e293b; 
-                direction: ${isRTL ? 'rtl' : 'ltr'}; 
-                background: #fff;
-              }
-              .header { 
-                display: flex; 
-                justify-content: space-between; 
-                align-items: center; 
-                border-bottom: 3px double #cbd5e1; 
-                padding-bottom: 25px; 
-                margin-bottom: 30px; 
-              }
-              .title-box h1 { margin: 0; font-size: 26px; color: #0f172a; font-weight: 800; }
-              .title-box p { margin: 5px 0 0 0; font-size: 14px; color: #64748b; font-weight: 500; }
-              .client-info-grid { 
-                display: grid; 
-                grid-template-columns: 1fr 1fr; 
-                gap: 15px; 
-                background: #f8fafc; 
-                border: 1px solid #e2e8f0; 
-                border-radius: 12px; 
-                padding: 20px; 
-                margin-bottom: 30px; 
-              }
-              .client-info-grid div { font-size: 13px; font-weight: 600; color: #475569; }
-              .client-info-grid div strong { color: #0f172a; font-size: 14px; }
-              .metrics-grid { 
-                display: grid; 
-                grid-template-columns: repeat(4, 1fr); 
-                gap: 15px; 
-                margin-bottom: 35px; 
-              }
-              .metric-card { 
-                border: 1px solid #e2e8f0; 
-                border-radius: 10px; 
-                padding: 15px; 
-                text-align: center; 
-                background: #ffffff;
-              }
-              .metric-card span { font-size: 11px; font-weight: bold; text-transform: uppercase; color: #64748b; block: display; }
-              .metric-card h2 { margin: 5px 0 0 0; font-size: 20px; font-weight: 900; }
-              .red { color: #e11d48; }
-              .green { color: #059669; }
-              .blue { color: #2563eb; }
-              .ledger-table { width: 100%; border-collapse: collapse; margin-top: 20px; }
-              .ledger-table th, .ledger-table td { 
-                padding: 12px 14px; 
-                border-bottom: 1px solid #e2e8f0; 
-                text-align: ${isRTL ? 'right' : 'left'}; 
-                font-size: 13px;
-              }
-              .ledger-table th { background-color: #f1f5f9; font-weight: bold; color: #334155; }
-              .itemized-list { 
-                font-size: 11px; 
-                color: #64748b; 
-                padding: 8px 12px; 
-                background-color: #f8fafc; 
-                border-radius: 6px; 
-                margin-top: 5px; 
-                list-style: none;
-                padding-left: 10px;
-                padding-right: 10px;
-              }
-              .itemized-list li { margin-bottom: 4px; border-bottom: 1px dashed #f1f5f9; padding-bottom: 3px; }
-              .itemized-list li:last-child { border-bottom: none; }
-              .bold { font-weight: bold; }
-              .font-mono { font-family: monospace; font-weight: bold; }
-              .footer { text-align: center; margin-top: 50px; font-size: 11px; color: #94a3b8; border-t: 1px solid #e2e8f0; padding-top: 15px; }
-            </style>
-          </head>
-          <body>
-            ${printContent}
-          </body>
-        </html>
-      `);
-      printWindow.document.close();
-      printWindow.focus();
-      setTimeout(() => {
-        printWindow.print();
-        printWindow.close();
-      }, 500);
-    } else {
-      window.print();
-    }
+    const styleAndBodyHtml = `
+      <style>
+        .ledger-print-wrap { 
+          font-family: -apple-system, BlinkMacSystemFont, 'Cairo', 'Tajawal', sans-serif; 
+          padding: 20px; 
+          color: #1e293b; 
+          direction: ${isRTL ? 'rtl' : 'ltr'}; 
+          background: #fff;
+        }
+        .header { 
+          display: flex; 
+          justify-content: space-between; 
+          align-items: center; 
+          border-bottom: 3px double #cbd5e1; 
+          padding-bottom: 20px; 
+          margin-bottom: 24px; 
+        }
+        .title-box h1 { margin: 0; font-size: 22px; color: #0f172a; font-weight: 800; }
+        .title-box p { margin: 5px 0 0 0; font-size: 13px; color: #64748b; font-weight: 500; }
+        .client-info-grid { 
+          display: grid; 
+          grid-template-columns: 1fr 1fr; 
+          gap: 12px; 
+          background: #f8fafc; 
+          border: 1px solid #e2e8f0; 
+          border-radius: 12px; 
+          padding: 16px; 
+          margin-bottom: 24px; 
+        }
+        .client-info-grid div { font-size: 12px; font-weight: 600; color: #475569; }
+        .client-info-grid div strong { color: #0f172a; font-size: 13px; }
+        .metrics-grid { 
+          display: grid; 
+          grid-template-columns: repeat(4, 1fr); 
+          gap: 12px; 
+          margin-bottom: 28px; 
+        }
+        .metric-card { 
+          border: 1px solid #e2e8f0; 
+          border-radius: 10px; 
+          padding: 12px; 
+          text-align: center; 
+          background: #ffffff;
+        }
+        .metric-card span { font-size: 10px; font-weight: bold; text-transform: uppercase; color: #64748b; display: block; }
+        .metric-card h2 { margin: 5px 0 0 0; font-size: 17px; font-weight: 900; }
+        .red { color: #e11d48; }
+        .green { color: #059669; }
+        .blue { color: #2563eb; }
+        .ledger-table { width: 100%; border-collapse: collapse; margin-top: 16px; }
+        .ledger-table th, .ledger-table td { 
+          padding: 10px 12px; 
+          border-bottom: 1px solid #e2e8f0; 
+          text-align: ${isRTL ? 'right' : 'left'}; 
+          font-size: 12px;
+        }
+        .ledger-table th { background-color: #f1f5f9; font-weight: bold; color: #334155; }
+        .itemized-list { 
+          font-size: 11px; 
+          color: #64748b; 
+          padding: 8px 12px; 
+          background-color: #f8fafc; 
+          border-radius: 6px; 
+          margin-top: 5px; 
+          list-style: none;
+        }
+        .itemized-list li { margin-bottom: 4px; border-bottom: 1px dashed #f1f5f9; padding-bottom: 3px; }
+        .itemized-list li:last-child { border-bottom: none; }
+        .bold { font-weight: bold; }
+        .font-mono { font-family: monospace; font-weight: bold; }
+        .footer { text-align: center; margin-top: 40px; font-size: 11px; color: #94a3b8; border-top: 1px solid #e2e8f0; padding-top: 15px; }
+      </style>
+      <div class="ledger-print-wrap">${printContent}</div>
+    `;
+
+    printHtmlContent(
+      {
+        title: `${isRTL ? 'كشف حساب عميل تفصيلي' : 'Customer Account Statement'} - ${customer.name}`,
+        html: styleAndBodyHtml,
+        isRTL,
+        mode: 'a4'
+      },
+      buildLedgerPdfMeta()
+    );
+  };
+
+  const buildLedgerPdfMeta = () => ({
+    title: isRTL ? 'كشف حساب عميل تفصيلي' : 'Relevé de Compte Client',
+    docNumber: `STMT-${customer.name}${selectedMonth ? `-${selectedMonth}` : ''}`,
+    date: new Date().toLocaleDateString('fr-FR'),
+    storeName: config.name || 'المتجر',
+    storePhone: config.phone,
+    storeEmail: config.email,
+    storeAddress: config.address,
+    storeRegNumber: config.registrationNumber,
+    customerLabel: isRTL ? 'العميل' : 'Client',
+    customerName: customer.name,
+    customerPhone: customer.phone,
+    currency: config.currency,
+    mode: 'a4' as const,
+    isRTL,
+    summaryCards: [
+      {
+        label: isRTL ? 'إجمالي المشتريات والفوترة' : 'Total Invoiced',
+        value: `${totalInvoicedSum.toFixed(2)} ${config.currency}`,
+        color: '#0f172a'
+      },
+      {
+        label: isRTL ? 'إجمالي المدفوعات والتحصيلات' : 'Total Paid',
+        value: `${(totalInvoicedPaidSum + totalDirectRepayments).toFixed(2)} ${config.currency}`,
+        color: '#059669'
+      },
+      {
+        label: isRTL ? 'الديون المتبقية بذمة العميل' : 'Remaining Debt',
+        value: `${(hasDateFilter ? Math.max(0, totalOutstandingBillDebt - totalDirectRepayments) : customer.debt).toFixed(2)} ${config.currency}`,
+        color: '#e11d48'
+      }
+    ],
+    items: activeInvoicesForStats.map((inv) => ({
+      name: `${inv.invoiceNumber} (${new Date(inv.date).toLocaleDateString('fr-FR')})`,
+      quantity: inv.items.reduce((s, i) => s + i.quantity, 0) || 1,
+      unitPrice: inv.total,
+      total: inv.total
+    })),
+    subtotal: totalInvoicedSum,
+    total: totalInvoicedSum,
+    amountPaid: totalInvoicedPaidSum + totalDirectRepayments,
+    remainingDebt: hasDateFilter ? Math.max(0, totalOutstandingBillDebt - totalDirectRepayments) : customer.debt,
+    notes: customer.notes
+  });
+
+  const handleExportLedgerPdf = async () => {
+    await exportStructuredPdf(buildLedgerPdfMeta());
   };
 
   const getTranslatedLabels = () => {
@@ -298,19 +369,20 @@ export default function CustomerLedger({ customer, invoices, logs, onClose, lang
   return (
     <div className="space-y-6 animate-fade-in" id="customer-ledger-wrapper">
       {/* Dynamic Navigation Action Header */}
-      <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4 bg-white p-5 rounded-2xl shadow-sm border border-slate-100">
-        <div className={`flex items-center gap-3.5 ${isRTL ? 'flex-row-reverse' : ''}`}>
+      <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4 bg-white p-4 sm:p-5 rounded-2xl shadow-sm border border-slate-100">
+        <div className="flex items-center gap-3">
           <button
             id="btn-ledger-back"
             onClick={onClose}
-            className="p-2.5 hover:bg-slate-100 rounded-xl text-slate-600 transition"
+            className="px-3 py-2 bg-slate-100 hover:bg-slate-200 rounded-xl text-slate-700 font-bold text-xs flex items-center gap-1.5 transition cursor-pointer shrink-0"
           >
-            <ArrowLeft className={`w-5 h-5 ${isRTL ? 'rotate-180' : ''}`} />
+            <ArrowLeft className={`w-4 h-4 ${isRTL ? 'rotate-180' : ''}`} />
+            <span>{isRTL ? 'رجوع' : 'Retour'}</span>
           </button>
           <div className="text-start">
-            <div className="flex items-center gap-2">
-              <h1 className="text-xl font-bold text-slate-800 tracking-tight">{customer.name}</h1>
-              <span className="px-2.5 py-0.5 text-[10px] bg-slate-100 text-slate-600 font-bold rounded-full">
+            <div className="flex items-center gap-2 flex-wrap">
+              <h1 className="text-lg sm:text-xl font-bold text-slate-800 tracking-tight">{customer.name}</h1>
+              <span className="px-2.5 py-0.5 text-[10px] bg-slate-100 text-slate-600 font-bold rounded-full font-mono">
                 {customer.phone}
               </span>
             </div>
@@ -321,14 +393,24 @@ export default function CustomerLedger({ customer, invoices, logs, onClose, lang
           </div>
         </div>
 
-        <button
-          id="btn-print-ledger-statement"
-          onClick={triggerPrintLedger}
-          className="flex items-center gap-2 px-4.5 py-2.5 bg-slate-800 hover:bg-slate-900 text-white text-xs font-bold rounded-xl transition duration-200 shadow-sm self-start cursor-pointer"
-        >
-          <Printer className="w-4 h-4" />
-          {labels.receiptPrint}
-        </button>
+        <div className="flex flex-wrap items-center gap-2 w-full sm:w-auto">
+          <button
+            type="button"
+            onClick={handleExportLedgerPdf}
+            className="flex-1 sm:flex-none justify-center flex items-center gap-1.5 px-3.5 py-2.5 bg-rose-600 hover:bg-rose-700 text-white text-xs font-bold rounded-xl transition shadow-sm cursor-pointer"
+          >
+            <FileDown className="w-4 h-4" />
+            <span>PDF</span>
+          </button>
+          <button
+            id="btn-print-ledger-statement"
+            onClick={triggerPrintLedger}
+            className="flex-1 sm:flex-none justify-center flex items-center gap-2 px-4 py-2.5 bg-slate-800 hover:bg-slate-900 text-white text-xs font-bold rounded-xl transition duration-200 shadow-sm cursor-pointer"
+          >
+            <Printer className="w-4 h-4" />
+            <span>{labels.receiptPrint}</span>
+          </button>
+        </div>
       </div>
 
       {/* 4-Column Financial Statement Bento Grid */}
@@ -345,7 +427,7 @@ export default function CustomerLedger({ customer, invoices, logs, onClose, lang
             <span className="text-xs font-semibold text-slate-500">{config.currency}</span>
           </div>
           <span className="text-[10px] font-bold text-indigo-600 block mt-1.5 bg-indigo-50/50 py-1 px-2.5 rounded-lg w-max">
-            {clientInvoices.length} {isRTL ? 'فواتير مشتريات' : 'Sales bills'}
+            {activeInvoicesForStats.length} {isRTL ? 'فواتير مشتريات' : 'Sales bills'}
           </span>
         </div>
 
@@ -361,7 +443,7 @@ export default function CustomerLedger({ customer, invoices, logs, onClose, lang
             <span className="text-xs font-semibold text-slate-500">{config.currency}</span>
           </div>
           <span className="text-[10px] font-bold text-emerald-600 block mt-1.5 bg-emerald-50/50 py-1 px-2.5 rounded-lg w-max">
-            {clientInvoices.filter(i => i.status === 'paid').length} {isRTL ? 'مسواه بالكامل' : 'fully paid'}
+            {activeInvoicesForStats.filter(i => i.status === 'paid').length} {isRTL ? 'مسواه بالكامل' : 'fully paid'}
           </span>
         </div>
 
@@ -377,7 +459,7 @@ export default function CustomerLedger({ customer, invoices, logs, onClose, lang
             <span className="text-xs font-semibold text-slate-500">{config.currency}</span>
           </div>
           <span className="text-[10px] font-bold text-blue-600 block mt-1.5 bg-blue-50/50 py-1 px-2.5 rounded-lg w-max">
-            {clientRepayments.length} {isRTL ? 'إيصالات تسديد المديونية' : 'Ledger receipts'}
+            {activeRepaymentsForStats.length} {isRTL ? 'إيصالات تسديد المديونية' : 'Ledger receipts'}
           </span>
         </div>
 
@@ -403,14 +485,14 @@ export default function CustomerLedger({ customer, invoices, logs, onClose, lang
       </div>
 
       {/* Filter and Timeline Ledger Container */}
-      <div className="bg-white border border-slate-100 rounded-3xl p-6 shadow-xs flex flex-col space-y-4">
+      <div className="bg-white border border-slate-100 rounded-3xl p-4 sm:p-6 shadow-xs flex flex-col space-y-4">
         {/* Search & Tabs Filtering */}
-        <div className={`flex flex-col md:flex-row justify-between items-start md:items-center gap-4 ${isRTL ? 'md:flex-row-reverse' : ''}`}>
-          <div className="flex bg-slate-100 p-1 rounded-xl self-start">
+        <div className="flex flex-col md:flex-row justify-between items-start md:items-center gap-4">
+          <div className="flex bg-slate-100 p-1 rounded-xl self-start flex-wrap gap-1">
             <button
               id="filter-tabs-all"
               onClick={() => setFilter('all')}
-              className={`px-4 py-2 text-xs font-bold rounded-lg transition ${
+              className={`px-3.5 py-2 text-xs font-bold rounded-lg transition ${
                 filter === 'all' ? 'bg-white shadow-xs text-slate-800' : 'text-slate-500 hover:text-slate-800'
               }`}
             >
@@ -419,7 +501,7 @@ export default function CustomerLedger({ customer, invoices, logs, onClose, lang
             <button
               id="filter-tabs-invoices"
               onClick={() => setFilter('invoices')}
-              className={`px-4 py-2 text-xs font-bold rounded-lg transition ${
+              className={`px-3.5 py-2 text-xs font-bold rounded-lg transition ${
                 filter === 'invoices' ? 'bg-white shadow-xs text-slate-800' : 'text-slate-500 hover:text-slate-800'
               }`}
             >
@@ -428,7 +510,7 @@ export default function CustomerLedger({ customer, invoices, logs, onClose, lang
             <button
               id="filter-tabs-payments"
               onClick={() => setFilter('payments')}
-              className={`px-4 py-2 text-xs font-bold rounded-lg transition ${
+              className={`px-3.5 py-2 text-xs font-bold rounded-lg transition ${
                 filter === 'payments' ? 'bg-white shadow-xs text-slate-800' : 'text-slate-500 hover:text-slate-800'
               }`}
             >
@@ -441,7 +523,7 @@ export default function CustomerLedger({ customer, invoices, logs, onClose, lang
               id="ledger-timeline-search"
               type="text"
               placeholder={labels.searchPlaceholder}
-              className={`w-full text-xs py-2 bg-slate-50 text-slate-800 rounded-lg border border-slate-100 focus:ring-1 focus:ring-slate-400 focus:outline-none pl-9 pr-4 ${
+              className={`w-full text-xs font-bold py-2 bg-slate-50 text-slate-800 rounded-lg border border-slate-200 focus:ring-1 focus:ring-indigo-500 focus:outline-none pl-9 pr-4 ${
                 isRTL ? 'text-right' : 'text-left'
               }`}
               value={searchQuery}
@@ -449,6 +531,80 @@ export default function CustomerLedger({ customer, invoices, logs, onClose, lang
             />
             <Search className="w-4 h-4 text-slate-400 absolute left-3 top-2.5" />
           </div>
+        </div>
+
+        {/* Date & Month Search Bar (بحث بالشهر أو بالتاريخ من / إلى) */}
+        <div className="flex flex-wrap items-center gap-3 bg-slate-50/90 p-3 rounded-2xl border border-slate-200/80 text-xs">
+          <div className="flex items-center gap-1.5 text-indigo-700 font-black">
+            <Calendar className="w-4 h-4 text-indigo-600 shrink-0" />
+            <span>{isRTL ? 'بحث بالتاريخ أو بشهر معين:' : 'Filtrer par mois ou date:'}</span>
+          </div>
+
+          <div className="flex items-center gap-1.5 bg-white px-2.5 py-1.5 rounded-xl border border-slate-200 shadow-2xs">
+            <span className="font-bold text-slate-600">{isRTL ? 'الشهر:' : 'Mois:'}</span>
+            <input
+              type="month"
+              value={selectedMonth}
+              onChange={(e) => {
+                setSelectedMonth(e.target.value);
+                if (e.target.value) {
+                  setFromDate('');
+                  setToDate('');
+                }
+              }}
+              className="text-xs font-bold text-slate-800 focus:outline-none bg-transparent cursor-pointer"
+            />
+          </div>
+
+          <div className="flex items-center gap-1.5 bg-white px-2.5 py-1.5 rounded-xl border border-slate-200 shadow-2xs">
+            <span className="font-bold text-slate-600">{isRTL ? 'من تاريخ:' : 'Du:'}</span>
+            <input
+              type="date"
+              value={fromDate}
+              onChange={(e) => {
+                setFromDate(e.target.value);
+                if (e.target.value) setSelectedMonth('');
+              }}
+              className="text-xs font-bold text-slate-800 focus:outline-none bg-transparent cursor-pointer"
+            />
+          </div>
+
+          <div className="flex items-center gap-1.5 bg-white px-2.5 py-1.5 rounded-xl border border-slate-200 shadow-2xs">
+            <span className="font-bold text-slate-600">{isRTL ? 'إلى تاريخ:' : 'Au:'}</span>
+            <input
+              type="date"
+              value={toDate}
+              onChange={(e) => {
+                setToDate(e.target.value);
+                if (e.target.value) setSelectedMonth('');
+              }}
+              className="text-xs font-bold text-slate-800 focus:outline-none bg-transparent cursor-pointer"
+            />
+          </div>
+
+          {hasDateFilter && (
+            <button
+              type="button"
+              onClick={() => {
+                setSelectedMonth('');
+                setFromDate('');
+                setToDate('');
+              }}
+              className="px-3 py-1.5 bg-rose-50 hover:bg-rose-100 text-rose-700 border border-rose-200 rounded-xl font-bold transition cursor-pointer"
+            >
+              {isRTL ? 'إظهار كل التواريخ' : 'Réinitialiser'}
+            </button>
+          )}
+
+          {hasDateFilter && (
+            <div className="ms-auto flex items-center gap-2 text-[11px] font-black text-indigo-700 bg-indigo-50 px-3 py-1.5 rounded-xl border border-indigo-200">
+              <span>
+                {isRTL
+                  ? `نتائج الفترة: ${filteredLedger.length} معاملة | المجموع: ${totalInvoicedSum.toFixed(2)} ${config.currency}`
+                  : `Résultats: ${filteredLedger.length} | Total: ${totalInvoicedSum.toFixed(2)} ${config.currency}`}
+              </span>
+            </div>
+          )}
         </div>
 
         {/* Unified Timeline Log */}
@@ -469,10 +625,10 @@ export default function CustomerLedger({ customer, invoices, logs, onClose, lang
                       : 'bg-emerald-50/15 hover:bg-emerald-50/25 border-emerald-100/60'
                   }`}
                 >
-                  <div className={`flex flex-col sm:flex-row justify-between items-start gap-4 ${isRTL ? 'sm:flex-row-reverse' : ''}`}>
+                  <div className="flex flex-col sm:flex-row justify-between items-start gap-4">
                     {/* Time & Title info area */}
-                    <div className={`flex items-start gap-3 ${isRTL ? 'flex-row-reverse' : ''}`}>
-                      <div className={`p-2.5 rounded-xl mt-0.5 ${
+                    <div className="flex items-start gap-3">
+                      <div className={`p-2.5 rounded-xl mt-0.5 shrink-0 ${
                         isInv ? 'bg-slate-100 text-slate-600' : 'bg-emerald-100 text-emerald-700'
                       }`}>
                         {isInv ? <FileText className="w-5 h-5" /> : <CheckCircle className="w-5 h-5" />}
@@ -572,7 +728,7 @@ export default function CustomerLedger({ customer, invoices, logs, onClose, lang
                               <th className="pb-1.5 font-medium text-start">{isRTL ? 'اسم المنتج' : 'Product name'}</th>
                               <th className="pb-1.5 font-medium text-center">{isRTL ? 'الكمية' : 'Qty'}</th>
                               <th className="pb-1.5 font-medium text-right">{isRTL ? 'سعر البيع' : 'Selling Unit Price'}</th>
-                              <th className="pb-1.5 font-medium text-right">{isRTL ? 'الإجمالي الفرعي' : 'Subtotal'}</th>
+                              <th className="pb-1.5 font-medium text-right">{isRTL ? 'المجموع' : 'Subtotal'}</th>
                             </tr>
                           </thead>
                           <tbody className="divide-y divide-slate-50/50">
@@ -663,7 +819,7 @@ export default function CustomerLedger({ customer, invoices, logs, onClose, lang
             </tr>
           </thead>
           <tbody>
-            {ledgerItems.map((item) => {
+            {filteredLedger.map((item) => {
               const isInv = item.type === 'invoice';
               const invRaw = item.raw as Invoice;
               return (

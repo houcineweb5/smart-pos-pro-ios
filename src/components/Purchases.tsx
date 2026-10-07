@@ -27,9 +27,13 @@ import {
   Printer,
   Building2,
   Phone,
-  Mail
+  Mail,
+  FileDown,
+  ArrowRight
 } from 'lucide-react';
 import { StoreConfig } from '../types';
+import { printHtmlContent, exportStructuredPdf } from '../utils/printService';
+import { parseDecimal, sanitizeDecimalInput } from '../utils/numberInput';
 
 interface PurchasesProps {
   purchases: Purchase[];
@@ -77,7 +81,12 @@ export default function Purchases({
   const [supplierId, setSupplierId] = useState('');
   const [notes, setNotes] = useState('');
   const [amountPaidState, setAmountPaidState] = useState('');
-  const [cartItems, setCartItems] = useState<Omit<PurchaseItem, 'total'>[]>([
+  const [cartItems, setCartItems] = useState<Array<{
+    productId: string;
+    productName: string;
+    purchasePrice: number | string;
+    quantity: number | string;
+  }>>([
     { productId: '', productName: '', purchasePrice: 0, quantity: 1 }
   ]);
 
@@ -107,15 +116,23 @@ export default function Purchases({
       const existingIdx = cartItems.findIndex(item => item.productId === product.id);
       if (existingIdx >= 0) {
         const updated = [...cartItems];
-        updated[existingIdx].quantity += 1;
-        setCartItems(updated);
+        const existingItem = updated[existingIdx];
+        const nextItem = {
+          ...existingItem,
+          quantity: parseDecimal(existingItem.quantity, 0) + 1
+        };
+        updated.splice(existingIdx, 1);
+        setCartItems([nextItem, ...updated]);
       } else {
-        setCartItems([...cartItems, {
-          productId: product.id,
-          productName: product.name,
-          purchasePrice: product.purchasePrice,
-          quantity: 1
-        }]);
+        setCartItems([
+          {
+            productId: product.id,
+            productName: product.name,
+            purchasePrice: product.purchasePrice,
+            quantity: 1
+          },
+          ...cartItems
+        ]);
       }
     }
     setProductSearchQuery('');
@@ -135,9 +152,9 @@ export default function Purchases({
     );
   });
 
-  // Handle adding an item to the purchase cart form
+  // Handle adding an item to the purchase cart form (Inserted at TOP)
   const handleAddCartItemRow = () => {
-    setCartItems([...cartItems, { productId: '', productName: '', purchasePrice: 0, quantity: 1 }]);
+    setCartItems([{ productId: '', productName: '', purchasePrice: 0, quantity: 1 }, ...cartItems]);
   };
 
   // Handle removing an item from the purchase cart form
@@ -167,9 +184,9 @@ export default function Purchases({
         };
       }
     } else if (field === 'purchasePrice') {
-      updated[idx].purchasePrice = Math.max(0, parseFloat(value) || 0);
+      updated[idx].purchasePrice = value;
     } else if (field === 'quantity') {
-      updated[idx].quantity = Math.max(1, parseInt(value) || 1);
+      updated[idx].quantity = value;
     } else {
       updated[idx] = { ...updated[idx], [field]: value };
     }
@@ -179,7 +196,7 @@ export default function Purchases({
   // Calculate current purchase form totals
   const getFormTotals = () => {
     const total = cartItems.reduce((sum, item) => {
-      return sum + (item.purchasePrice * item.quantity);
+      return sum + (parseDecimal(item.purchasePrice, 0) * parseDecimal(item.quantity, 0));
     }, 0);
     return total;
   };
@@ -206,12 +223,14 @@ export default function Purchases({
         alert(lang === 'ar' ? 'يرجى إدخال اسم أو اختيار صنف لكل سطر.' : 'Please enter or select a product for all rows.');
         return;
       }
+      const pPrice = Math.max(0, parseDecimal(item.purchasePrice, 0));
+      const qty = Math.max(0.01, parseDecimal(item.quantity, 1));
       validItems.push({
         productId: item.productId,
         productName: name,
-        purchasePrice: item.purchasePrice,
-        quantity: item.quantity,
-        total: item.purchasePrice * item.quantity
+        purchasePrice: pPrice,
+        quantity: qty,
+        total: pPrice * qty
       });
     }
 
@@ -350,328 +369,59 @@ export default function Purchases({
     }
   };
 
-  const triggerPrintLayout = () => {
-    if (!viewingPurchase) return;
-    const supplierObj = suppliers.find(s => s.id === viewingPurchase.supplierId);
-    const billDebt = Math.max(0, viewingPurchase.total - viewingPurchase.amountPaid);
+  const buildPurchasePdfMeta = (p: Purchase) => {
+    const supplierObj = suppliers.find(s => s.id === p.supplierId);
+    const billDebt = Math.max(0, p.total - p.amountPaid);
+    return {
+      title: lang === 'ar' ? 'فاتورة مشتريات رسمية' : 'Bon de Réception - Achat',
+      docNumber: p.purchaseNumber,
+      date: p.date ? new Date(p.date).toLocaleString('fr-FR') : '',
+      storeName: config.name || 'المتجر',
+      storePhone: config.phone,
+      storeEmail: config.email,
+      storeAddress: config.address,
+      storeRegNumber: config.registrationNumber,
+      customerLabel: lang === 'ar' ? 'المورد' : 'Fournisseur',
+      customerName: p.supplierName,
+      customerPhone: supplierObj?.phone,
+      currency: config.currency,
+      mode: 'a4' as const,
+      isRTL,
+      items: (p.items || []).map(it => ({
+        name: it.productName,
+        quantity: it.quantity,
+        unitPrice: Number(it.purchasePrice || 0),
+        total: Number((it.purchasePrice || 0) * (it.quantity || 1))
+      })),
+      subtotal: p.total,
+      total: p.total,
+      amountPaid: p.amountPaid,
+      remainingDebt: billDebt,
+      notes: p.notes,
+      footerText: lang === 'ar' ? 'تمت مراجعة وقبول السلع المستلمة بالمخزن' : 'Procured and verified in good condition'
+    };
+  };
 
-    const printWindow = window.open('', '', 'width=900,height=950');
-    if (!printWindow) {
-      window.print();
-      return;
-    }
+  const handleExportPurchasePdf = async (p: Purchase) => {
+    await exportStructuredPdf(buildPurchasePdfMeta(p));
+  };
 
-    const itemsRowsHtml = viewingPurchase.items.map((item, idx) => `
-      <tr>
-        <td style="text-align: center; color: #64748b;">${idx + 1}</td>
-        <td style="font-weight: 700; color: #0f172a;">${item.productName}</td>
-        <td style="text-align: center; font-family: monospace; font-weight: 700;">${item.quantity}</td>
-        <td style="text-align: center; font-family: monospace;">${item.purchasePrice.toFixed(2)} ${config.currency}</td>
-        <td style="text-align: ${isRTL ? 'left' : 'right'}; font-family: monospace; font-weight: 700; color: #0f172a;">
-          ${(item.purchasePrice * item.quantity).toFixed(2)} ${config.currency}
-        </td>
-      </tr>
-    `).join('');
-
-    const paymentsRowsHtml = viewingPurchase.payments && viewingPurchase.payments.length > 0 ? `
-      <div style="margin-top: 20px; padding-top: 15px; border-top: 1px solid #e2e8f0;">
-        <div style="font-size: 11px; font-weight: 700; text-transform: uppercase; color: #475569; margin-bottom: 8px;">
-          ${lang === 'ar' ? 'سجل الدفعات المسددة للمورد:' : 'Installment Repayments Log:'}
-        </div>
-        <table style="width: 100%; border-collapse: collapse; font-size: 11px; border: 1px solid #e2e8f0;">
-          <thead>
-            <tr style="background: #f8fafc; border-bottom: 1px solid #cbd5e1;">
-              <th style="padding: 6px 10px; text-align: ${isRTL ? 'right' : 'left'}; font-weight: 700;">${lang === 'ar' ? 'التاريخ' : 'Date'}</th>
-              <th style="padding: 6px 10px; text-align: ${isRTL ? 'right' : 'left'}; font-weight: 700;">${lang === 'ar' ? 'البيان / ملاحظة' : 'Note'}</th>
-              <th style="padding: 6px 10px; text-align: ${isRTL ? 'left' : 'right'}; font-weight: 700;">${lang === 'ar' ? 'المبلغ المسدد' : 'Amount'}</th>
-            </tr>
-          </thead>
-          <tbody>
-            ${viewingPurchase.payments.map(pmt => `
-              <tr style="border-bottom: 1px solid #f1f5f9;">
-                <td style="padding: 6px 10px; color: #64748b; font-family: monospace;">${pmt.date ? new Date(pmt.date).toLocaleDateString() : ''}</td>
-                <td style="padding: 6px 10px; font-weight: 600;">${pmt.notes || (lang === 'ar' ? 'دفعة مسجلة' : 'Payment')}</td>
-                <td style="padding: 6px 10px; text-align: ${isRTL ? 'left' : 'right'}; font-family: monospace; font-weight: 700; color: #059669;">${pmt.amount.toFixed(2)} ${config.currency}</td>
-              </tr>
-            `).join('')}
-          </tbody>
-        </table>
-      </div>
-    ` : '';
-
-    const statusBadgeText = viewingPurchase.status === 'paid'
-      ? (lang === 'ar' ? 'مدفوعة بالكامل' : 'Paid')
-      : viewingPurchase.status === 'partial'
-      ? (lang === 'ar' ? 'مدفوعة جزئياً' : 'Partial')
-      : (lang === 'ar' ? 'أجل (دين على الحساب)' : 'Unpaid (Credit)');
-
-    printWindow.document.write(`
-      <!DOCTYPE html>
-      <html dir="${isRTL ? 'rtl' : 'ltr'}">
-        <head>
-          <meta charset="utf-8" />
-          <title>${lang === 'ar' ? 'فاتورة مشتريات' : 'Bon de Réception'} - ${viewingPurchase.purchaseNumber}</title>
-          <style>
-            @page { size: A4; margin: 12mm; }
-            body {
-              font-family: system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Arial, sans-serif;
-              padding: 0;
-              margin: 0;
-              color: #0f172a;
-              direction: ${isRTL ? 'rtl' : 'ltr'};
-              font-size: 12px;
-              line-height: 1.5;
-              background: #fff;
-            }
-            * { box-sizing: border-box; }
-            .header {
-              display: flex;
-              justify-content: space-between;
-              align-items: flex-start;
-              border-bottom: 2px solid #0f172a;
-              padding-bottom: 16px;
-              margin-bottom: 20px;
-            }
-            .store-name {
-              font-size: 22px;
-              font-weight: 900;
-              color: #0f172a;
-              margin-bottom: 4px;
-            }
-            .store-info {
-              font-size: 11px;
-              color: #475569;
-            }
-            .doc-title-badge {
-              display: inline-block;
-              background: #e0e7ff;
-              color: #3730a3;
-              border: 1px solid #c7d2fe;
-              font-weight: 800;
-              font-size: 11px;
-              padding: 4px 10px;
-              border-radius: 6px;
-              text-transform: uppercase;
-              letter-spacing: 0.5px;
-            }
-            .doc-number {
-              font-family: monospace;
-              font-size: 18px;
-              font-weight: 900;
-              margin: 6px 0 2px 0;
-              color: #0f172a;
-            }
-            .doc-meta {
-              font-size: 11px;
-              color: #64748b;
-            }
-            .cards-grid {
-              display: grid;
-              grid-template-columns: 1fr 1fr;
-              gap: 16px;
-              margin-bottom: 20px;
-            }
-            .info-card {
-              background: #f8fafc;
-              border: 1px solid #e2e8f0;
-              border-radius: 8px;
-              padding: 12px 14px;
-            }
-            .card-title {
-              font-size: 10px;
-              font-weight: 800;
-              text-transform: uppercase;
-              letter-spacing: 0.5px;
-              color: #64748b;
-              margin-bottom: 6px;
-            }
-            .party-name {
-              font-size: 13px;
-              font-weight: 800;
-              color: #0f172a;
-              margin-bottom: 2px;
-            }
-            table.items-table {
-              width: 100%;
-              border-collapse: collapse;
-              margin: 16px 0;
-              border: 1px solid #cbd5e1;
-              border-radius: 8px;
-              overflow: hidden;
-            }
-            table.items-table th {
-              background: #f1f5f9;
-              color: #334155;
-              font-weight: 800;
-              font-size: 11px;
-              text-transform: uppercase;
-              padding: 10px 12px;
-              border-bottom: 1px solid #cbd5e1;
-            }
-            table.items-table td {
-              padding: 10px 12px;
-              border-bottom: 1px solid #e2e8f0;
-            }
-            .totals-container {
-              display: flex;
-              justify-content: space-between;
-              align-items: flex-start;
-              margin-top: 16px;
-              padding-top: 12px;
-              border-top: 1px solid #e2e8f0;
-            }
-            .totals-box {
-              width: 280px;
-              background: #f8fafc;
-              border: 1px solid #e2e8f0;
-              border-radius: 8px;
-              padding: 12px 14px;
-            }
-            .totals-row {
-              display: flex;
-              justify-content: space-between;
-              margin-bottom: 6px;
-              font-size: 12px;
-            }
-            .total-grand {
-              border-top: 2px solid #cbd5e1;
-              padding-top: 8px;
-              margin-top: 6px;
-              font-size: 15px;
-              font-weight: 900;
-              color: #0f172a;
-            }
-            .signatures {
-              display: grid;
-              grid-template-columns: 1fr 1fr;
-              gap: 30px;
-              margin-top: 40px;
-              padding-top: 20px;
-            }
-            .sig-box {
-              border: 1px dashed #94a3b8;
-              border-radius: 8px;
-              height: 90px;
-              padding: 10px;
-              text-align: center;
-              font-size: 11px;
-              font-weight: 700;
-              color: #475569;
-              display: flex;
-              flex-direction: column;
-              justify-content: space-between;
-            }
-            @media print {
-              body { -webkit-print-color-adjust: exact; print-color-adjust: exact; }
-            }
-          </style>
-        </head>
-        <body>
-          <div class="header">
-            <div>
-              <div class="store-name">${config.name}</div>
-              <div class="store-info">${config.address}</div>
-              <div class="store-info">${lang === 'ar' ? 'الهاتف:' : 'Tél:'} ${config.phone} | ${config.email}</div>
-              ${config.registrationNumber ? `<div class="store-info">ICE / RC: ${config.registrationNumber}</div>` : ''}
-            </div>
-            <div style="text-align: ${isRTL ? 'left' : 'right'};">
-              <span class="doc-title-badge">${lang === 'ar' ? 'سند استلام مشتريات رسمي' : 'Bon de Réception - Achat'}</span>
-              <div class="doc-number">${viewingPurchase.purchaseNumber}</div>
-              <div class="doc-meta">${viewingPurchase.date ? new Date(viewingPurchase.date).toLocaleString() : ''}</div>
-              <div style="margin-top: 4px; font-weight: bold; font-size: 11px;">
-                ${lang === 'ar' ? 'الحالة:' : 'Statut:'} ${statusBadgeText}
-              </div>
-            </div>
-          </div>
-
-          <div class="cards-grid">
-            <div class="info-card">
-              <div class="card-title">${lang === 'ar' ? 'بيانات المورد (المزوّد)' : 'Supplier / Fournisseur'}</div>
-              <div class="party-name">${viewingPurchase.supplierName}</div>
-              ${supplierObj?.company ? `<div style="color: #475569; font-weight: 600;">${supplierObj.company}</div>` : ''}
-              ${supplierObj?.phone ? `<div style="color: #475569;">${supplierObj.phone}</div>` : ''}
-              <div style="color: #94a3b8; font-family: monospace; font-size: 10px; margin-top: 4px;">ID: ${viewingPurchase.supplierId || viewingPurchase.id}</div>
-            </div>
-            <div class="info-card">
-              <div class="card-title">${lang === 'ar' ? 'بيانات المشتري (المستلم)' : 'Client / Destinataire'}</div>
-              <div class="party-name">${config.name}</div>
-              <div style="color: #475569;">${config.address}</div>
-              <div style="color: #475569; margin-top: 4px;">ICE: ${config.registrationNumber || 'N/A'}</div>
-            </div>
-          </div>
-
-          <table class="items-table">
-            <thead>
-              <tr>
-                <th style="width: 35px; text-align: center;">#</th>
-                <th style="text-align: ${isRTL ? 'right' : 'left'};">${lang === 'ar' ? 'الصنف / المادة المشتراة' : 'Désignation'}</th>
-                <th style="width: 80px; text-align: center;">${lang === 'ar' ? 'الكمية' : 'Quantité'}</th>
-                <th style="width: 120px; text-align: center;">${lang === 'ar' ? 'سعر الوحدة' : 'Prix Unitaire'}</th>
-                <th style="width: 130px; text-align: ${isRTL ? 'left' : 'right'};">${lang === 'ar' ? 'المجموع' : 'Montant'}</th>
-              </tr>
-            </thead>
-            <tbody>
-              ${itemsRowsHtml}
-            </tbody>
-          </table>
-
-          <div class="totals-container">
-            <div style="max-width: 320px;">
-              ${viewingPurchase.notes ? `
-                <div style="background: #f8fafc; border: 1px solid #e2e8f0; border-radius: 6px; padding: 10px; font-size: 11px;">
-                  <strong style="display:block; margin-bottom: 2px;">${lang === 'ar' ? 'ملاحظات:' : 'Notes:'}</strong>
-                  <span style="color: #475569;">${viewingPurchase.notes}</span>
-                </div>
-              ` : ''}
-            </div>
-
-            <div class="totals-box">
-              <div class="totals-row">
-                <span style="color: #64748b;">${lang === 'ar' ? 'إجمالي المشتريات:' : 'Total Procurement:'}</span>
-                <span style="font-family: monospace; font-weight: 700;">${viewingPurchase.total.toFixed(2)} ${config.currency}</span>
-              </div>
-              <div class="totals-row" style="color: #047857; font-weight: 700;">
-                <span>${lang === 'ar' ? 'المبلغ المؤدى (المدفوع):' : 'Montant Payé:'}</span>
-                <span style="font-family: monospace;">${viewingPurchase.amountPaid.toFixed(2)} ${config.currency}</span>
-              </div>
-              ${billDebt > 0 ? `
-                <div class="totals-row" style="color: #be123c; font-weight: 800;">
-                  <span>${lang === 'ar' ? 'الدين المتبقي للمورد:' : 'Reste à Payer:'}</span>
-                  <span style="font-family: monospace;">${billDebt.toFixed(2)} ${config.currency}</span>
-                </div>
-              ` : ''}
-              <div class="totals-row total-grand">
-                <span>${lang === 'ar' ? 'الصافي النهائي:' : 'Net à Payer:'}</span>
-                <span style="font-family: monospace;">${viewingPurchase.total.toFixed(2)} ${config.currency}</span>
-              </div>
-            </div>
-          </div>
-
-          ${paymentsRowsHtml}
-
-          <div class="signatures">
-            <div class="sig-box">
-              <span>${lang === 'ar' ? 'توقيع وخاتم المورد (المسلّم)' : 'Signature Fournisseur'}</span>
-              <span style="font-size: 9px; color: #94a3b8; font-family: monospace;">Cachet & Date</span>
-            </div>
-            <div class="sig-box">
-              <span>${lang === 'ar' ? 'توقيع وخاتم أمين المخزن (المستلم)' : 'Signature Réceptionnaire'}</span>
-              <span style="font-size: 9px; color: #94a3b8; font-family: monospace;">Cachet & Date</span>
-            </div>
-          </div>
-
-          <div style="text-align: center; font-size: 10px; color: #94a3b8; font-weight: bold; margin-top: 30px; border-top: 1px solid #f1f5f9; padding-top: 12px; text-transform: uppercase;">
-            ${lang === 'ar' ? 'تمت مراجعة وقبول السلع المستلمة بالمخزن ومطابقتها للمواصفات' : 'Procured and verified in good condition'}
-          </div>
-        </body>
-      </html>
-    `);
-    printWindow.document.close();
-    printWindow.focus();
-    setTimeout(() => {
-      printWindow.print();
-      printWindow.close();
-    }, 500);
+  const triggerPrintLayout = (targetPo?: Purchase) => {
+    const po = targetPo || viewingPurchase;
+    if (!po) return;
+    const printArea = document.getElementById('printable-purchase-area');
+    const bodyHtml = printArea
+      ? `<div style="font-family: -apple-system, BlinkMacSystemFont, 'Cairo', 'Tajawal', sans-serif; color: #0f172a; font-size: 12px; direction: ${isRTL ? 'rtl' : 'ltr'};">${printArea.innerHTML}</div>`
+      : '';
+    printHtmlContent(
+      {
+        title: `${po.purchaseNumber} - ${config.name || 'Smart POS'}`,
+        html: bodyHtml || `<h2>${po.purchaseNumber}</h2>`,
+        isRTL,
+        mode: 'a4'
+      },
+      buildPurchasePdfMeta(po)
+    );
   };
 
   const pmtNotesFromPrompt = (inputNotes: string) => {
@@ -750,8 +500,8 @@ export default function Purchases({
       </div>
 
       {/* Main filter & Bills table card */}
-      <div className="bg-white rounded-3xl border border-slate-100 shadow-xs p-6 space-y-6 text-start">
-        <div className={`flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4 ${isRTL ? 'flex-row-reverse' : ''}`}>
+      <div className="bg-white rounded-3xl border border-slate-100 shadow-xs p-4 sm:p-6 space-y-6 text-start">
+        <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4">
           <div>
             <h2 className="text-lg font-black text-slate-800">{t.purchase.title}</h2>
             <p className="text-xs text-slate-400 font-medium mt-0.5">
@@ -833,9 +583,19 @@ export default function Purchases({
                           <button
                             id={`view-po-${p.id}`}
                             onClick={() => setViewingPurchase(p)}
-                            className="p-1 px-2.5 bg-slate-100 hover:bg-slate-200 text-slate-700 rounded-lg transition text-[11px] font-bold cursor-pointer"
+                            className="p-1.5 px-2.5 bg-slate-100 hover:bg-slate-200 text-slate-700 rounded-lg transition text-[11px] font-bold cursor-pointer"
+                            title={lang === 'ar' ? 'معاينة' : 'Preview'}
                           >
                             <Eye className="w-3.5 h-3.5" />
+                          </button>
+                          <button
+                            id={`pdf-po-${p.id}`}
+                            onClick={() => handleExportPurchasePdf(p)}
+                            className="p-1 px-2 bg-rose-50 hover:bg-rose-100 text-rose-700 border border-rose-200 rounded-lg transition text-[10px] font-black flex items-center gap-1 cursor-pointer"
+                            title={lang === 'ar' ? 'حفظ PDF' : 'Save PDF'}
+                          >
+                            <FileDown className="w-3 h-3" />
+                            <span>PDF</span>
                           </button>
                           <button
                             id={`delete-po-${p.id}`}
@@ -866,13 +626,13 @@ export default function Purchases({
 
       {/* MODAL 1: ADD PROCUREMENT PURCHASE INVOICE */}
       {isAddingPurchase && createPortal(
-        <div className="fixed inset-0 bg-slate-900/60 backdrop-blur-xs flex items-center justify-center p-2 sm:p-4 z-[100]">
+        <div className="fixed inset-0 bg-slate-900/60 backdrop-blur-xs flex items-center justify-center p-2 sm:p-4 z-[100] safe-modal-overlay">
           <div
             dir={isRTL ? 'rtl' : 'ltr'}
-            className="bg-white rounded-3xl shadow-2xl border border-slate-200 w-full max-w-4xl h-[92vh] max-h-[860px] flex flex-col overflow-hidden animate-fade-in text-start"
+            className="bg-white rounded-3xl shadow-2xl border border-slate-200 w-full max-w-4xl h-[90vh] max-h-[860px] flex flex-col overflow-hidden animate-fade-in text-start"
           >
             {/* Modal Header */}
-            <div className={`p-4 sm:px-6 border-b border-slate-100 flex items-center justify-between shrink-0 bg-slate-50/60 ${isRTL ? 'flex-row-reverse' : ''}`}>
+            <div className="p-4 sm:px-6 border-b border-slate-100 flex items-center justify-between shrink-0 bg-slate-50/60">
               <div className="flex items-center gap-3">
                 <div className="w-10 h-10 rounded-2xl bg-indigo-600/10 text-indigo-600 flex items-center justify-center">
                   <ShoppingBag className="w-5 h-5" />
@@ -961,7 +721,7 @@ export default function Purchases({
                         setShowProductSearchResults(true);
                       }}
                       onFocus={() => setShowProductSearchResults(true)}
-                      className={`w-full py-2.5 ${isRTL ? 'pr-9 pl-8' : 'pl-9 pr-8'} bg-slate-50 border border-slate-200 rounded-xl text-xs font-bold text-slate-800 placeholder-slate-400 focus:outline-none focus:ring-2 focus:ring-indigo-500 focus:bg-white transition`}
+                      className={`w-full py-3 ${isRTL ? 'pr-10 pl-9' : 'pl-10 pr-9'} bg-slate-50 border border-slate-300 rounded-xl text-sm font-extrabold text-slate-900 placeholder-slate-500 focus:outline-none focus:ring-2 focus:ring-indigo-500 focus:bg-white transition`}
                     />
                     {productSearchQuery && (
                       <button
@@ -970,7 +730,7 @@ export default function Purchases({
                           setProductSearchQuery('');
                           setShowProductSearchResults(false);
                         }}
-                        className={`absolute inset-y-0 ${isRTL ? 'left-3' : 'right-3'} flex items-center text-slate-400 hover:text-slate-600`}
+                        className={`absolute inset-y-0 ${isRTL ? 'left-3' : 'right-3'} flex items-center text-slate-500 hover:text-slate-800`}
                       >
                         <X className="w-4 h-4" />
                       </button>
@@ -979,7 +739,7 @@ export default function Purchases({
 
                   {/* Instant Search Results Dropdown */}
                   {showProductSearchResults && productSearchQuery.trim().length > 0 && (
-                    <div className="absolute z-30 top-full left-0 right-0 mt-1 bg-white rounded-2xl shadow-xl border border-slate-200 overflow-hidden max-h-56 overflow-y-auto animate-fade-in">
+                    <div className="absolute z-30 top-full left-0 right-0 mt-1 bg-white rounded-2xl shadow-2xl border-2 border-indigo-200 overflow-hidden max-h-64 overflow-y-auto animate-fade-in">
                       {searchedProducts.length > 0 ? (
                         <div className="divide-y divide-slate-100">
                           {searchedProducts.map((p) => (
@@ -987,25 +747,27 @@ export default function Purchases({
                               key={p.id}
                               type="button"
                               onClick={() => handleSelectSearchedProduct(p)}
-                              className="w-full px-4 py-2.5 hover:bg-indigo-50/70 flex items-center justify-between text-start transition cursor-pointer"
+                              className="w-full px-4 py-3 hover:bg-indigo-50 flex items-center justify-between text-start transition cursor-pointer"
                             >
-                              <div>
-                                <span className="font-bold text-xs text-slate-800 block">{p.name}</span>
-                                <div className="flex items-center gap-2 text-[10px] text-slate-400 font-mono mt-0.5">
-                                  <span>SKU: {p.sku || 'N/A'}</span>
-                                  {p.category && <span>• {p.category}</span>}
-                                  <span className="text-slate-600 font-semibold">• {lang === 'ar' ? `المخزون الحالي: ${p.stock}` : `Current Stock: ${p.stock}`}</span>
+                              <div className="space-y-1">
+                                <span className="font-black text-sm text-slate-900 block">{p.name}</span>
+                                <div className="flex flex-wrap items-center gap-2 text-xs font-extrabold text-slate-700 mt-0.5">
+                                  <span className="bg-slate-100 text-slate-800 px-2 py-0.5 rounded-md font-mono font-bold">SKU: {p.sku || 'N/A'}</span>
+                                  {p.category && <span className="text-slate-700 font-bold">• {p.category}</span>}
+                                  <span className={`px-2 py-0.5 rounded-md font-extrabold ${p.stock <= 0 ? 'bg-rose-50 text-rose-700' : 'bg-emerald-50 text-emerald-700'}`}>
+                                    {lang === 'ar' ? `المخزون الحالي: ${p.stock}` : `Current Stock: ${p.stock}`}
+                                  </span>
                                 </div>
                               </div>
-                              <div className="text-end">
-                                <span className="font-mono font-bold text-xs text-indigo-600">{p.purchasePrice.toFixed(2)} {config.currency}</span>
-                                <span className="block text-[9px] text-slate-400 font-semibold">{lang === 'ar' ? 'سعر الشراء' : 'Cost'}</span>
+                              <div className="text-end shrink-0 ms-3">
+                                <span className="font-mono font-black text-sm text-indigo-700 block">{p.purchasePrice.toFixed(2)} {config.currency}</span>
+                                <span className="block text-[11px] text-slate-600 font-extrabold">{lang === 'ar' ? 'سعر الشراء' : 'Cost'}</span>
                               </div>
                             </button>
                           ))}
                         </div>
                       ) : (
-                        <div className="p-3 text-center text-xs text-slate-400 font-semibold">
+                        <div className="p-3 text-center text-xs text-slate-500 font-bold">
                           {lang === 'ar' ? 'لا توجد منتجات مطابقة في المخزون' : 'No matching products found'}
                         </div>
                       )}
@@ -1035,69 +797,70 @@ export default function Purchases({
 
                   <div className="border border-slate-200 rounded-2xl overflow-hidden shadow-xs">
                     <div className="overflow-x-auto">
-                      <table className="w-full text-xs text-start">
-                        <thead className="bg-slate-50 text-slate-500 font-bold uppercase text-[10px] border-b border-slate-200">
+                      <table className="w-full min-w-[320px] sm:min-w-[540px] text-xs text-start">
+                        <thead className="bg-slate-50 text-slate-700 font-extrabold uppercase text-[11px] sm:text-xs border-b border-slate-200">
                           <tr>
-                            <th className="py-2.5 px-3 text-start">{lang === 'ar' ? 'المنتج / الصنف' : 'Product Item'}</th>
-                            <th className="py-2.5 px-3 text-center w-36">{lang === 'ar' ? `سعر الشراء (${config.currency})` : `Cost (${config.currency})`}</th>
-                            <th className="py-2.5 px-3 text-center w-28">{lang === 'ar' ? 'الكمية' : 'Qty'}</th>
-                            <th className="py-2.5 px-3 text-end w-36">{lang === 'ar' ? `المجموع (${config.currency})` : `Total (${config.currency})`}</th>
-                            <th className="py-2.5 px-2 text-center w-12"></th>
+                            <th className="py-2.5 px-2 sm:px-3 text-start min-w-[125px] sm:min-w-[180px]">{lang === 'ar' ? 'المنتج / الصنف' : 'Product Item'}</th>
+                            <th className="py-2.5 px-1.5 sm:px-3 text-center min-w-[78px] sm:min-w-[110px] w-24 sm:w-36">{lang === 'ar' ? `سعر الشراء (${config.currency})` : `Cost (${config.currency})`}</th>
+                            <th className="py-2.5 px-1.5 sm:px-3 text-center min-w-[64px] sm:min-w-[100px] w-20 sm:w-32">{lang === 'ar' ? 'الكمية' : 'Qty'}</th>
+                            <th className="py-2.5 px-2 sm:px-3 text-end min-w-[80px] sm:min-w-[100px] w-24 sm:w-36">{lang === 'ar' ? `المجموع (${config.currency})` : `Total (${config.currency})`}</th>
+                            <th className="py-2.5 px-1 sm:px-2 text-center w-9 sm:w-12"></th>
                           </tr>
                         </thead>
                         <tbody className="divide-y divide-slate-100 bg-white">
                           {cartItems.map((item, idx) => {
-                            const rowTotal = item.purchasePrice * item.quantity;
+                            const rowTotal = parseDecimal(item.purchasePrice, 0) * parseDecimal(item.quantity, 0);
                             return (
                               <tr key={idx} className="hover:bg-slate-50/50 transition">
-                                <td className="py-2.5 px-3">
+                                <td className="py-2.5 px-2 sm:px-3">
                                   <div className="space-y-1.5">
                                     <select
-                                      className="w-full bg-slate-50 border border-slate-200 rounded-lg px-2.5 py-1.5 text-xs font-bold text-slate-800 focus:outline-none focus:ring-1 focus:ring-indigo-500 focus:bg-white"
+                                      className="w-full bg-slate-50 border border-slate-300 rounded-lg px-2 sm:px-2.5 py-1.5 text-xs font-extrabold text-slate-900 focus:outline-none focus:ring-2 focus:ring-indigo-500 focus:bg-white"
                                       value={item.productId}
                                       onChange={(e) => handleCartItemChange(idx, 'productId', e.target.value)}
                                     >
-                                      <option value="">-- {lang === 'ar' ? 'منتج غير مسجل (يدوي / حر)' : 'Unregistered (Manual / Free-text)'} --</option>
+                                      <option value="" className="font-bold text-slate-900">-- {lang === 'ar' ? 'منتج غير مسجل (يدوي / حر)' : 'Unregistered (Manual / Free-text)'} --</option>
                                       {products.map(p => (
-                                        <option key={p.id} value={p.id}>
-                                          {p.name} ({p.purchasePrice} {config.currency} / {lang === 'ar' ? `المخزون: ${p.stock}` : `Stock: ${p.stock}`})
+                                        <option key={p.id} value={p.id} className="font-bold text-slate-900">
+                                          {p.name}
                                         </option>
                                       ))}
                                     </select>
-                                    {!item.productId && (
-                                      <input
-                                        type="text"
-                                        required
-                                        placeholder={lang === 'ar' ? 'أدخل اسم صنف الشراء يدوياً...' : 'Type manual product name...'}
-                                        className="w-full bg-white border border-indigo-200 rounded-lg px-2.5 py-1.5 text-xs font-semibold focus:outline-none focus:ring-1 focus:ring-indigo-500"
-                                        value={item.productName}
-                                        onChange={(e) => handleCartItemChange(idx, 'productName', e.target.value)}
-                                      />
-                                    )}
+                                    <input
+                                      type="text"
+                                      required
+                                      placeholder={lang === 'ar' ? 'اسم المنتج أو الصنف (قابل للتعديل)...' : 'Product / item name (editable)...'}
+                                      className="w-full bg-white border border-indigo-300 rounded-lg px-2.5 py-2 text-xs sm:text-sm font-extrabold text-slate-900 focus:outline-none focus:ring-2 focus:ring-indigo-500"
+                                      value={item.productName}
+                                      onChange={(e) => handleCartItemChange(idx, 'productName', e.target.value)}
+                                    />
                                   </div>
                                 </td>
-                                <td className="py-2.5 px-3 text-center align-top">
+                                <td className="py-2.5 px-1.5 sm:px-3 text-center align-top">
                                   <input
-                                    type="number"
-                                    step="0.01"
-                                    min="0"
+                                    type="text"
+                                    inputMode="decimal"
+                                    placeholder="0.00"
                                     required
-                                    className="w-full bg-slate-50 border border-slate-200 rounded-lg px-2.5 py-1.5 text-xs font-bold font-mono text-center text-slate-800 focus:outline-none focus:ring-1 focus:ring-indigo-500 focus:bg-white"
-                                    value={item.purchasePrice || ''}
-                                    onChange={(e) => handleCartItemChange(idx, 'purchasePrice', e.target.value)}
+                                    onFocus={(e) => e.target.select()}
+                                    className="w-full min-w-[70px] sm:min-w-[96px] bg-slate-50 border border-slate-300 rounded-xl px-2 sm:px-3 py-2 sm:py-2.5 text-xs sm:text-sm font-black font-mono text-center text-slate-900 focus:outline-none focus:ring-2 focus:ring-indigo-500 focus:bg-white placeholder:text-slate-300 placeholder:font-normal"
+                                    value={item.purchasePrice === 0 || item.purchasePrice === '0' ? '' : item.purchasePrice}
+                                    onChange={(e) => handleCartItemChange(idx, 'purchasePrice', sanitizeDecimalInput(e.target.value))}
                                   />
                                 </td>
-                                <td className="py-2.5 px-3 text-center align-top">
+                                <td className="py-2.5 px-1.5 sm:px-3 text-center align-top">
                                   <input
-                                    type="number"
-                                    min="1"
+                                    type="text"
+                                    inputMode="decimal"
+                                    placeholder="1"
                                     required
-                                    className="w-full bg-slate-50 border border-slate-200 rounded-lg px-2.5 py-1.5 text-xs font-bold font-mono text-center text-slate-800 focus:outline-none focus:ring-1 focus:ring-indigo-500 focus:bg-white"
-                                    value={item.quantity || ''}
-                                    onChange={(e) => handleCartItemChange(idx, 'quantity', e.target.value)}
+                                    onFocus={(e) => e.target.select()}
+                                    className="w-full min-w-[56px] sm:min-w-[88px] bg-slate-50 border border-slate-300 rounded-xl px-2 sm:px-3 py-2 sm:py-2.5 text-xs sm:text-sm font-black font-mono text-center text-slate-900 focus:outline-none focus:ring-2 focus:ring-indigo-500 focus:bg-white placeholder:text-slate-300 placeholder:font-normal"
+                                    value={item.quantity === 0 || item.quantity === '0' ? '' : item.quantity}
+                                    onChange={(e) => handleCartItemChange(idx, 'quantity', sanitizeDecimalInput(e.target.value))}
                                   />
                                 </td>
-                                <td className="py-2.5 px-3 text-end font-mono font-bold text-slate-800 align-top pt-3">
+                                <td className="py-2.5 px-2 sm:px-3 text-end font-mono font-bold text-slate-800 align-top pt-3 text-xs sm:text-sm">
                                   {rowTotal.toFixed(2)} {config.currency}
                                 </td>
                                 <td className="py-2.5 px-2 text-center align-top pt-2.5">
@@ -1105,7 +868,7 @@ export default function Purchases({
                                     <button
                                       type="button"
                                       onClick={() => handleRemoveCartItemRow(idx)}
-                                      className="p-1 text-slate-400 hover:text-rose-600 hover:bg-rose-50 rounded-lg transition cursor-pointer"
+                                      className="p-1.5 text-slate-400 hover:text-rose-600 hover:bg-rose-50 rounded-lg transition cursor-pointer"
                                       title="Remove"
                                     >
                                       <Trash2 className="w-4 h-4" />
@@ -1187,7 +950,7 @@ export default function Purchases({
               </div>
 
               {/* Fixed Sticky Footer with Action Controls */}
-              <div className={`shrink-0 bg-slate-50 border-t border-slate-200 px-4 sm:px-6 py-3.5 flex items-center justify-between gap-4 ${isRTL ? 'flex-row-reverse' : ''}`}>
+              <div className="shrink-0 bg-slate-50 border-t border-slate-200 px-4 sm:px-6 py-3.5 flex flex-wrap items-center justify-between gap-3">
                 <div className="text-xs font-bold text-slate-600">
                   <span className="text-slate-400 font-medium">{lang === 'ar' ? 'المجموع النهائي:' : 'Final Total:'} </span>
                   <span className="font-mono font-black text-slate-900 text-sm sm:text-base">{formTotal.toFixed(2)} {config.currency}</span>
@@ -1338,24 +1101,30 @@ export default function Purchases({
 
         return createPortal(
           <div
-            className="fixed inset-0 bg-slate-900/70 backdrop-blur-xs flex items-center justify-center p-3 sm:p-6 z-[100] overflow-y-auto"
+            className="fixed inset-0 bg-slate-900/70 backdrop-blur-xs flex items-center justify-center p-2 sm:p-6 z-[100] overflow-y-auto safe-modal-overlay"
             id="purchase-bill-modal"
             onClick={() => setViewingPurchase(null)}
           >
             <div
               dir={isRTL ? 'rtl' : 'ltr'}
               onClick={(e) => e.stopPropagation()}
-              className="bg-white rounded-3xl shadow-2xl border border-slate-200 w-full max-w-4xl max-h-[94vh] flex flex-col overflow-hidden animate-fade-in my-auto text-start"
+              className="bg-white rounded-3xl shadow-2xl border border-slate-200 w-full max-w-4xl max-h-[92vh] flex flex-col overflow-hidden animate-fade-in my-auto text-start"
             >
-              {/* Top Navigation Bar with Clear Close Button */}
-              <div className="flex justify-between items-center bg-slate-50 px-6 py-4 border-b border-slate-200 shrink-0">
-                <div className="flex items-center gap-2.5">
-                  <div className="p-2 bg-indigo-50 text-indigo-600 rounded-xl">
-                    <ShoppingBag className="w-5 h-5" />
-                  </div>
+              {/* Top Navigation Bar with Clear Back Button */}
+              <div className="flex flex-wrap justify-between items-center gap-2 bg-slate-50 px-4 sm:px-6 py-3.5 border-b border-slate-200 shrink-0">
+                <div className="flex items-center gap-2">
+                  <button
+                    id="btn-back-view-po-modal"
+                    type="button"
+                    onClick={() => setViewingPurchase(null)}
+                    className="px-3 py-1.5 bg-white hover:bg-slate-100 text-slate-800 border border-slate-300 rounded-xl text-xs font-black flex items-center gap-1.5 transition cursor-pointer shadow-2xs"
+                  >
+                    <ArrowRight className={`w-4 h-4 ${isRTL ? '' : 'rotate-180'}`} />
+                    <span>{lang === 'ar' ? 'رجوع' : 'Back'}</span>
+                  </button>
                   <div>
-                    <h3 className="font-black text-slate-800 text-sm">
-                      {lang === 'ar' ? 'معاينة فاتورة / سند استلام المشتريات' : 'Purchase Invoice / Receipt Preview'}
+                    <h3 className="font-black text-slate-800 text-xs sm:text-sm">
+                      {lang === 'ar' ? 'معاينة فاتورة المشتريات' : 'Purchase Invoice Preview'}
                     </h3>
                     <span className="text-[11px] font-mono text-slate-500 font-bold">
                       {viewingPurchase.purchaseNumber}
@@ -1363,33 +1132,33 @@ export default function Purchases({
                   </div>
                 </div>
 
-                <div className="flex items-center gap-2">
+                <div className="flex flex-wrap items-center gap-2">
                   <button
-                    id="print-btn-purchase"
+                    id="pdf-btn-purchase"
                     type="button"
-                    onClick={triggerPrintLayout}
-                    className="px-4 py-2 bg-indigo-600 hover:bg-indigo-700 text-white rounded-xl text-xs font-black flex items-center gap-1.5 cursor-pointer transition shadow-xs"
-                    title={lang === 'ar' ? 'طباعة الفاتورة' : 'Print Invoice'}
+                    onClick={() => handleExportPurchasePdf(viewingPurchase)}
+                    className="px-3.5 py-2 bg-rose-600 hover:bg-rose-700 text-white rounded-xl text-xs font-black flex items-center gap-1.5 cursor-pointer transition shadow-xs"
+                    title={lang === 'ar' ? 'حفظ PDF' : 'Save PDF'}
                   >
-                    <Printer className="w-4 h-4" />
-                    <span>{lang === 'ar' ? 'طباعة الفاتورة' : 'Print'}</span>
+                    <FileDown className="w-4 h-4" />
+                    <span>PDF</span>
                   </button>
 
                   <button
-                    id="btn-close-view-po-modal"
+                    id="print-btn-purchase"
                     type="button"
-                    onClick={() => setViewingPurchase(null)}
-                    className="px-3.5 py-2 bg-rose-50 hover:bg-rose-100 text-rose-700 border border-rose-200 rounded-xl text-xs font-black flex items-center gap-1.5 transition cursor-pointer"
-                    title={lang === 'ar' ? 'إغلاق المعاينة' : 'Close Preview'}
+                    onClick={() => triggerPrintLayout(viewingPurchase)}
+                    className="px-3.5 py-2 bg-indigo-600 hover:bg-indigo-700 text-white rounded-xl text-xs font-black flex items-center gap-1.5 cursor-pointer transition shadow-xs"
+                    title={lang === 'ar' ? 'طباعة الفاتورة' : 'Print Invoice'}
                   >
-                    <X className="w-4 h-4" />
-                    <span>{lang === 'ar' ? 'إغلاق الصفحة' : 'Fermer'}</span>
+                    <Printer className="w-4 h-4" />
+                    <span>{lang === 'ar' ? 'طباعة' : 'Print'}</span>
                   </button>
                 </div>
               </div>
 
               {/* Printable Body - Full clean A4 sheet structure */}
-              <div className="p-6 sm:p-8 space-y-6 overflow-y-auto flex-1 bg-white" id="printable-purchase-area">
+              <div className="p-4 sm:p-8 space-y-6 overflow-y-auto flex-1 bg-white" id="printable-purchase-area">
                 {/* Header: Store Info + Document Info */}
                 <div className="flex flex-col sm:flex-row justify-between items-start gap-4 pb-6 border-b-2 border-slate-200">
                   <div className="space-y-1">
@@ -1488,15 +1257,15 @@ export default function Purchases({
                 </div>
 
                 {/* Items Purchased Table */}
-                <div className="border border-slate-200 rounded-2xl overflow-hidden text-xs shadow-2xs">
+                <div className="border border-slate-200 rounded-2xl overflow-x-auto text-[11px] sm:text-xs shadow-2xs">
                   <table className="w-full">
-                    <thead className="bg-slate-100 text-slate-700 font-black border-b border-slate-200 text-[11px]">
+                    <thead className="bg-slate-100 text-slate-700 font-black border-b border-slate-200 text-[10px] sm:text-[11px]">
                       <tr>
-                        <th className="px-4 py-3 text-start w-12">#</th>
-                        <th className="px-4 py-3 text-start">{lang === 'ar' ? 'اسم الصنف / المادة المشتراة' : 'Item Description'}</th>
-                        <th className="px-4 py-3 text-center w-24">{lang === 'ar' ? 'الكمية' : 'Qty'}</th>
-                        <th className="px-4 py-3 text-center w-36">{lang === 'ar' ? 'سعر الشراء الفردي' : 'Unit Cost'}</th>
-                        <th className="px-4 py-3 text-end w-36">{lang === 'ar' ? 'المجموع الإجمالي' : 'Total'}</th>
+                        <th className="px-2 sm:px-4 py-2.5 sm:py-3 text-start w-8 sm:w-12">#</th>
+                        <th className="px-2 sm:px-4 py-2.5 sm:py-3 text-start">{lang === 'ar' ? 'الصنف / المادة المشتراة' : 'Item Description'}</th>
+                        <th className="px-2 sm:px-4 py-2.5 sm:py-3 text-center w-16 sm:w-24">{lang === 'ar' ? 'الكمية' : 'Qty'}</th>
+                        <th className="px-2 sm:px-4 py-2.5 sm:py-3 text-center w-24 sm:w-36">{lang === 'ar' ? 'سعر الشراء' : 'Unit Cost'}</th>
+                        <th className="px-2 sm:px-4 py-2.5 sm:py-3 text-end w-24 sm:w-36">{lang === 'ar' ? 'المجموع' : 'Total'}</th>
                       </tr>
                     </thead>
                     <tbody className="divide-y divide-slate-100 font-semibold bg-white">
@@ -1507,11 +1276,11 @@ export default function Purchases({
                           const lineTotal = Number(item.total || (unitPrice * qty));
                           return (
                             <tr key={idx} className="hover:bg-slate-50/60 transition">
-                              <td className="px-4 py-3 text-slate-400 text-start">{idx + 1}</td>
-                              <td className="px-4 py-3 text-slate-900 text-start font-bold">{item.productName || item.name}</td>
-                              <td className="px-4 py-3 text-center font-mono font-bold text-slate-800">{qty}</td>
-                              <td className="px-4 py-3 text-center font-mono text-slate-600">{unitPrice.toFixed(2)} {config.currency}</td>
-                              <td className="px-4 py-3 text-end font-black text-slate-900 font-mono">
+                              <td className="px-2 sm:px-4 py-2.5 sm:py-3 text-slate-400 text-start">{idx + 1}</td>
+                              <td className="px-2 sm:px-4 py-2.5 sm:py-3 text-slate-900 text-start font-bold">{item.productName || item.name}</td>
+                              <td className="px-2 sm:px-4 py-2.5 sm:py-3 text-center font-mono font-bold text-slate-800">{qty}</td>
+                              <td className="px-2 sm:px-4 py-2.5 sm:py-3 text-center font-mono text-slate-600">{unitPrice.toFixed(2)} {config.currency}</td>
+                              <td className="px-2 sm:px-4 py-2.5 sm:py-3 text-end font-black text-slate-900 font-mono whitespace-nowrap">
                                 {lineTotal.toFixed(2)} {config.currency}
                               </td>
                             </tr>
@@ -1652,24 +1421,29 @@ export default function Purchases({
                 </div>
               )}
 
-              {/* Modal Action Footer with Explicit Close & Print Buttons */}
-              <div className="bg-slate-50 px-6 py-4 border-t border-slate-200 flex flex-wrap items-center justify-between gap-3 shrink-0">
-                <div className="text-xs text-slate-500 font-bold">
-                  {lang === 'ar' ? 'فاتورة مشتريات' : 'Purchase Order Preview'}
-                </div>
-                <div className="flex items-center gap-3">
+              {/* Modal Action Footer with Explicit Back, PDF & Print Buttons */}
+              <div className="bg-slate-50 px-4 sm:px-6 py-3.5 border-t border-slate-200 flex flex-wrap items-center justify-between gap-2.5 shrink-0">
+                <button
+                  type="button"
+                  onClick={() => setViewingPurchase(null)}
+                  className="px-4 py-2 bg-white hover:bg-slate-100 text-slate-800 border border-slate-300 rounded-xl text-xs font-black transition cursor-pointer flex items-center gap-1.5 shadow-2xs"
+                >
+                  <ArrowRight className={`w-4 h-4 ${isRTL ? '' : 'rotate-180'}`} />
+                  <span>{lang === 'ar' ? 'رجوع للقائمة' : 'Back'}</span>
+                </button>
+                <div className="flex flex-wrap items-center gap-2">
                   <button
                     type="button"
-                    onClick={() => setViewingPurchase(null)}
-                    className="px-6 py-2.5 bg-slate-200 hover:bg-slate-300 text-slate-800 rounded-xl text-xs font-black transition cursor-pointer flex items-center gap-2"
+                    onClick={() => handleExportPurchasePdf(viewingPurchase)}
+                    className="px-4 py-2 bg-rose-600 hover:bg-rose-700 text-white rounded-xl text-xs font-black flex items-center gap-1.5 cursor-pointer transition shadow-xs"
                   >
-                    <X className="w-4 h-4 text-slate-600" />
-                    <span>{lang === 'ar' ? 'إغلاق الصفحة' : 'Close'}</span>
+                    <FileDown className="w-4 h-4" />
+                    <span>{lang === 'ar' ? 'حفظ PDF' : 'Save PDF'}</span>
                   </button>
                   <button
                     type="button"
-                    onClick={triggerPrintLayout}
-                    className="px-6 py-2.5 bg-indigo-600 hover:bg-indigo-700 text-white rounded-xl text-xs font-black flex items-center gap-2 cursor-pointer transition shadow-sm"
+                    onClick={() => triggerPrintLayout(viewingPurchase)}
+                    className="px-5 py-2 bg-indigo-600 hover:bg-indigo-700 text-white rounded-xl text-xs font-black flex items-center gap-1.5 cursor-pointer transition shadow-sm"
                   >
                     <Printer className="w-4 h-4" />
                     <span>{lang === 'ar' ? 'طباعة الفاتورة' : 'Print Invoice'}</span>

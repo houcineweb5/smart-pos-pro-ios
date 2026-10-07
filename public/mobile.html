@@ -6,6 +6,11 @@
   <meta name="theme-color" content="#0f172a" />
   <meta name="apple-mobile-web-app-capable" content="yes" />
   <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent" />
+  <meta name="apple-mobile-web-app-title" content="Smart POS" />
+  <link rel="manifest" href="/manifest.json" />
+  <link rel="icon" type="image/png" href="/sp-icon.png" />
+  <link rel="apple-touch-icon" href="/apple-touch-icon.png" />
+  <link rel="apple-touch-icon" sizes="180x180" href="/apple-touch-icon.png" />
   <title>تطبيق الهاتف الذكي - نظام المبيعات والفوترة</title>
   <link rel="preconnect" href="https://fonts.googleapis.com">
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
@@ -533,6 +538,68 @@
       setTimeout(() => { el.style.display = 'none'; }, 3200);
     }
 
+    function normalizeFbUrl(raw) {
+      let u = String(raw || '').trim().replace(/^['"]+|['"]+$/g, '');
+      if (!u) return '';
+      if (u.includes('console.firebase.google.com')) {
+        const m = u.match(/\/database\/([^/?#]+)/i);
+        if (m && m[1]) u = 'https://' + m[1] + '.firebaseio.com';
+      }
+      if (!/^https?:\/\//i.test(u)) u = 'https://' + u;
+      try {
+        const p = new URL(u);
+        return p.protocol + '//' + p.host;
+      } catch (e) {
+        return u.replace(/\/smartpos_stores.*$/i, '').replace(/\.json.*$/i, '').replace(/\/+$/, '');
+      }
+    }
+
+    function mergeMobileAndCloudData(local, remote, preferRemote) {
+      if (!remote) return local;
+      const localInvs = Array.isArray(local.invoices) ? local.invoices : [];
+      const remoteInvs = Array.isArray(remote.invoices) ? remote.invoices : [];
+      const invMap = new Map(localInvs.map(i => [i.id, i]));
+      const newRemoteInvs = [];
+      for (const rInv of remoteInvs) {
+        if (!rInv || !rInv.id) continue;
+        if (!invMap.has(rInv.id)) {
+          newRemoteInvs.push(rInv);
+          invMap.set(rInv.id, rInv);
+        } else if (preferRemote) {
+          invMap.set(rInv.id, rInv);
+        }
+      }
+
+      const localProds = Array.isArray(local.products) ? local.products : [];
+      const remoteProds = Array.isArray(remote.products) ? remote.products : [];
+      const prodMap = new Map(localProds.map(p => [p.id, { ...p }]));
+      for (const rp of remoteProds) {
+        if (!rp || !rp.id) continue;
+        if (!prodMap.has(rp.id) || preferRemote) {
+          prodMap.set(rp.id, { ...rp });
+        }
+      }
+
+      const localCusts = Array.isArray(local.customers) ? local.customers : [];
+      const remoteCusts = Array.isArray(remote.customers) ? remote.customers : [];
+      const custMap = new Map(localCusts.map(c => [c.id, { ...c }]));
+      for (const rc of remoteCusts) {
+        if (!rc || !rc.id) continue;
+        if (!custMap.has(rc.id) || preferRemote) {
+          custMap.set(rc.id, { ...rc });
+        }
+      }
+
+      return {
+        ...remote,
+        ...local,
+        config: (remote.config && remote.config.name) ? remote.config : (local.config || {}),
+        products: Array.from(prodMap.values()),
+        customers: Array.from(custMap.values()),
+        invoices: Array.from(invMap.values()).sort((a, b) => new Date(b.date || 0) - new Date(a.date || 0)),
+      };
+    }
+
     function getCloudConfig() {
       try {
         // Also check URL query param ?pair=...
@@ -543,11 +610,11 @@
           const autoCfg = {
             enabled: true,
             provider: decoded.p || 'firebase',
-            firebaseUrl: decoded.f || '',
+            firebaseUrl: normalizeFbUrl(decoded.f || ''),
             firebaseSecret: decoded.fs || '',
             supabaseUrl: decoded.su || '',
             supabaseKey: decoded.sk || '',
-            storeId: decoded.s || 'store_01'
+            storeId: (decoded.s || 'store_01').trim()
           };
           localStorage.setItem(STORAGE_CFG_KEY, JSON.stringify(autoCfg));
           window.history.replaceState({}, document.title, window.location.pathname);
@@ -555,7 +622,11 @@
         }
 
         const raw = localStorage.getItem(STORAGE_CFG_KEY);
-        if (raw) return JSON.parse(raw);
+        if (raw) {
+          const parsed = JSON.parse(raw);
+          if (parsed.firebaseUrl) parsed.firebaseUrl = normalizeFbUrl(parsed.firebaseUrl);
+          return parsed;
+        }
       } catch (e) {}
       return {
         enabled: false,
@@ -593,11 +664,11 @@
         const newCfg = {
           enabled: true,
           provider: decoded.p || 'firebase',
-          firebaseUrl: decoded.f || '',
+          firebaseUrl: normalizeFbUrl(decoded.f || ''),
           firebaseSecret: decoded.fs || '',
           supabaseUrl: decoded.su || '',
           supabaseKey: decoded.sk || '',
-          storeId: decoded.s || 'store_01'
+          storeId: (decoded.s || 'store_01').trim()
         };
         localStorage.setItem(STORAGE_CFG_KEY, JSON.stringify(newCfg));
         loadConfigInputs();
@@ -612,18 +683,22 @@
       const cfg = {
         enabled: true,
         provider: document.getElementById('cfg-provider').value,
-        firebaseUrl: document.getElementById('cfg-firebase-url').value.trim(),
+        firebaseUrl: normalizeFbUrl(document.getElementById('cfg-firebase-url').value.trim()),
         firebaseSecret: document.getElementById('cfg-firebase-secret').value.trim(),
         supabaseUrl: document.getElementById('cfg-supabase-url').value.trim(),
         supabaseKey: document.getElementById('cfg-supabase-key').value.trim(),
         storeId: document.getElementById('cfg-store-id').value.trim() || 'store_01'
       };
       localStorage.setItem(STORAGE_CFG_KEY, JSON.stringify(cfg));
+      loadConfigInputs();
       showToast('✅ تم حفظ إعدادات السحابة بنجاح!');
       syncAllData(true);
     }
 
+    let lastKnownMobileCloudUpdatedAt = localStorage.getItem('smartpos_mobile_last_updated_at') || '';
+
     async function syncAllData(manual = false) {
+      if (!manual && document.visibilityState === 'hidden') return;
       const dot = document.getElementById('sync-dot');
       const label = document.getElementById('sync-status-label');
       const cfg = getCloudConfig();
@@ -633,16 +708,42 @@
         try {
           let cloudPayload = null;
           if (cfg.provider === 'firebase') {
-            const base = cfg.firebaseUrl.replace(/\/+$/, '');
-            const auth = cfg.firebaseSecret ? `?auth=${encodeURIComponent(cfg.firebaseSecret)}` : '';
-            const res = await fetch(`${base}/smartpos_stores/${encodeURIComponent(cfg.storeId || 'store_01')}.json${auth}`);
+            const base = normalizeFbUrl(cfg.firebaseUrl);
+            const storeKey = encodeURIComponent(cfg.storeId || 'store_01');
+            const authQs = cfg.firebaseSecret ? `?auth=${encodeURIComponent(cfg.firebaseSecret)}` : '';
+
+            // Lightweight 28-byte timestamp check during background auto-sync
+            if (!manual && lastKnownMobileCloudUpdatedAt) {
+              const metaRes = await fetch(`${base}/smartpos_stores/${storeKey}/updatedAt.json${authQs}`, {
+                cache: 'no-store'
+              }).catch(() => null);
+              if (metaRes && metaRes.ok) {
+                const remoteTs = await metaRes.json().catch(() => null);
+                if (typeof remoteTs === 'string' && remoteTs === lastKnownMobileCloudUpdatedAt) {
+                  dot.className = 'dot';
+                  label.textContent = 'متصل بالسحابة';
+                  return;
+                }
+              }
+            }
+
+            const res = await fetch(`${base}/smartpos_stores/${storeKey}.json${authQs}`, {
+              cache: 'no-store'
+            });
             if (res.ok) {
               const json = await res.json();
+              if (json && json.updatedAt) {
+                lastKnownMobileCloudUpdatedAt = json.updatedAt;
+                localStorage.setItem('smartpos_mobile_last_updated_at', json.updatedAt);
+              }
               if (json && json.data) cloudPayload = json.data;
+            } else if (manual && (res.status === 401 || res.status === 403)) {
+              showToast('⛔ قواعد Firebase مغلقة! افتح Rules واجعلها true', true);
             }
           } else {
             const base = cfg.supabaseUrl.replace(/\/+$/, '');
             const res = await fetch(`${base}/rest/v1/smartpos_sync?store_id=eq.${encodeURIComponent(cfg.storeId || 'store_01')}&select=*`, {
+              cache: 'no-store',
               headers: { 'apikey': cfg.supabaseKey, 'Authorization': `Bearer ${cfg.supabaseKey}` }
             });
             if (res.ok) {
@@ -654,7 +755,7 @@
           }
 
           if (cloudPayload) {
-            storeData = { ...storeData, ...cloudPayload };
+            storeData = mergeMobileAndCloudData(storeData, cloudPayload, true);
             localStorage.setItem(STORAGE_DATA_KEY, JSON.stringify(storeData));
             dot.className = 'dot';
             label.textContent = 'متصل بالسحابة';
@@ -664,16 +765,17 @@
           }
         } catch (err) {
           console.warn('Cloud sync error:', err);
+          if (manual) showToast('⚠️ تعذر الاتصال بالسحابة، تأكد من الرابط والإنترنت', true);
         }
       }
 
       // 2. Try Local PC Server (/api/data) if running on same network/origin
       try {
         if (window.location.protocol.startsWith('http')) {
-          const res = await fetch('/api/data');
+          const res = await fetch(`/api/data`, { cache: 'no-store' });
           if (res.ok) {
             const data = await res.json();
-            storeData = { ...storeData, ...data };
+            storeData = mergeMobileAndCloudData(storeData, data, true);
             localStorage.setItem(STORAGE_DATA_KEY, JSON.stringify(storeData));
             dot.className = 'dot';
             label.textContent = 'متصل بالكمبيوتر';
@@ -703,33 +805,66 @@
         if (window.location.protocol.startsWith('http')) {
           await fetch('/api/save', {
             method: 'POST',
+            cache: 'no-store',
             headers: { 'Content-Type': 'application/json' },
             body: JSON.stringify(storeData)
           });
         }
       } catch (e) {}
 
-      // Push to Cloud if enabled
+      // Push to Cloud if enabled (pull & merge first only if remote updatedAt changed)
       if (cfg.enabled) {
-        const payload = {
-          updatedAt: new Date().toISOString(),
-          source: 'mobile',
-          storeId: cfg.storeId || 'store_01',
-          data: storeData
-        };
         try {
           if (cfg.provider === 'firebase' && cfg.firebaseUrl) {
-            const base = cfg.firebaseUrl.replace(/\/+$/, '');
+            const base = normalizeFbUrl(cfg.firebaseUrl);
+            const storeKey = encodeURIComponent(cfg.storeId || 'store_01');
             const auth = cfg.firebaseSecret ? `?auth=${encodeURIComponent(cfg.firebaseSecret)}` : '';
-            await fetch(`${base}/smartpos_stores/${encodeURIComponent(cfg.storeId || 'store_01')}.json${auth}`, {
+            let shouldPull = true;
+            if (lastKnownMobileCloudUpdatedAt) {
+              const metaRes = await fetch(`${base}/smartpos_stores/${storeKey}/updatedAt.json${auth}`, { cache: 'no-store' }).catch(() => null);
+              if (metaRes && metaRes.ok) {
+                const remoteTs = await metaRes.json().catch(() => null);
+                if (!remoteTs || remoteTs === lastKnownMobileCloudUpdatedAt) shouldPull = false;
+              }
+            }
+            if (shouldPull) {
+              const getRes = await fetch(`${base}/smartpos_stores/${storeKey}.json${auth}`, {
+                cache: 'no-store'
+              }).catch(() => null);
+              if (getRes && getRes.ok) {
+                const existingJson = await getRes.json().catch(() => null);
+                if (existingJson && existingJson.data) {
+                  storeData = mergeMobileAndCloudData(storeData, existingJson.data, false);
+                  localStorage.setItem(STORAGE_DATA_KEY, JSON.stringify(storeData));
+                }
+              }
+            }
+            const newTs = new Date().toISOString();
+            const payload = {
+              updatedAt: newTs,
+              source: 'mobile',
+              storeId: cfg.storeId || 'store_01',
+              data: storeData
+            };
+            await fetch(`${base}/smartpos_stores/${storeKey}.json${auth}`, {
               method: 'PUT',
+              cache: 'no-store',
               headers: { 'Content-Type': 'application/json' },
               body: JSON.stringify(payload)
             });
+            lastKnownMobileCloudUpdatedAt = newTs;
+            localStorage.setItem('smartpos_mobile_last_updated_at', newTs);
           } else if (cfg.provider === 'supabase' && cfg.supabaseUrl && cfg.supabaseKey) {
+            const payload = {
+              updatedAt: new Date().toISOString(),
+              source: 'mobile',
+              storeId: cfg.storeId || 'store_01',
+              data: storeData
+            };
             const base = cfg.supabaseUrl.replace(/\/+$/, '');
             await fetch(`${base}/rest/v1/smartpos_sync?on_conflict=store_id`, {
               method: 'POST',
+              cache: 'no-store',
               headers: {
                 'Content-Type': 'application/json',
                 'apikey': cfg.supabaseKey,
@@ -1182,8 +1317,8 @@
     // Initialize on load
     window.addEventListener('DOMContentLoaded', () => {
       loadConfigInputs();
-      syncAllData(false);
-      setInterval(() => syncAllData(false), 12000);
+      syncAllData(true);
+      setInterval(() => syncAllData(false), 22000);
     });
   </script>
 </body>

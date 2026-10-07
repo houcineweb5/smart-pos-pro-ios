@@ -234,7 +234,16 @@ export function getStoredData() {
     localStorage.setItem(KEYS.commercialDocuments, JSON.stringify(INITIAL_COMMERCIAL_DOCUMENTS));
   }
 
-  return { products, customers, suppliers, purchases, invoices, config, employees, logs, repairs, expenses, commercialDocuments };
+  let deletedIds: string[] = [];
+  const storedDeleted = localStorage.getItem('smartpos_deleted_ids_v1');
+  if (storedDeleted) {
+    try {
+      const parsed = JSON.parse(storedDeleted);
+      if (Array.isArray(parsed)) deletedIds = parsed;
+    } catch {}
+  }
+
+  return { products, customers, suppliers, purchases, invoices, config, employees, logs, repairs, expenses, commercialDocuments, deletedIds };
 }
 
 export function saveStoredData(data: {
@@ -249,36 +258,51 @@ export function saveStoredData(data: {
   repairs: RepairOrder[];
   expenses?: Expense[];
   commercialDocuments?: CommercialDocument[];
+  deletedIds?: string[];
 }) {
   if (typeof window === 'undefined') return;
-  localStorage.setItem(KEYS.products, JSON.stringify(data.products));
-  localStorage.setItem(KEYS.customers, JSON.stringify(data.customers));
-  localStorage.setItem(KEYS.suppliers, JSON.stringify(data.suppliers));
-  localStorage.setItem(KEYS.purchases, JSON.stringify(data.purchases));
-  localStorage.setItem(KEYS.invoices, JSON.stringify(data.invoices));
-  localStorage.setItem(KEYS.config, JSON.stringify(data.config));
-  localStorage.setItem(KEYS.employees, JSON.stringify(data.employees));
-  localStorage.setItem(KEYS.logs, JSON.stringify(data.logs));
-  localStorage.setItem(KEYS.repairs, JSON.stringify(data.repairs));
+  const safeSet = (key: string, val: unknown) => {
+    try {
+      localStorage.setItem(key, JSON.stringify(val));
+    } catch (err) {
+      console.warn(`Storage quota warning for ${key}:`, err);
+      if (key === KEYS.products && Array.isArray(val)) {
+        try {
+          const lightProducts = val.map((p: any) => ({ ...p, imageUrl: '' }));
+          localStorage.setItem(key, JSON.stringify(lightProducts));
+        } catch {}
+      }
+    }
+  };
+  safeSet(KEYS.products, data.products);
+  safeSet(KEYS.customers, data.customers);
+  safeSet(KEYS.suppliers, data.suppliers);
+  safeSet(KEYS.purchases, data.purchases);
+  safeSet(KEYS.invoices, data.invoices);
+  safeSet(KEYS.config, data.config);
+  safeSet(KEYS.employees, data.employees);
+  safeSet(KEYS.logs, (data.logs || []).slice(0, 300));
+  safeSet(KEYS.repairs, data.repairs);
   if (data.expenses) {
-    localStorage.setItem(KEYS.expenses, JSON.stringify(data.expenses));
+    safeSet(KEYS.expenses, data.expenses);
   }
   if (data.commercialDocuments) {
-    localStorage.setItem(KEYS.commercialDocuments, JSON.stringify(data.commercialDocuments));
+    safeSet(KEYS.commercialDocuments, data.commercialDocuments);
+  }
+  if (Array.isArray(data.deletedIds)) {
+    safeSet('smartpos_deleted_ids_v1', data.deletedIds.slice(-1000));
   }
 }
 
-export async function resetStoredToDefaults() {
-  if (typeof window === 'undefined') return;
-
-  const zeroData = {
-    products: [],
+export function getZeroResetData(existingConfig?: StoreConfig, existingEmployees?: Employee[]) {
+  return {
+    products: [] as Product[],
     customers: INITIAL_CUSTOMERS,
-    suppliers: [],
-    purchases: [],
-    invoices: [],
-    config: INITIAL_CONFIG,
-    employees: INITIAL_EMPLOYEES,
+    suppliers: [] as Supplier[],
+    purchases: [] as Purchase[],
+    invoices: [] as Invoice[],
+    config: existingConfig ? { ...INITIAL_CONFIG, ...existingConfig } : INITIAL_CONFIG,
+    employees: existingEmployees && existingEmployees.length > 0 ? existingEmployees : INITIAL_EMPLOYEES,
     logs: [{
       id: 'log_' + Date.now(),
       timestamp: new Date().toISOString(),
@@ -286,24 +310,36 @@ export async function resetStoredToDefaults() {
       userName: 'Administrator',
       action: 'تهيئة النظام',
       details: 'تمت فرمتة النظام وإعادة التعيين من الصفر بنجاح'
-    }],
-    repairs: [],
-    expenses: [],
-    commercialDocuments: []
+    }] as ActivityLog[],
+    repairs: [] as RepairOrder[],
+    expenses: [] as Expense[],
+    commercialDocuments: [] as CommercialDocument[]
   };
+}
 
-  // 1. Update localStorage
+export async function resetStoredToDefaults() {
+  if (typeof window === 'undefined') return getZeroResetData();
+
+  const zeroData = getZeroResetData();
+
+  // 1. Clear POS sessions & update localStorage
+  try {
+    localStorage.removeItem('pos_active_sessions');
+    Object.values(KEYS).forEach((k) => {
+      try { localStorage.removeItem(k); } catch {}
+    });
+  } catch {}
   saveStoredData(zeroData);
 
   // 2. Wipe SQLite database via API
   try {
-    await fetch('/api/reset', {
+    const res = await fetch('/api/reset', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify(zeroData)
     });
+    if (!res.ok) throw new Error('Reset returned non-200');
   } catch (err) {
-    console.error('Failed to reset database via /api/reset, trying /api/save:', err);
     try {
       await fetch('/api/save', {
         method: 'POST',
@@ -311,10 +347,9 @@ export async function resetStoredToDefaults() {
         body: JSON.stringify(zeroData)
       });
     } catch (e) {
-      console.error('Failed to sync zero state to server:', e);
+      // Offline or standalone iOS mode
     }
   }
 
-  // 3. Reload window cleanly
-  window.location.reload();
+  return zeroData;
 }
