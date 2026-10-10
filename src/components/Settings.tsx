@@ -9,7 +9,8 @@ import { languages } from '../languages';
 import { compressImageFile } from '../utils/cloudSync';
 import { 
   Settings as SettingsIcon, Save, Upload, 
-  Palette, Building2, Coins, Keyboard, Check
+  Palette, Building2, Coins, Keyboard, Check,
+  Printer, FileText
 } from 'lucide-react';
 
 interface SettingsProps {
@@ -429,7 +430,116 @@ export default function Settings({
           </div>
         </div>
 
-        {/* Section 4: Keyboard Shortcuts & Cashier Hotkeys */}
+        {/* Section 4: Print Appearance & Color Customization (Small receipts & Big A4 invoices) */}
+        <div className="bg-white rounded-3xl border border-slate-200/80 shadow-xs overflow-hidden">
+          <div className="px-6 py-4.5 border-b border-slate-100 flex items-center gap-3 bg-slate-50/50">
+            <div className="p-2 bg-indigo-50 text-indigo-600 rounded-xl">
+              <Printer className="w-5 h-5" />
+            </div>
+            <div>
+              <h2 className="text-base sm:text-lg font-black text-slate-900">
+                {lang === 'ar' ? 'تخصيص أشكال وألوان طباعة الفواتير (الصغيرة والكبيرة)' : 'Invoice & Receipt Print Styling & Colors'}
+              </h2>
+              <p className="text-xs text-slate-400 font-medium">
+                {lang === 'ar' ? 'اختيار نمط الإيصالات الحرارية الصغيرة 80mm وفواتير A4 الكبيرة' : 'Customize layout style and color accents for thermal receipts and A4 invoices'}
+              </p>
+            </div>
+          </div>
+
+          <div className="p-6 sm:p-7 space-y-6">
+            {/* 80mm Thermal Receipt Themes */}
+            <div>
+              <div className="flex items-center gap-2 mb-3">
+                <Printer className="w-4 h-4 text-slate-600" />
+                <h3 className="text-sm font-bold text-slate-800">
+                  {lang === 'ar' ? 'نمط وألوان الفواتير الصغيرة (الإيصال الحراري 80mm):' : 'Small Thermal Receipt Styles (80mm):'}
+                </h3>
+              </div>
+              <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-5 gap-3">
+                {[
+                  { id: 'classic', nameAr: 'كلاسيكي (أبيض وأسود)', nameEn: 'Classic (B&W)', dotBg: 'bg-slate-900', border: 'border-slate-800' },
+                  { id: 'navy', nameAr: 'كحلي أنيق', nameEn: 'Navy Blue', dotBg: 'bg-blue-900', border: 'border-blue-900' },
+                  { id: 'emerald', nameAr: 'أخضر زمردي', nameEn: 'Emerald Green', dotBg: 'bg-emerald-700', border: 'border-emerald-700' },
+                  { id: 'modern', nameAr: 'بنفسجي عصري', nameEn: 'Indigo Modern', dotBg: 'bg-indigo-600', border: 'border-indigo-600' },
+                  { id: 'minimal', nameAr: 'بسيط رمادي', nameEn: 'Minimal Slate', dotBg: 'bg-slate-500', border: 'border-slate-500' },
+                ].map((th) => {
+                  const isCurrent = (formConfig.receiptTheme || 'classic') === th.id;
+                  return (
+                    <button
+                      key={th.id}
+                      type="button"
+                      onClick={() => {
+                        const updated = { ...formConfig, receiptTheme: th.id as any };
+                        setFormConfig(updated);
+                        onSaveConfig(updated);
+                      }}
+                      className={`flex flex-col gap-2 p-3.5 rounded-2xl border text-start transition cursor-pointer ${
+                        isCurrent
+                          ? 'bg-slate-50 border-indigo-600 text-slate-900 shadow-sm ring-2 ring-indigo-500/20'
+                          : 'bg-white border-slate-200 text-slate-700 hover:border-slate-300'
+                      }`}
+                    >
+                      <div className="flex items-center justify-between">
+                        <span className={`w-4 h-4 rounded-full ${th.dotBg} ring-2 ring-white shadow-2xs`} />
+                        {isCurrent && <Check className="w-4 h-4 text-indigo-600" />}
+                      </div>
+                      <span className="text-xs font-bold truncate">
+                        {lang === 'ar' ? th.nameAr : th.nameEn}
+                      </span>
+                    </button>
+                  );
+                })}
+              </div>
+            </div>
+
+            {/* A4 Invoice Themes */}
+            <div className="pt-4 border-t border-slate-100">
+              <div className="flex items-center gap-2 mb-3">
+                <FileText className="w-4 h-4 text-slate-600" />
+                <h3 className="text-sm font-bold text-slate-800">
+                  {lang === 'ar' ? 'نمط وألوان الفواتير الكبيرة (A4 الرسمية والتجارية):' : 'Large Invoice Styles (A4 Documents):'}
+                </h3>
+              </div>
+              <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-5 gap-3">
+                {[
+                  { id: 'slate', nameAr: 'رمادي تنفيذي', nameEn: 'Executive Slate', dotBg: 'bg-slate-800' },
+                  { id: 'indigo', nameAr: 'أزرق ملكي (نيلي)', nameEn: 'Royal Indigo', dotBg: 'bg-indigo-700' },
+                  { id: 'emerald', nameAr: 'أخضر زمردي', nameEn: 'Emerald Green', dotBg: 'bg-emerald-700' },
+                  { id: 'burgundy', nameAr: 'عنابي / خمري', nameEn: 'Burgundy Wine', dotBg: 'bg-rose-900' },
+                  { id: 'amber', nameAr: 'كهرماني دافئ', nameEn: 'Warm Amber', dotBg: 'bg-amber-600' },
+                ].map((th) => {
+                  const isCurrent = (formConfig.a4Theme || 'slate') === th.id;
+                  return (
+                    <button
+                      key={th.id}
+                      type="button"
+                      onClick={() => {
+                        const updated = { ...formConfig, a4Theme: th.id as any };
+                        setFormConfig(updated);
+                        onSaveConfig(updated);
+                      }}
+                      className={`flex flex-col gap-2 p-3.5 rounded-2xl border text-start transition cursor-pointer ${
+                        isCurrent
+                          ? 'bg-slate-50 border-indigo-600 text-slate-900 shadow-sm ring-2 ring-indigo-500/20'
+                          : 'bg-white border-slate-200 text-slate-700 hover:border-slate-300'
+                      }`}
+                    >
+                      <div className="flex items-center justify-between">
+                        <span className={`w-4 h-4 rounded-full ${th.dotBg} ring-2 ring-white shadow-2xs`} />
+                        {isCurrent && <Check className="w-4 h-4 text-indigo-600" />}
+                      </div>
+                      <span className="text-xs font-bold truncate">
+                        {lang === 'ar' ? th.nameAr : th.nameEn}
+                      </span>
+                    </button>
+                  );
+                })}
+              </div>
+            </div>
+          </div>
+        </div>
+
+        {/* Section 5: Keyboard Shortcuts & Cashier Hotkeys */}
         <div className="bg-white rounded-3xl border border-slate-200/80 shadow-xs overflow-hidden">
           <div className="px-6 py-4.5 border-b border-slate-100 flex items-center justify-between bg-slate-50/50">
             <div className="flex items-center gap-3">

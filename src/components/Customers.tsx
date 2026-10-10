@@ -159,6 +159,7 @@ export default function Customers({ customers, invoices, onSaveCustomer, onDelet
         price: lang === 'ar' ? 'عدد الفواتير' : 'Invoices',
         total: lang === 'ar' ? 'مبلغ الدين المستحق' : 'Debt Amount'
       },
+      isPriceCount: true,
       items: (customersWithDebt.length > 0 ? customersWithDebt : filteredCustomers).map((c) => {
         const custInvs = getCustomerInvoices(c.id);
         return {
@@ -477,6 +478,7 @@ export default function Customers({ customers, invoices, onSaveCustomer, onDelet
                           <span className="font-mono text-slate-600 font-semibold">{inv.invoiceNumber}</span>
                           <span className="text-slate-500">{new Date(inv.date).toLocaleDateString()}</span>
                           <span
+                            dir="ltr"
                             className={`font-semibold ${
                               inv.status === 'paid'
                                 ? 'text-emerald-600'
@@ -485,7 +487,7 @@ export default function Customers({ customers, invoices, onSaveCustomer, onDelet
                                 : 'text-red-500'
                             }`}
                           >
-                            ${inv.total.toFixed(2)}
+                            {inv.total.toFixed(2)} {config.currency}
                           </span>
                         </div>
                       ))}

@@ -33,6 +33,9 @@ export interface PdfDocumentMeta {
     price?: string;
     total?: string;
   };
+  isPriceCount?: boolean;
+  docNumberLabel?: string;
+  partyLabel?: string;
   summaryCards?: {
     label: string;
     value: string;
@@ -60,6 +63,9 @@ export interface PdfDocumentMeta {
   remainingDebt?: number;
   notes?: string;
   footerText?: string;
+  themeColor?: string;
+  receiptTheme?: 'classic' | 'navy' | 'emerald' | 'minimal' | 'modern';
+  a4Theme?: 'slate' | 'indigo' | 'emerald' | 'burgundy' | 'amber';
 }
 
 const CODE39_MAP: Record<string, string> = {
@@ -213,6 +219,9 @@ export function buildUnified80mmReceiptHtml(
     date?: string;
     customerName?: string;
     sellerName?: string;
+    docTitle?: string;
+    docNumberLabel?: string;
+    partyLabel?: string;
     items?: {
       productName?: string;
       quantity?: number | string;
@@ -232,6 +241,8 @@ export function buildUnified80mmReceiptHtml(
     address?: string;
     phone?: string;
     currency?: string;
+    receiptTheme?: 'classic' | 'navy' | 'emerald' | 'minimal' | 'modern';
+    printPrimaryColor?: string;
   },
   lang: 'ar' | 'fr' | 'en' = 'ar',
   thankYouText?: string
@@ -246,9 +257,22 @@ export function buildUnified80mmReceiptHtml(
   const prevBal = Number(inv.previousBalance) || 0;
   const grandTotal = invTotal + prevBal;
   const remaining = Math.max(0, invTotal - invPaid);
-  const dateStr = inv.date ? new Date(inv.date).toLocaleString('fr-FR') : '';
-  const totalItemsCount = safeItems.reduce((sum, item) => sum + (Number(item.quantity) || 0), 0);
+  const dateStr = inv.date
+    ? isNaN(new Date(inv.date).getTime())
+      ? inv.date
+      : new Date(inv.date).toLocaleString('fr-FR')
+    : '';
+  const totalItemsCount = safeItems.length;
   const currency = config.currency || 'MAD';
+  const receiptTheme = config.receiptTheme || 'classic';
+  const themeColors: Record<string, { border: string; headerBg: string; headerColor: string; accent: string }> = {
+    classic: { border: '#000000', headerBg: '#000000', headerColor: '#ffffff', accent: '#000000' },
+    navy: { border: '#1e3a8a', headerBg: '#1e3a8a', headerColor: '#ffffff', accent: '#1d4ed8' },
+    emerald: { border: '#065f46', headerBg: '#065f46', headerColor: '#ffffff', accent: '#059669' },
+    modern: { border: '#4338ca', headerBg: '#4338ca', headerColor: '#ffffff', accent: '#4f46e5' },
+    minimal: { border: '#64748b', headerBg: '#f8fafc', headerColor: '#0f172a', accent: '#334155' }
+  };
+  const activeReceiptStyle = themeColors[receiptTheme] || themeColors.classic;
   const receiptFont = `'Tajawal', 'Segoe UI', Tahoma, Arial, sans-serif`;
   const productFont = `'Cairo', 'Almarai', 'Arial', sans-serif`;
   const numFont = `'Tahoma', 'Arial', sans-serif`;
@@ -281,29 +305,30 @@ export function buildUnified80mmReceiptHtml(
   return `
     <div style="font-family: ${receiptFont}; font-size: 11px; font-weight: 700; color: #000000; background: #ffffff; direction: ${isRTL ? 'rtl' : 'ltr'}; line-height: 1.45;">
       <div style="text-align: center; margin-bottom: 8px;">
-        <h2 style="margin: 0; font-size: 15px; font-weight: 800; color: #000000; font-family: ${receiptFont};">${config.name || 'Smart POS'}</h2>
-        ${config.address ? `<div style="font-size: 10px; font-weight: 700; margin-top: 2px; color: #000000;">${config.address}</div>` : ''}
-        ${config.phone ? `<div style="font-size: 10px; font-weight: 700; color: #000000;">${lang === 'ar' ? 'الهاتف:' : 'Tél:'} ${config.phone}</div>` : ''}
+        <h2 style="margin: 0; font-size: 15px; font-weight: 900; color: ${activeReceiptStyle.accent}; font-family: ${receiptFont};">${config.name || 'Smart POS'}</h2>
+        ${config.address ? `<div style="font-size: 10px; font-weight: 700; margin-top: 2px; color: #334155;">${config.address}</div>` : ''}
+        ${config.phone ? `<div style="font-size: 10px; font-weight: 700; color: #334155;">${lang === 'ar' ? 'الهاتف:' : 'Tél:'} ${config.phone}</div>` : ''}
+        ${inv.docTitle ? `<div style="font-size: 11.5px; font-weight: 800; margin-top: 4px; color: ${activeReceiptStyle.headerColor}; background: ${activeReceiptStyle.headerBg}; display: inline-block; padding: 2px 10px; border-radius: 4px;">${inv.docTitle}</div>` : ''}
       </div>
 
-      <div style="border-top: 1px solid #000000; border-bottom: 1px solid #000000; padding: 6px 0; margin-bottom: 8px; font-size: 10px; font-weight: 700; color: #000000;">
+      <div style="border-top: 1.5px solid ${activeReceiptStyle.border}; border-bottom: 1.5px solid ${activeReceiptStyle.border}; padding: 6px 0; margin-bottom: 8px; font-size: 10px; font-weight: 700; color: #000000;">
         <div style="display: flex; justify-content: space-between; align-items: center; gap: 4px;">
-          <span>${lang === 'ar' ? 'رقم الفاتورة:' : 'N°:'} <b style="font-family: ${numFont};">${inv.invoiceNumber || ''}</b></span>
+          <span>${inv.docNumberLabel || (lang === 'ar' ? 'رقم الفاتورة:' : 'N°:')} <b style="font-family: ${numFont}; color: ${activeReceiptStyle.accent};">${inv.invoiceNumber || ''}</b></span>
           <span style="font-family: ${numFont};" dir="ltr">${dateStr}</span>
         </div>
         <div style="display: flex; justify-content: space-between; align-items: center; gap: 4px; margin-top: 3px;">
-          <span>${lang === 'ar' ? 'الزبون :' : 'Client :'} <b>${inv.customerName || (lang === 'ar' ? 'زبون عابر' : 'Walk-in')}</b></span>
+          <span>${inv.partyLabel || (lang === 'ar' ? 'الزبون :' : 'Client :')} <b>${inv.customerName || (lang === 'ar' ? 'زبون عابر' : 'Walk-in')}</b></span>
           <span>${lang === 'ar' ? 'البائع:' : 'Vendeur:'} <b>${inv.sellerName || 'admin'}</b></span>
         </div>
       </div>
 
       <table style="width: 100%; border-collapse: collapse; margin-bottom: 8px; font-size: 11px;">
         <thead>
-          <tr style="border-bottom: 1.5px solid #000000; font-size: 10.5px;">
-            <th style="text-align: ${isRTL ? 'right' : 'left'}; padding: 4px 2px; font-weight: 800; color: #000000; width: 42%; font-family: ${receiptFont};">${lang === 'ar' ? 'المنتج' : 'Article'}</th>
-            <th style="text-align: center; padding: 4px 2px; font-weight: 800; color: #000000; width: 16%; font-family: ${receiptFont};">${lang === 'ar' ? 'العدد' : 'Qté'}</th>
-            <th style="text-align: ${isRTL ? 'left' : 'right'}; padding: 4px 2px; font-weight: 800; color: #000000; width: 21%; font-family: ${receiptFont};">${lang === 'ar' ? 'السعر' : 'Prix'}</th>
-            <th style="text-align: ${isRTL ? 'left' : 'right'}; padding: 4px 2px; font-weight: 800; color: #000000; width: 21%; font-family: ${receiptFont};">${lang === 'ar' ? 'المجموع' : 'Total'}</th>
+          <tr style="border-bottom: 2px solid ${activeReceiptStyle.border}; font-size: 10.5px;">
+            <th style="text-align: ${isRTL ? 'right' : 'left'}; padding: 4px 2px; font-weight: 800; color: ${activeReceiptStyle.accent}; width: 42%; font-family: ${receiptFont};">${lang === 'ar' ? 'المنتج' : 'Article'}</th>
+            <th style="text-align: center; padding: 4px 2px; font-weight: 800; color: ${activeReceiptStyle.accent}; width: 16%; font-family: ${receiptFont};">${lang === 'ar' ? 'العدد' : 'Qté'}</th>
+            <th style="text-align: ${isRTL ? 'left' : 'right'}; padding: 4px 2px; font-weight: 800; color: ${activeReceiptStyle.accent}; width: 21%; font-family: ${receiptFont};">${lang === 'ar' ? 'السعر' : 'Prix'}</th>
+            <th style="text-align: ${isRTL ? 'left' : 'right'}; padding: 4px 2px; font-weight: 800; color: ${activeReceiptStyle.accent}; width: 21%; font-family: ${receiptFont};">${lang === 'ar' ? 'المجموع' : 'Total'}</th>
           </tr>
         </thead>
         <tbody>
@@ -311,7 +336,7 @@ export function buildUnified80mmReceiptHtml(
         </tbody>
       </table>
 
-      <div style="border-top: 1px solid #000000; padding-top: 6px; font-size: 11px; font-weight: 700; color: #000000;">
+      <div style="border-top: 1.5px solid ${activeReceiptStyle.border}; padding-top: 6px; font-size: 11px; font-weight: 700; color: #000000;">
         <div style="display: flex; justify-content: space-between; margin-bottom: 3px;">
           <span>${lang === 'ar' ? 'المجموع:' : 'Sous-total:'}</span>
           <span style="font-family: ${numFont}; font-weight: 700;" dir="ltr">${invSubtotal.toFixed(2)} ${currency}</span>
@@ -320,8 +345,8 @@ export function buildUnified80mmReceiptHtml(
           invDiscount > 0
             ? `
         <div style="display: flex; justify-content: space-between; margin-bottom: 3px;">
-          <span>${lang === 'ar' ? 'الخصم:' : 'Remise:'}</span>
-          <span style="font-family: ${numFont}; font-weight: 700;" dir="ltr">-${invDiscount.toFixed(2)} ${currency}</span>
+          <span>${lang === 'ar' ? 'الالخصم:' : 'Remise:'}</span>
+          <span style="font-family: ${numFont}; font-weight: 700; color: #dc2626;" dir="ltr">-${invDiscount.toFixed(2)} ${currency}</span>
         </div>
         `
             : ''
@@ -345,13 +370,13 @@ export function buildUnified80mmReceiptHtml(
         </div>
         <div style="display: flex; justify-content: space-between; margin-bottom: 3px;">
           <span>${lang === 'ar' ? 'كريدي قديم / مبلغ سابق:' : 'Ancien Crédit:'}</span>
-          <span style="font-family: ${numFont}; font-weight: 700;" dir="ltr">+${prevBal.toFixed(2)} ${currency}</span>
+          <span style="font-family: ${numFont}; font-weight: 700; color: #b45309;" dir="ltr">+${prevBal.toFixed(2)} ${currency}</span>
         </div>
         `
             : ''
         }
-        <div style="border: 2px solid #000000; padding: 5px 8px; border-radius: 4px; margin: 6px 0; display: flex; justify-content: space-between; align-items: center; background: #ffffff; white-space: nowrap;">
-          <span style="font-weight: 800; font-size: 12px; color: #000000; font-family: ${receiptFont};">${
+        <div style="border: 2px solid ${activeReceiptStyle.border}; padding: 5px 8px; border-radius: 6px; margin: 6px 0; display: flex; justify-content: space-between; align-items: center; background: ${receiptTheme === 'classic' ? '#ffffff' : '#f8fafc'}; white-space: nowrap;">
+          <span style="font-weight: 800; font-size: 12px; color: ${activeReceiptStyle.accent}; font-family: ${receiptFont};">${
             prevBal > 0
               ? lang === 'ar'
                 ? 'المجموع الكلي:'
@@ -360,7 +385,7 @@ export function buildUnified80mmReceiptHtml(
               ? 'المجموع الإجمالي:'
               : 'TOTAL:'
           }</span>
-          <span style="font-weight: 800; font-size: 15px; font-family: ${numFont}; color: #000000;" dir="ltr">${grandTotal.toFixed(2)} ${currency}</span>
+          <span style="font-weight: 900; font-size: 16px; font-family: ${numFont}; color: ${activeReceiptStyle.accent};" dir="ltr">${grandTotal.toFixed(2)} ${currency}</span>
         </div>
         <div style="display: flex; justify-content: center; align-items: center; gap: 6px; text-align: center; margin-bottom: 3px; font-weight: 800;">
           <span>${lang === 'ar' ? 'عدد المنتجات:' : 'Articles:'}</span>
@@ -370,7 +395,7 @@ export function buildUnified80mmReceiptHtml(
           remaining > 0
             ? `
         <div style="display: flex; justify-content: space-between; font-weight: 800; margin-bottom: 2px;">
-          <span>${lang === 'ar' ? 'المتبقي:' : 'Reste:'}</span>
+          <span>${lang === 'ar' ? 'الباقي (كريدي):' : 'Reste (Crédit):'}</span>
           <span style="font-family: ${numFont};" dir="ltr">${remaining.toFixed(2)} ${currency}</span>
         </div>
         `
@@ -401,6 +426,16 @@ export function buildStructuredA4Html(meta: PdfDocumentMeta): string {
   const fontStack = `'Tajawal', 'Cairo', -apple-system, BlinkMacSystemFont, 'Segoe UI', Tahoma, Arial, sans-serif`;
   const prevBal = Number(meta.previousBalance || 0);
 
+  const a4Themes: Record<string, { primary: string; headerBg: string; border: string }> = {
+    slate: { primary: '#0f172a', headerBg: '#0f172a', border: '#334155' },
+    indigo: { primary: '#4338ca', headerBg: '#3730a3', border: '#4338ca' },
+    emerald: { primary: '#065f46', headerBg: '#064e3b', border: '#059669' },
+    burgundy: { primary: '#9f1239', headerBg: '#881337', border: '#be123c' },
+    amber: { primary: '#b45309', headerBg: '#92400e', border: '#d97706' }
+  };
+  const activeA4 = a4Themes[meta.a4Theme || 'slate'] || a4Themes.slate;
+  const primaryBrandColor = meta.themeColor ? meta.themeColor : activeA4.primary;
+
   const summaryCardsHtml =
     meta.summaryCards && meta.summaryCards.length > 0
       ? `
@@ -410,7 +445,7 @@ export function buildStructuredA4Html(meta: PdfDocumentMeta): string {
             (c) => `
           <div style="border: 1px solid #cbd5e1; border-radius: 8px; padding: 10px 12px; background: #f8fafc;">
             <div style="font-size: 11px; font-weight: 700; color: #64748b;">${c.label}</div>
-            <div style="font-size: 15px; font-weight: 800; color: ${c.color || '#0f172a'}; margin-top: 4px; font-family: Tahoma, Arial, sans-serif;">${c.value}</div>
+            <div style="font-size: 15px; font-weight: 800; color: ${c.color || primaryBrandColor}; margin-top: 4px; font-family: Tahoma, Arial, sans-serif;">${c.value}</div>
           </div>
         `
           )
@@ -424,12 +459,12 @@ export function buildStructuredA4Html(meta: PdfDocumentMeta): string {
       ? `
       <table style="width: 100%; border-collapse: collapse; margin-bottom: 18px; font-size: 12px;">
         <thead>
-          <tr style="background: #0f172a; color: #ffffff;">
-            <th style="padding: 9px 10px; text-align: ${alignStart}; font-weight: 800; width: 7%; border: 1px solid #0f172a;">#</th>
-            <th style="padding: 9px 10px; text-align: ${alignStart}; font-weight: 800; width: 43%; border: 1px solid #0f172a;">${meta.customTableHeaders?.name || (isRTL ? 'البيان / الصنف' : 'Désignation')}</th>
-            <th style="padding: 9px 10px; text-align: center; font-weight: 800; width: 14%; border: 1px solid #0f172a;">${meta.customTableHeaders?.qty || (isRTL ? 'الكمية' : 'Qté')}</th>
-            <th style="padding: 9px 10px; text-align: center; font-weight: 800; width: 18%; border: 1px solid #0f172a;">${meta.customTableHeaders?.price || (isRTL ? 'سعر الوحدة' : 'Prix Unitaire')}</th>
-            <th style="padding: 9px 10px; text-align: ${alignEnd}; font-weight: 800; width: 18%; border: 1px solid #0f172a;">${meta.customTableHeaders?.total || (isRTL ? 'المجموع' : 'Total')}</th>
+          <tr style="background: ${activeA4.headerBg}; color: #ffffff;">
+            <th style="padding: 9px 10px; text-align: ${alignStart}; font-weight: 800; width: 7%; border: 1px solid ${activeA4.border};">#</th>
+            <th style="padding: 9px 10px; text-align: ${alignStart}; font-weight: 800; width: 43%; border: 1px solid ${activeA4.border};">${meta.customTableHeaders?.name || (isRTL ? 'البيان / الصنف' : 'Désignation')}</th>
+            <th style="padding: 9px 10px; text-align: center; font-weight: 800; width: 14%; border: 1px solid ${activeA4.border};">${meta.customTableHeaders?.qty || (isRTL ? 'الكمية' : 'Qté')}</th>
+            <th style="padding: 9px 10px; text-align: center; font-weight: 800; width: 18%; border: 1px solid ${activeA4.border};">${meta.customTableHeaders?.price || (isRTL ? 'سعر الوحدة' : 'Prix Unitaire')}</th>
+            <th style="padding: 9px 10px; text-align: ${alignEnd}; font-weight: 800; width: 18%; border: 1px solid ${activeA4.border};">${meta.customTableHeaders?.total || (isRTL ? 'المجموع' : 'Total')}</th>
           </tr>
         </thead>
         <tbody>
@@ -437,12 +472,15 @@ export function buildStructuredA4Html(meta: PdfDocumentMeta): string {
             .map((it, idx) => {
               const label = it.discount && it.discount > 0 ? `${it.name} (-${it.discount}%)` : it.name;
               const bg = idx % 2 === 1 ? '#f8fafc' : '#ffffff';
+              const priceCellText = meta.isPriceCount
+                ? String(Math.round(Number(it.unitPrice || 0)))
+                : `${Number(it.unitPrice || 0).toFixed(2)} ${meta.currency}`;
               return `
               <tr style="background: ${bg}; border-bottom: 1px solid #cbd5e1;">
                 <td style="padding: 8px 10px; text-align: ${alignStart}; color: #475569; font-weight: 700; border: 1px solid #e2e8f0; font-family: Tahoma, Arial, sans-serif;">${idx + 1}</td>
                 <td style="padding: 8px 10px; text-align: ${alignStart}; color: #0f172a; font-weight: 800; border: 1px solid #e2e8f0;">${label || ''}</td>
                 <td style="padding: 8px 10px; text-align: center; color: #0f172a; font-weight: 800; border: 1px solid #e2e8f0; font-family: Tahoma, Arial, sans-serif;">${it.quantity}</td>
-                <td style="padding: 8px 10px; text-align: center; color: #1e293b; font-weight: 700; border: 1px solid #e2e8f0; font-family: Tahoma, Arial, sans-serif;" dir="ltr">${Number(it.unitPrice || 0).toFixed(2)} ${meta.currency}</td>
+                <td style="padding: 8px 10px; text-align: center; color: #1e293b; font-weight: 700; border: 1px solid #e2e8f0; font-family: Tahoma, Arial, sans-serif;" dir="ltr">${priceCellText}</td>
                 <td style="padding: 8px 10px; text-align: ${alignEnd}; color: #0f172a; font-weight: 800; border: 1px solid #e2e8f0; font-family: Tahoma, Arial, sans-serif;" dir="ltr">${Number(it.total || 0).toFixed(2)} ${meta.currency}</td>
               </tr>
             `;
@@ -497,7 +535,7 @@ export function buildStructuredA4Html(meta: PdfDocumentMeta): string {
   return `
     <div style="font-family: ${fontStack}; color: #0f172a; background: #ffffff; direction: ${isRTL ? 'rtl' : 'ltr'}; padding: 4mm; width: 100%; box-sizing: border-box;">
       <!-- Top Header -->
-      <div style="display: flex; justify-content: space-between; align-items: flex-start; border-bottom: 2px solid #0f172a; padding-bottom: 14px; margin-bottom: 16px;">
+      <div style="display: flex; justify-content: space-between; align-items: flex-start; border-bottom: 2.5px solid ${activeA4.primary}; padding-bottom: 14px; margin-bottom: 16px;">
         <div style="text-align: ${alignStart};">
           <h1 style="margin: 0; font-size: 22px; font-weight: 900; color: #0f172a;">${meta.storeName || 'Smart POS'}</h1>
           ${meta.storeAddress ? `<div style="font-size: 12px; color: #334155; font-weight: 700; margin-top: 4px;">${meta.storeAddress}</div>` : ''}
@@ -512,7 +550,7 @@ export function buildStructuredA4Html(meta: PdfDocumentMeta): string {
           </div>
         </div>
         <div style="text-align: ${alignEnd};">
-          <div style="font-size: 17px; font-weight: 900; color: #4f46e5;">${meta.title || ''}</div>
+          <div style="font-size: 18px; font-weight: 900; color: ${activeA4.primary};">${meta.title || ''}</div>
           <div style="font-size: 16px; font-weight: 900; color: #0f172a; font-family: Tahoma, Arial, sans-serif; margin-top: 3px;">${meta.docNumber || ''}</div>
           <div style="font-size: 12px; font-weight: 700; color: #475569; margin-top: 3px;">${isRTL ? 'التاريخ:' : 'Date:'} <span style="font-family: Tahoma, Arial, sans-serif;" dir="ltr">${meta.date || ''}</span></div>
         </div>
@@ -549,7 +587,17 @@ export function buildStructuredA4Html(meta: PdfDocumentMeta): string {
           }
         </div>
 
-        <div style="width: 290px; border: 1.5px solid #0f172a; border-radius: 10px; padding: 12px 14px; background: #ffffff; font-size: 12.5px;">
+        <div style="width: 290px; border: 2px solid ${activeA4.border}; border-radius: 10px; padding: 12px 14px; background: #ffffff; font-size: 12.5px;">
+          ${
+            !meta.summaryCards && meta.items && meta.items.length > 0
+              ? `
+            <div style="display: flex; justify-content: space-between; margin-bottom: 6px; font-weight: 700; color: #334155;">
+              <span>${isRTL ? 'عدد المنتجات:' : 'Articles:'}</span>
+              <span style="font-family: Tahoma, Arial, sans-serif; font-weight: 800;" dir="ltr">${meta.items.length}</span>
+            </div>
+          `
+              : ''
+          }
           <div style="display: flex; justify-content: space-between; margin-bottom: 6px; font-weight: 700; color: #334155;">
             <span>${isRTL ? 'المجموع:' : 'Sous-total:'}</span>
             <span style="font-family: Tahoma, Arial, sans-serif; font-weight: 800;" dir="ltr">${Number(meta.subtotal || 0).toFixed(2)} ${meta.currency}</span>
@@ -574,9 +622,9 @@ export function buildStructuredA4Html(meta: PdfDocumentMeta): string {
           `
               : ''
           }
-          <div style="border-top: 2px solid #0f172a; padding-top: 8px; margin-top: 6px; display: flex; justify-content: space-between; align-items: center; font-size: 15px; font-weight: 900; color: #0f172a;">
+          <div style="border-top: 2px solid ${activeA4.primary}; padding-top: 8px; margin-top: 6px; display: flex; justify-content: space-between; align-items: center; font-size: 15px; font-weight: 900; color: #0f172a;">
             <span>${prevBal > 0 ? (isRTL ? 'مجموع الفاتورة:' : 'Total Facture:') : isRTL ? 'المجموع الإجمالي:' : 'TOTAL:'}</span>
-            <span style="font-family: Tahoma, Arial, sans-serif; color: #4f46e5; font-size: 16px;" dir="ltr">${Number(meta.total || 0).toFixed(2)} ${meta.currency}</span>
+            <span style="font-family: Tahoma, Arial, sans-serif; color: ${activeA4.primary}; font-size: 16px;" dir="ltr">${Number(meta.total || 0).toFixed(2)} ${meta.currency}</span>
           </div>
           ${
             prevBal > 0
@@ -606,7 +654,7 @@ export function buildStructuredA4Html(meta: PdfDocumentMeta): string {
             meta.remainingDebt && meta.remainingDebt > 0
               ? `
             <div style="display: flex; justify-content: space-between; margin-top: 4px; font-weight: 900; color: #e11d48; font-size: 12.5px;">
-              <span>${isRTL ? 'المتبقي (الدين):' : 'Reste à payer:'}</span>
+              <span>${isRTL ? 'الباقي (كريدي):' : 'Reste (Crédit):'}</span>
               <span style="font-family: Tahoma, Arial, sans-serif;" dir="ltr">${Number(meta.remainingDebt).toFixed(2)} ${meta.currency}</span>
             </div>
           `
@@ -845,7 +893,7 @@ function paintDocumentContentOnContext(
 
     // 2-Row Bordered Meta Box (Row 1: Invoice # + Date, Row 2: Customer + Seller)
     drawText(
-      `${isRTL ? 'رقم الفاتورة:' : 'N°:'} ${meta.docNumber || ''}`,
+      `${meta.docNumberLabel || (isRTL ? 'رقم الفاتورة:' : 'N°:')} ${meta.docNumber || ''}`,
       startX,
       y,
       { size: 11, weight: '800', color: '#000000', align: startAlign }
@@ -860,7 +908,7 @@ function paintDocumentContentOnContext(
     y += 18;
 
     drawText(
-      `${isRTL ? 'الزبون :' : 'Client :'} ${meta.customerName || (isRTL ? 'زبون عابر' : 'Walk-in')}`,
+      `${meta.partyLabel || (isRTL ? 'الزبون :' : 'Client :')} ${meta.customerName || (isRTL ? 'زبون عابر' : 'Walk-in')}`,
       startX,
       y,
       { size: 11, weight: '800', color: '#000000', align: startAlign }
@@ -910,9 +958,8 @@ function paintDocumentContentOnContext(
     drawLine(y, true, '#000000');
     y += 7;
 
-    let totalItemsCount = 0;
+    const totalItemsCount = meta.items.length;
     for (const item of meta.items) {
-      totalItemsCount += Number(item.quantity) || 0;
       const itemLabel =
         item.discount && item.discount > 0 ? `${item.name} (-${item.discount}%)` : item.name;
       drawText(itemLabel, colItemX, y, {
@@ -1258,7 +1305,10 @@ function paintDocumentContentOnContext(
           align: 'center',
           isNumeric: true,
         });
-        drawText(`${Number(item.unitPrice || 0).toFixed(2)} ${meta.currency}`, cPrice, y + 8, {
+        const priceCanvasText = meta.isPriceCount
+          ? String(Math.round(Number(item.unitPrice || 0)))
+          : `${Number(item.unitPrice || 0).toFixed(2)} ${meta.currency}`;
+        drawText(priceCanvasText, cPrice, y + 8, {
           size: 12,
           weight: '700',
           color: '#334155',
@@ -1352,6 +1402,9 @@ function paintDocumentContentOnContext(
       y += bold ? 28 : 23;
     };
 
+    if (!meta.summaryCards && meta.items && meta.items.length > 0) {
+      sumRow(isRTL ? 'عدد المنتجات:' : 'Articles:', String(meta.items.length));
+    }
     sumRow(
       isRTL ? 'المجموع:' : 'Subtotal:',
       `${Number(meta.subtotal || 0).toFixed(2)} ${meta.currency}`
@@ -1406,7 +1459,7 @@ function paintDocumentContentOnContext(
     }
     if (meta.remainingDebt && meta.remainingDebt > 0) {
       sumRow(
-        isRTL ? 'المتبقي بذمة العميل (دين الفاتورة):' : 'Balance Due:',
+        isRTL ? 'الباقي (كريدي):' : 'Reste (Crédit):',
         `${Number(meta.remainingDebt).toFixed(2)} ${meta.currency}`,
         false,
         '#e11d48'

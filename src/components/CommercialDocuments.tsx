@@ -13,7 +13,7 @@ import {
   Edit, ArrowUpRight, Copy, Share2, Receipt, ShoppingCart, FileSpreadsheet, ArrowRight, FileDown
 } from 'lucide-react';
 import { parseDecimal, sanitizeDecimalInput } from '../utils/numberInput';
-import { printHtmlContent, exportStructuredPdf } from '../utils/printService';
+import { printHtmlContent, exportStructuredPdf, buildUnified80mmReceiptHtml } from '../utils/printService';
 
 interface CommercialDocumentsProps {
   initialType?: CommercialDocType;
@@ -56,6 +56,7 @@ export default function CommercialDocuments({
   const [fromDate, setFromDate] = useState<string>('');
   const [toDate, setToDate] = useState<string>('');
   const [viewingDoc, setViewingDoc] = useState<CommercialDocument | null>(null);
+  const [receiptPreviewDoc, setReceiptPreviewDoc] = useState<CommercialDocument | null>(null);
   const [editingDoc, setEditingDoc] = useState<CommercialDocument | null>(null);
   const [isCreating, setIsCreating] = useState(false);
   const [deletingId, setDeletingId] = useState<string | null>(null);
@@ -545,11 +546,19 @@ export default function CommercialDocuments({
           : netTotal
         : netTotal;
 
+    const todayStr = new Date().toISOString().split('T')[0];
+    const resolvedDocDate =
+      editingDoc && editingDoc.date && editingDoc.date.startsWith(formDocDate)
+        ? editingDoc.date
+        : formDocDate === todayStr
+        ? new Date().toISOString()
+        : new Date(formDocDate).toISOString();
+
     const newDoc: CommercialDocument = {
       id: docId,
       docType: activeType,
       docNumber,
-      date: new Date(formDocDate).toISOString(),
+      date: resolvedDocDate,
       validUntil: activeType === 'devis' ? formValidUntil : undefined,
       customerId: formCustomerId || 'walk-in',
       customerName: formCustomerName,
@@ -701,16 +710,20 @@ export default function CommercialDocuments({
     );
   };
 
-  const buildDocPdfMeta = (doc: CommercialDocument) => {
+  const buildDocPdfMeta = (doc: CommercialDocument, mode: 'a4' | '80mm' = 'a4') => {
     const subtotalVal = Number(doc.subtotal || 0);
     const discVal = Number(doc.discount || 0);
     const taxVal = Number(doc.tax || 0);
     const totalVal = Number(doc.total || 0);
     const prevBalVal = Number(doc.previousBalance || 0);
+    const paidVal = doc.amountPaid !== undefined ? Number(doc.amountPaid) : totalVal;
+    const remDebt = doc.docType === 'facture' ? Math.max(0, totalVal - paidVal) : 0;
     return {
       title: getDocTypeLabel(doc.docType),
+      docNumberLabel: lang === 'ar' ? 'رقم الوثيقة:' : 'N°:',
+      partyLabel: lang === 'ar' ? 'الزبون :' : 'Client :',
       docNumber: doc.docNumber,
-      date: doc.date ? new Date(doc.date).toLocaleDateString('fr-FR') : '',
+      date: doc.date ? new Date(doc.date).toLocaleString('fr-FR') : '',
       storeName: config.name || 'المتجر',
       storePhone: config.phone,
       storeEmail: config.email,
@@ -719,8 +732,9 @@ export default function CommercialDocuments({
       customerLabel: lang === 'ar' ? 'الزبون' : 'Client',
       customerName: doc.customerName,
       customerPhone: doc.customerPhone,
+      sellerName: doc.sellerName || 'admin',
       currency: config.currency,
-      mode: 'a4' as const,
+      mode,
       isRTL,
       items: doc.items.map(it => ({
         name: it.productName,
@@ -734,13 +748,57 @@ export default function CommercialDocuments({
       tax: taxVal,
       total: totalVal,
       previousBalance: prevBalVal,
+      amountPaid: paidVal,
+      remainingDebt: remDebt,
       notes: doc.notes,
-      footerText: t.invoice.thankYou
+      footerText: t.invoice.thankYou,
+      a4Theme: config.a4Theme || 'slate',
+      receiptTheme: config.receiptTheme || 'classic',
+      themeColor: config.printPrimaryColor
     };
   };
 
-  const handleExportDocPdf = async (doc: CommercialDocument) => {
-    await exportStructuredPdf(buildDocPdfMeta(doc));
+  const handleExportDocPdf = async (doc: CommercialDocument, mode: 'a4' | '80mm' = 'a4') => {
+    await exportStructuredPdf(buildDocPdfMeta(doc, mode));
+  };
+
+  const triggerReceipt80mmPrint = (doc: CommercialDocument) => {
+    const receiptHtml = buildUnified80mmReceiptHtml(
+      {
+        invoiceNumber: doc.docNumber,
+        date: doc.date,
+        customerName: doc.customerName,
+        sellerName: doc.sellerName || 'admin',
+        docTitle: getDocTypeLabel(doc.docType),
+        docNumberLabel: lang === 'ar' ? 'رقم الوثيقة:' : 'N°:',
+        partyLabel: lang === 'ar' ? 'الزبون :' : 'Client :',
+        items: doc.items.map((it) => ({
+          productName: it.productName,
+          quantity: it.quantity,
+          sellingPrice: it.sellingPrice,
+          discount: it.discount,
+          total: it.total,
+        })),
+        subtotal: doc.subtotal,
+        discount: doc.discount,
+        tax: doc.tax,
+        total: doc.total,
+        amountPaid: doc.amountPaid !== undefined ? doc.amountPaid : doc.total,
+        previousBalance: doc.previousBalance,
+      },
+      config,
+      lang,
+      t.invoice.thankYou
+    );
+    printHtmlContent(
+      {
+        title: `Receipt ${doc.docNumber}`,
+        html: receiptHtml,
+        isRTL,
+        mode: '80mm',
+      },
+      buildDocPdfMeta(doc, '80mm')
+    );
   };
 
   const triggerPrint = (targetDoc?: CommercialDocument) => {
@@ -829,20 +887,23 @@ export default function CommercialDocuments({
 
     return (
       <div dir={isRTL ? 'rtl' : 'ltr'} className="space-y-6 text-start max-w-7xl mx-auto animate-fade-in">
-        {/* Toast Notification */}
-        {toastMessage && (
-          <div className={`fixed top-6 start-1/2 -translate-x-1/2 z-50 px-5 py-3 rounded-2xl shadow-2xl flex items-center gap-2.5 text-xs font-bold animate-fade-in border ${
-            toastMessage.includes('⚠️')
-              ? 'bg-slate-950 text-amber-300 border-amber-500/50'
-              : 'bg-slate-900 text-white border-slate-700'
-          }`}>
-            {toastMessage.includes('⚠️') ? (
-              <AlertCircle className="w-4 h-4 text-amber-400 shrink-0" />
-            ) : (
-              <CheckCircle2 className="w-4 h-4 text-emerald-400 shrink-0" />
-            )}
-            <span>{toastMessage}</span>
-          </div>
+        {/* Toast Notification via Portal so it is never shifted or clipped */}
+        {toastMessage && createPortal(
+          <div dir={isRTL ? 'rtl' : 'ltr'} className="fixed inset-x-0 top-16 z-[250] flex justify-center px-4 pointer-events-none">
+            <div className={`px-5 py-3.5 rounded-2xl shadow-2xl flex items-center gap-3 text-xs sm:text-sm font-black border pointer-events-auto max-w-lg text-center ${
+              toastMessage.includes('⚠️')
+                ? 'bg-amber-600 text-white border-amber-400'
+                : 'bg-emerald-600 text-white border-emerald-400'
+            }`}>
+              {toastMessage.includes('⚠️') ? (
+                <AlertCircle className="w-5 h-5 text-amber-100 shrink-0" />
+              ) : (
+                <CheckCircle2 className="w-5 h-5 text-white shrink-0" />
+              )}
+              <span>{toastMessage}</span>
+            </div>
+          </div>,
+          document.body
         )}
 
         {/* 1. Header Bar with Client Selection & Date & Doc Number */}
@@ -1247,7 +1308,7 @@ export default function CommercialDocuments({
                               ? 'bg-amber-50 border-amber-400 text-rose-700 focus:ring-rose-500'
                               : 'bg-white border-slate-300 text-slate-900 focus:ring-indigo-500'
                           }`}
-                          value={item.sellingPrice === 0 || item.sellingPrice === '0' ? '' : item.sellingPrice}
+                          value={item.sellingPrice === undefined || item.sellingPrice === null ? '' : item.sellingPrice}
                           onChange={(e) => handleItemChange(idx, 'sellingPrice', sanitizeDecimalInput(e.target.value))}
                           onBlur={(e) => handleItemChange(idx, 'sellingPrice', sanitizeDecimalInput(e.target.value), true)}
                         />
@@ -1263,7 +1324,7 @@ export default function CommercialDocuments({
                           required
                           onFocus={(e) => e.target.select()}
                           className="w-full bg-white border border-slate-300 rounded-xl px-2 py-2 text-xs font-black font-mono text-center text-slate-900 focus:outline-none focus:ring-2 focus:ring-indigo-500"
-                          value={item.quantity === 0 || item.quantity === '0' ? '' : item.quantity}
+                          value={item.quantity === undefined || item.quantity === null ? '' : item.quantity}
                           onChange={(e) => handleItemChange(idx, 'quantity', sanitizeDecimalInput(e.target.value))}
                         />
                       </div>
@@ -1277,7 +1338,7 @@ export default function CommercialDocuments({
                           placeholder="0"
                           onFocus={(e) => e.target.select()}
                           className="w-full bg-white border border-slate-300 rounded-xl px-2 py-2 text-xs font-black font-mono text-center text-slate-800 focus:outline-none focus:ring-2 focus:ring-indigo-500"
-                          value={item.discount === 0 || item.discount === '0' ? '' : item.discount}
+                          value={item.discount === undefined || item.discount === null ? '' : item.discount}
                           onChange={(e) => handleItemChange(idx, 'discount', sanitizeDecimalInput(e.target.value))}
                           onBlur={(e) => handleItemChange(idx, 'discount', sanitizeDecimalInput(e.target.value), true)}
                         />
@@ -1376,7 +1437,7 @@ export default function CommercialDocuments({
                                   ? 'bg-amber-50 border-amber-400 text-rose-700 focus:ring-rose-500'
                                   : 'bg-slate-50 border-slate-300 text-slate-900 focus:ring-indigo-500 focus:bg-white'
                               }`}
-                              value={item.sellingPrice === 0 || item.sellingPrice === '0' ? '' : item.sellingPrice}
+                              value={item.sellingPrice === undefined || item.sellingPrice === null ? '' : item.sellingPrice}
                               onChange={(e) => handleItemChange(idx, 'sellingPrice', sanitizeDecimalInput(e.target.value))}
                               onBlur={(e) => handleItemChange(idx, 'sellingPrice', sanitizeDecimalInput(e.target.value), true)}
                             />
@@ -1389,7 +1450,7 @@ export default function CommercialDocuments({
                               required
                               onFocus={(e) => e.target.select()}
                               className="w-full min-w-[62px] sm:min-w-[92px] bg-slate-50 border border-slate-300 rounded-xl px-1.5 sm:px-3 py-2 sm:py-2.5 text-xs sm:text-sm font-black font-mono text-center text-slate-900 focus:outline-none focus:ring-2 focus:ring-indigo-500 focus:bg-white placeholder:text-slate-300 placeholder:font-normal"
-                              value={item.quantity === 0 || item.quantity === '0' ? '' : item.quantity}
+                              value={item.quantity === undefined || item.quantity === null ? '' : item.quantity}
                               onChange={(e) => handleItemChange(idx, 'quantity', sanitizeDecimalInput(e.target.value))}
                             />
                           </td>
@@ -1400,7 +1461,7 @@ export default function CommercialDocuments({
                               placeholder="0"
                               onFocus={(e) => e.target.select()}
                               className="w-full min-w-[46px] sm:min-w-[68px] bg-slate-50 border border-slate-300 rounded-xl px-1 sm:px-2.5 py-2 sm:py-2.5 text-xs sm:text-sm font-black font-mono text-center text-slate-800 focus:outline-none focus:ring-2 focus:ring-indigo-500 focus:bg-white placeholder:text-slate-300 placeholder:font-normal"
-                              value={item.discount === 0 || item.discount === '0' ? '' : item.discount}
+                              value={item.discount === undefined || item.discount === null ? '' : item.discount}
                               onChange={(e) => handleItemChange(idx, 'discount', sanitizeDecimalInput(e.target.value))}
                               onBlur={(e) => handleItemChange(idx, 'discount', sanitizeDecimalInput(e.target.value), true)}
                             />
@@ -1456,7 +1517,7 @@ export default function CommercialDocuments({
                 inputMode="decimal"
                 placeholder="0.00"
                 className="w-full px-3 py-1.5 bg-slate-50 border border-slate-200 rounded-xl focus:outline-none focus:ring-2 focus:ring-indigo-500 text-sm font-bold font-mono text-rose-700 placeholder:text-slate-300 placeholder:font-normal"
-                value={formDiscount === 0 || formDiscount === '0' ? '' : formDiscount}
+                value={formDiscount ?? ''}
                 onChange={(e) => setFormDiscount(sanitizeDecimalInput(e.target.value))}
               />
             </div>
@@ -1487,7 +1548,7 @@ export default function CommercialDocuments({
                   inputMode="decimal"
                   placeholder="0.00"
                   className="w-full px-3 py-1.5 bg-white border border-amber-300 rounded-xl focus:outline-none focus:ring-2 focus:ring-amber-500 text-sm font-black font-mono text-amber-900 placeholder:text-amber-300 placeholder:font-normal"
-                  value={formPreviousBalance === '0' ? '' : formPreviousBalance}
+                  value={formPreviousBalance ?? ''}
                   onChange={(e) => setFormPreviousBalance(sanitizeDecimalInput(e.target.value))}
                 />
               </div>
@@ -1607,7 +1668,7 @@ export default function CommercialDocuments({
 
                 <div className="bg-white p-2.5 rounded-xl border border-emerald-200/70 flex items-center justify-between">
                   <span className="text-[11px] font-bold text-slate-500">
-                    {lang === 'ar' ? 'المتبقي (دين):' : 'Reste (Dette):'}
+                    {lang === 'ar' ? 'الباقي (كريدي):' : 'Reste (Crédit):'}
                   </span>
                   <span className="font-mono font-black text-sm text-rose-600">
                     {Math.max(
@@ -1715,12 +1776,23 @@ export default function CommercialDocuments({
 
   return (
     <div className="space-y-6 text-start max-w-7xl mx-auto animate-fade-in" dir={isRTL ? 'rtl' : 'ltr'}>
-      {/* Toast Notification */}
-      {toastMessage && (
-        <div className="fixed top-6 start-1/2 -translate-x-1/2 z-50 bg-slate-900 text-white px-5 py-3 rounded-2xl shadow-2xl flex items-center gap-2.5 text-xs font-bold animate-fade-in border border-slate-700">
-          <CheckCircle2 className="w-4 h-4 text-emerald-400 shrink-0" />
-          <span>{toastMessage}</span>
-        </div>
+      {/* Toast Notification via Portal */}
+      {toastMessage && createPortal(
+        <div dir={isRTL ? 'rtl' : 'ltr'} className="fixed inset-x-0 top-16 z-[250] flex justify-center px-4 pointer-events-none">
+          <div className={`px-5 py-3.5 rounded-2xl shadow-2xl flex items-center gap-3 text-xs sm:text-sm font-black border pointer-events-auto max-w-lg text-center ${
+            toastMessage.includes('⚠️')
+              ? 'bg-amber-600 text-white border-amber-400'
+              : 'bg-emerald-600 text-white border-emerald-400'
+          }`}>
+            {toastMessage.includes('⚠️') ? (
+              <AlertCircle className="w-5 h-5 text-amber-100 shrink-0" />
+            ) : (
+              <CheckCircle2 className="w-5 h-5 text-white shrink-0" />
+            )}
+            <span>{toastMessage}</span>
+          </div>
+        </div>,
+        document.body
       )}
 
       {/* Top Header Card */}
@@ -1971,7 +2043,7 @@ export default function CommercialDocuments({
                       <span className="font-black text-slate-800 text-xs">{doc.customerName}</span>
                     </div>
                     <p className="text-[11px] text-slate-400 font-mono">
-                      {doc.date ? new Date(doc.date).toLocaleDateString() : ''} • {doc.items.length} {lang === 'ar' ? 'مواد' : 'art.'}
+                      {doc.date ? new Date(doc.date).toLocaleString('fr-FR') : ''} • {doc.items.length} {lang === 'ar' ? 'مواد' : 'art.'}
                     </p>
                   </div>
 
@@ -2081,6 +2153,15 @@ export default function CommercialDocuments({
                   </button>
                   <button
                     type="button"
+                    onClick={() => setReceiptPreviewDoc(doc)}
+                    className="py-2 px-2.5 bg-emerald-50 hover:bg-emerald-100 text-emerald-700 rounded-xl border border-emerald-200 text-xs font-black flex items-center justify-center gap-1 transition cursor-pointer"
+                    title={lang === 'ar' ? 'فاتورة صغيرة 80mm' : 'Ticket 80mm'}
+                  >
+                    <Receipt className="w-3.5 h-3.5 shrink-0" />
+                    <span>{lang === 'ar' ? 'إيصال' : 'Ticket'}</span>
+                  </button>
+                  <button
+                    type="button"
                     onClick={() => handleExportDocPdf(doc)}
                     className="py-2 px-3 bg-rose-50 hover:bg-rose-100 text-rose-700 rounded-xl border border-rose-200 text-xs font-black flex items-center justify-center gap-1 transition cursor-pointer"
                   >
@@ -2140,8 +2221,8 @@ export default function CommercialDocuments({
                       <td className="py-3.5 px-4 font-mono font-black text-slate-900">
                         {doc.docNumber}
                       </td>
-                      <td className="py-3.5 px-4 text-slate-500">
-                        {doc.date ? new Date(doc.date).toLocaleDateString() : ''}
+                      <td className="py-3.5 px-4 text-slate-500 font-mono text-xs">
+                        {doc.date ? new Date(doc.date).toLocaleString('fr-FR') : ''}
                       </td>
                       <td className="py-3.5 px-4 text-slate-900 font-bold">
                         {doc.customerName}
@@ -2260,9 +2341,18 @@ export default function CommercialDocuments({
                             type="button"
                             onClick={() => setViewingDoc(doc)}
                             className="p-1.5 bg-slate-100 hover:bg-slate-200 text-slate-700 rounded-lg transition cursor-pointer"
-                            title={lang === 'ar' ? 'معاينة وطباعة' : 'Aperçu & Imprimer'}
+                            title={lang === 'ar' ? 'معاينة وطباعة A4' : 'Aperçu & Imprimer A4'}
                           >
                             <Eye className="w-3.5 h-3.5" />
+                          </button>
+                          <button
+                            type="button"
+                            onClick={() => setReceiptPreviewDoc(doc)}
+                            className="px-2 py-1 bg-emerald-50 hover:bg-emerald-100 text-emerald-700 border border-emerald-200 rounded-lg text-[10px] font-black flex items-center gap-1 transition cursor-pointer"
+                            title={lang === 'ar' ? 'فاتورة صغيرة 80mm' : 'Ticket 80mm'}
+                          >
+                            <Receipt className="w-3 h-3" />
+                            <span>{lang === 'ar' ? 'إيصال' : 'Ticket'}</span>
                           </button>
                           <button
                             type="button"
@@ -2390,6 +2480,20 @@ export default function CommercialDocuments({
                   </button>
                 )}
 
+                {/* 80mm Receipt button */}
+                <button
+                  type="button"
+                  onClick={() => {
+                    const doc = viewingDoc;
+                    setViewingDoc(null);
+                    setReceiptPreviewDoc(doc);
+                  }}
+                  className="px-3 py-1.5 bg-emerald-600 hover:bg-emerald-700 text-white rounded-xl text-xs font-black flex items-center gap-1.5 cursor-pointer transition shadow-xs"
+                >
+                  <Receipt className="w-3.5 h-3.5" />
+                  <span>{lang === 'ar' ? 'إيصال (80mm)' : 'Ticket (80mm)'}</span>
+                </button>
+
                 {/* PDF button */}
                 <button
                   type="button"
@@ -2407,7 +2511,7 @@ export default function CommercialDocuments({
                   className="px-3.5 py-1.5 bg-slate-900 hover:bg-slate-800 text-white rounded-xl text-xs font-black flex items-center gap-1.5 cursor-pointer transition shadow-xs"
                 >
                   <Printer className="w-3.5 h-3.5" />
-                  <span>{lang === 'ar' ? 'طباعة' : 'Imprimer'}</span>
+                  <span>{lang === 'ar' ? 'طباعة A4' : 'Imprimer A4'}</span>
                 </button>
               </div>
             </div>
@@ -2449,7 +2553,7 @@ export default function CommercialDocuments({
                   <h4 className="font-mono text-2xl font-black text-slate-900">{viewingDoc.docNumber}</h4>
                   <p className="text-xs text-slate-500 flex items-center sm:justify-end gap-1.5 font-bold">
                     <Calendar className="w-3.5 h-3.5 text-slate-400" />
-                    <span>{viewingDoc.date ? new Date(viewingDoc.date).toLocaleDateString() : ''}</span>
+                    <span>{viewingDoc.date ? new Date(viewingDoc.date).toLocaleString('fr-FR') : ''}</span>
                   </p>
                   {viewingDoc.validUntil && (
                     <p className="text-[11px] text-amber-700 font-bold">
@@ -2560,6 +2664,18 @@ export default function CommercialDocuments({
                       </div>
                     </>
                   )}
+                  {viewingDoc.docType === 'facture' && viewingDoc.amountPaid !== undefined && (
+                    <div className="flex justify-between items-center text-emerald-700 pt-1 border-t border-slate-200">
+                      <span>{lang === 'ar' ? 'المبلغ المؤدى:' : 'Montant payé:'}</span>
+                      <span className="font-mono font-bold">{Number(viewingDoc.amountPaid).toFixed(2)} {config.currency}</span>
+                    </div>
+                  )}
+                  {viewingDoc.docType === 'facture' && viewingDoc.amountPaid !== undefined && (Number(viewingDoc.total || 0) - Number(viewingDoc.amountPaid)) > 0 && (
+                    <div className="flex justify-between items-center text-rose-600 font-bold pt-1">
+                      <span>{lang === 'ar' ? 'الباقي (كريدي):' : 'Reste (Crédit):'}</span>
+                      <span className="font-mono font-black text-sm">{(Number(viewingDoc.total || 0) - Number(viewingDoc.amountPaid)).toFixed(2)} {config.currency}</span>
+                    </div>
+                  )}
                 </div>
               </div>
 
@@ -2597,6 +2713,18 @@ export default function CommercialDocuments({
               <div className="flex flex-wrap items-center gap-2">
                 <button
                   type="button"
+                  onClick={() => {
+                    const doc = viewingDoc;
+                    setViewingDoc(null);
+                    setReceiptPreviewDoc(doc);
+                  }}
+                  className="px-4 py-2 bg-emerald-600 hover:bg-emerald-700 text-white rounded-xl text-xs font-black flex items-center gap-1.5 cursor-pointer transition shadow-xs"
+                >
+                  <Receipt className="w-4 h-4" />
+                  <span>{lang === 'ar' ? 'فاتورة صغيرة (80mm)' : 'Ticket (80mm)'}</span>
+                </button>
+                <button
+                  type="button"
                   onClick={() => handleExportDocPdf(viewingDoc)}
                   className="px-4 py-2 bg-rose-600 hover:bg-rose-700 text-white rounded-xl text-xs font-black flex items-center gap-1.5 cursor-pointer transition shadow-xs"
                 >
@@ -2612,6 +2740,100 @@ export default function CommercialDocuments({
                   <span>{lang === 'ar' ? 'طباعة الوثيقة' : 'Imprimer'}</span>
                 </button>
               </div>
+            </div>
+          </div>
+        </div>,
+        document.body
+      )}
+
+      {/* MODAL 2B: 80MM THERMAL RECEIPT PREVIEW & PRINT */}
+      {receiptPreviewDoc && createPortal(
+        <div
+          className="fixed inset-0 bg-slate-900/75 backdrop-blur-xs flex items-center justify-center p-2 sm:p-4 z-[120] overflow-y-auto safe-modal-overlay"
+          onClick={() => setReceiptPreviewDoc(null)}
+        >
+          <div
+            onClick={(e) => e.stopPropagation()}
+            className="bg-white rounded-2xl shadow-2xl border border-slate-200 w-full max-w-[360px] max-h-[92vh] overflow-hidden animate-fade-in flex flex-col my-auto"
+          >
+            <div className="flex justify-between items-center bg-slate-900 text-white px-4 py-3 border-b border-slate-800 shrink-0">
+              <div className="flex items-center gap-2">
+                <Receipt className="w-4 h-4 text-emerald-400" />
+                <span className="font-bold text-xs">
+                  {lang === 'ar' ? 'معاينة فاتورة صغيرة (80mm)' : 'Ticket de Caisse (80mm)'}
+                </span>
+              </div>
+              <button
+                type="button"
+                onClick={() => setReceiptPreviewDoc(null)}
+                className="p-1 hover:bg-slate-800 text-slate-400 hover:text-white rounded-lg transition cursor-pointer"
+              >
+                <X className="w-4 h-4" />
+              </button>
+            </div>
+
+            <div className="p-4 overflow-y-auto flex-1 bg-slate-100 flex justify-center">
+              <div
+                className="bg-white shadow-md border border-slate-200 p-3 w-full max-w-[302px] text-black"
+                dangerouslySetInnerHTML={{
+                  __html: buildUnified80mmReceiptHtml(
+                    {
+                      invoiceNumber: receiptPreviewDoc.docNumber,
+                      date: receiptPreviewDoc.date,
+                      customerName: receiptPreviewDoc.customerName,
+                      sellerName: receiptPreviewDoc.sellerName || 'admin',
+                      docTitle: getDocTypeLabel(receiptPreviewDoc.docType),
+                      docNumberLabel: lang === 'ar' ? 'رقم الوثيقة:' : 'N°:',
+                      partyLabel: lang === 'ar' ? 'الزبون :' : 'Client :',
+                      items: receiptPreviewDoc.items.map((it) => ({
+                        productName: it.productName,
+                        quantity: it.quantity,
+                        sellingPrice: it.sellingPrice,
+                        discount: it.discount,
+                        total: it.total,
+                      })),
+                      subtotal: receiptPreviewDoc.subtotal,
+                      discount: receiptPreviewDoc.discount,
+                      tax: receiptPreviewDoc.tax,
+                      total: receiptPreviewDoc.total,
+                      amountPaid:
+                        receiptPreviewDoc.amountPaid !== undefined
+                          ? receiptPreviewDoc.amountPaid
+                          : receiptPreviewDoc.total,
+                      previousBalance: receiptPreviewDoc.previousBalance,
+                    },
+                    config,
+                    lang,
+                    t.invoice.thankYou
+                  ),
+                }}
+              />
+            </div>
+
+            <div className="bg-white p-3 border-t border-slate-200 flex gap-2 shrink-0">
+              <button
+                type="button"
+                onClick={() => triggerReceipt80mmPrint(receiptPreviewDoc)}
+                className="flex-1 py-2.5 bg-indigo-600 hover:bg-indigo-700 text-white font-bold rounded-xl text-xs transition flex items-center justify-center gap-1.5 shadow-sm cursor-pointer"
+              >
+                <Printer className="w-4 h-4" />
+                <span>{lang === 'ar' ? 'طباعة 80mm' : 'Imprimer 80mm'}</span>
+              </button>
+              <button
+                type="button"
+                onClick={() => handleExportDocPdf(receiptPreviewDoc, '80mm')}
+                className="py-2.5 px-3 bg-rose-600 hover:bg-rose-700 text-white font-bold rounded-xl text-xs transition flex items-center justify-center gap-1 shadow-sm cursor-pointer"
+              >
+                <FileDown className="w-4 h-4" />
+                <span>PDF</span>
+              </button>
+              <button
+                type="button"
+                onClick={() => setReceiptPreviewDoc(null)}
+                className="py-2.5 px-3 bg-slate-100 hover:bg-slate-200 text-slate-700 font-bold rounded-xl text-xs transition cursor-pointer"
+              >
+                {lang === 'ar' ? 'إغلاق' : 'Fermer'}
+              </button>
             </div>
           </div>
         </div>,

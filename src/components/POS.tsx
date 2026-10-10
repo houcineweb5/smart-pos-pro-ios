@@ -1226,7 +1226,6 @@ export default function POS({ products, customers, config, onAddTransaction, onR
                   } else {
                     setPricingTier('installment');
                     setIsWholesale(false);
-                    setPaymentMethod('debt');
                     if (!notes.includes('تقسيط')) setNotes(notes ? `${notes} | تقسيط` : 'تقسيط');
                   }
                 }}
@@ -1625,7 +1624,7 @@ export default function POS({ products, customers, config, onAddTransaction, onR
 
                     {/* Product Count badge: عدد المنتجات */}
                     <span className="text-[11px] font-black text-indigo-700 bg-white border border-indigo-100 px-2.5 py-1.5 rounded-lg shadow-2xs whitespace-nowrap shrink-0">
-                      {lang === 'ar' ? `عدد المنتجات: ${cart.reduce((s, it) => s + parseDecimal(it.quantity, 0), 0)}` : `Articles: ${cart.reduce((s, it) => s + parseDecimal(it.quantity, 0), 0)}`}
+                      {lang === 'ar' ? `عدد المنتجات: ${cart.length}` : `Articles: ${cart.length}`}
                     </span>
                   </div>
                 </div>
@@ -1634,7 +1633,7 @@ export default function POS({ products, customers, config, onAddTransaction, onR
               <div className="bg-rose-50/90 p-2.5 rounded-xl border border-rose-200/80 shadow-2xs flex flex-wrap items-center justify-between gap-2 text-xs font-black text-rose-800">
                 <span>{lang === 'ar' ? 'البيع بالدين (تسجيل آجل)' : 'Debt sale (credit)'}</span>
                 <span className="text-[11px] font-black bg-white border border-rose-200 text-rose-800 px-2.5 py-1 rounded-lg shadow-2xs">
-                  {lang === 'ar' ? `عدد المنتجات: ${cart.reduce((s, it) => s + parseDecimal(it.quantity, 0), 0)}` : `Articles: ${cart.reduce((s, it) => s + parseDecimal(it.quantity, 0), 0)}`}
+                  {lang === 'ar' ? `عدد المنتجات: ${cart.length}` : `Articles: ${cart.length}`}
                 </span>
               </div>
             )}
@@ -1839,7 +1838,7 @@ export default function POS({ products, customers, config, onAddTransaction, onR
           >
             <div className="flex items-center gap-2.5 min-w-0">
               <div className="w-8 h-8 rounded-xl bg-indigo-600 flex items-center justify-center font-mono font-black text-xs shrink-0 shadow-xs">
-                {cart.reduce((s, it) => s + parseDecimal(it.quantity, 0), 0)}
+                {cart.length}
               </div>
               <div className="text-start min-w-0">
                 <span className="text-xs font-black block truncate">

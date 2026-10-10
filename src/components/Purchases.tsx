@@ -32,7 +32,7 @@ import {
   ArrowRight
 } from 'lucide-react';
 import { StoreConfig } from '../types';
-import { printHtmlContent, exportStructuredPdf } from '../utils/printService';
+import { printHtmlContent, exportStructuredPdf, buildUnified80mmReceiptHtml } from '../utils/printService';
 import { parseDecimal, sanitizeDecimalInput } from '../utils/numberInput';
 
 interface PurchasesProps {
@@ -60,11 +60,13 @@ export default function Purchases({
   const isRTL = t.direction === 'rtl';
 
   const [search, setSearch] = useState('');
+  const [selectedStatus, setSelectedStatus] = useState<string>('all');
   
   // Modals / forms state
   const [isAddingPurchase, setIsAddingPurchase] = useState(false);
   const [isSettlingDebt, setIsSettlingDebt] = useState(false);
   const [viewingPurchase, setViewingPurchase] = useState<Purchase | null>(null);
+  const [receiptPreviewPurchase, setReceiptPreviewPurchase] = useState<Purchase | null>(null);
   const [deletingPurchaseId, setDeletingPurchaseId] = useState<string | null>(null);
   const [overpayTarget, setOverpayTarget] = useState<{ supplierId: string; amount: number; notes?: string } | null>(null);
 
@@ -145,11 +147,12 @@ export default function Purchases({
   // Filtered purchases
   const filteredPurchases = purchases.filter((p) => {
     const q = search.toLowerCase();
-    return (
+    const matchesSearch =
       p.purchaseNumber.toLowerCase().includes(q) ||
       p.supplierName.toLowerCase().includes(q) ||
-      (p.notes && p.notes.toLowerCase().includes(q))
-    );
+      (p.notes && p.notes.toLowerCase().includes(q));
+    const matchesStatus = selectedStatus === 'all' || p.status === selectedStatus;
+    return matchesSearch && matchesStatus;
   });
 
   // Handle adding an item to the purchase cart form (Inserted at TOP)
@@ -369,11 +372,13 @@ export default function Purchases({
     }
   };
 
-  const buildPurchasePdfMeta = (p: Purchase) => {
+  const buildPurchasePdfMeta = (p: Purchase, mode: 'a4' | '80mm' = 'a4') => {
     const supplierObj = suppliers.find(s => s.id === p.supplierId);
     const billDebt = Math.max(0, p.total - p.amountPaid);
     return {
       title: lang === 'ar' ? 'فاتورة مشتريات رسمية' : 'Bon de Réception - Achat',
+      docNumberLabel: lang === 'ar' ? 'رقم الفاتورة:' : 'N°:',
+      partyLabel: lang === 'ar' ? 'المورد :' : 'Fournisseur :',
       docNumber: p.purchaseNumber,
       date: p.date ? new Date(p.date).toLocaleString('fr-FR') : '',
       storeName: config.name || 'المتجر',
@@ -384,8 +389,9 @@ export default function Purchases({
       customerLabel: lang === 'ar' ? 'المورد' : 'Fournisseur',
       customerName: p.supplierName,
       customerPhone: supplierObj?.phone,
+      sellerName: 'admin',
       currency: config.currency,
-      mode: 'a4' as const,
+      mode,
       isRTL,
       items: (p.items || []).map(it => ({
         name: it.productName,
@@ -402,8 +408,43 @@ export default function Purchases({
     };
   };
 
-  const handleExportPurchasePdf = async (p: Purchase) => {
-    await exportStructuredPdf(buildPurchasePdfMeta(p));
+  const handleExportPurchasePdf = async (p: Purchase, mode: 'a4' | '80mm' = 'a4') => {
+    await exportStructuredPdf(buildPurchasePdfMeta(p, mode));
+  };
+
+  const triggerPurchase80mmPrint = (p: Purchase) => {
+    const receiptHtml = buildUnified80mmReceiptHtml(
+      {
+        invoiceNumber: p.purchaseNumber,
+        date: p.date,
+        customerName: p.supplierName,
+        sellerName: 'admin',
+        docTitle: lang === 'ar' ? 'فاتورة مشتريات' : "Bon d'Achat",
+        docNumberLabel: lang === 'ar' ? 'رقم الفاتورة:' : 'N°:',
+        partyLabel: lang === 'ar' ? 'المورد :' : 'Fournisseur :',
+        items: (p.items || []).map((it) => ({
+          productName: it.productName,
+          quantity: it.quantity,
+          sellingPrice: it.purchasePrice,
+          total: Number(it.purchasePrice || 0) * Number(it.quantity || 1),
+        })),
+        subtotal: p.total,
+        total: p.total,
+        amountPaid: p.amountPaid,
+      },
+      config,
+      lang,
+      lang === 'ar' ? 'تمت مراجعة وقبول السلع المستلمة بالمخزن' : 'Procured and verified in good condition'
+    );
+    printHtmlContent(
+      {
+        title: `Purchase Receipt ${p.purchaseNumber}`,
+        html: receiptHtml,
+        isRTL,
+        mode: '80mm',
+      },
+      buildPurchasePdfMeta(p, '80mm')
+    );
   };
 
   const triggerPrintLayout = (targetPo?: Purchase) => {
@@ -499,8 +540,8 @@ export default function Purchases({
         </div>
       </div>
 
-      {/* Main filter & Bills table card */}
-      <div className="bg-white rounded-3xl border border-slate-100 shadow-xs p-4 sm:p-6 space-y-6 text-start">
+      {/* Main filter & Bills card */}
+      <div className="bg-white rounded-3xl border border-slate-100 shadow-xs p-4 sm:p-6 space-y-4 text-start">
         <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4">
           <div>
             <h2 className="text-lg font-black text-slate-800">{t.purchase.title}</h2>
@@ -517,15 +558,156 @@ export default function Purchases({
               id="purchases-table-search"
               type="text"
               placeholder={t.purchase.search}
-              className={`w-full py-2 ${isRTL ? 'pr-9 pl-3' : 'pl-9 pr-3'} bg-slate-50 border border-slate-200 rounded-xl focus:outline-none focus:ring-2 focus:ring-indigo-500 focus:bg-white text-xs font-semibold`}
+              className={`w-full py-2.5 ${isRTL ? 'pr-9 pl-3' : 'pl-9 pr-3'} bg-slate-50 border border-slate-200 rounded-xl focus:outline-none focus:ring-2 focus:ring-indigo-500 focus:bg-white text-xs font-semibold`}
               value={search}
               onChange={(e) => setSearch(e.target.value)}
             />
           </div>
         </div>
 
-        {/* Historic Purchases Table */}
-        <div className="overflow-x-auto rounded-xl border border-slate-100">
+        {/* Status filters - Identical to Sales Invoices */}
+        <div className="flex flex-wrap gap-1.5 bg-slate-100 p-1.5 rounded-xl border border-slate-200/60">
+          {['all', 'paid', 'partial', 'unpaid'].map((stat) => (
+            <button
+              key={stat}
+              type="button"
+              onClick={() => setSelectedStatus(stat)}
+              className={`flex-1 sm:flex-initial px-3 py-1.5 rounded-lg text-[11px] sm:text-xs font-bold transition whitespace-nowrap text-center cursor-pointer ${
+                selectedStatus === stat
+                  ? 'bg-white text-indigo-600 shadow-xs'
+                  : 'text-slate-600 hover:text-slate-900'
+              }`}
+            >
+              {stat === 'all'
+                ? t.invoice.allStatus
+                : stat === 'paid'
+                ? (lang === 'ar' ? 'مدفوع بالكامل' : 'Payé')
+                : stat === 'partial'
+                ? (lang === 'ar' ? 'مدفوع جزئياً' : 'Partiel')
+                : (lang === 'ar' ? 'آجل (دين)' : 'Non payé')}
+            </button>
+          ))}
+        </div>
+
+        {/* MOBILE / IPHONE CARDS VIEW (< md) - Matches Sales Invoices Mobile Cards Layout */}
+        <div className="md:hidden space-y-3">
+          {filteredPurchases.length > 0 ? (
+            filteredPurchases.map((p) => {
+              const pTotal = Number(p.total) || 0;
+              const pPaid = Number(p.amountPaid) || 0;
+              const billDebt = Math.max(0, pTotal - pPaid);
+
+              return (
+                <div
+                  key={p.id}
+                  className="bg-white rounded-2xl border border-slate-200/90 p-3.5 shadow-2xs space-y-3"
+                >
+                  {/* Row 1: Purchase Number, Supplier Name & Date + Status Badge */}
+                  <div className="flex items-start justify-between gap-2 border-b border-slate-100 pb-2.5">
+                    <div className="space-y-0.5 text-start">
+                      <div className="flex items-center gap-1.5 flex-wrap">
+                        <span className="font-mono font-black text-sm text-indigo-700 bg-indigo-50 px-2 py-0.5 rounded-lg border border-indigo-100">
+                          {p.purchaseNumber}
+                        </span>
+                        <span className="font-black text-slate-800 text-xs">{p.supplierName}</span>
+                      </div>
+                      <p className="text-[11px] text-slate-400 font-mono">
+                        {p.date ? new Date(p.date).toLocaleString('fr-FR') : ''}
+                      </p>
+                    </div>
+
+                    <div className="flex flex-col items-end gap-1 shrink-0">
+                      {p.status === 'paid' && (
+                        <span className="px-2.5 py-0.5 bg-emerald-50 text-emerald-700 text-[10px] font-black rounded-full inline-block border border-emerald-200">
+                          {lang === 'ar' ? 'مدفوع بالكامل' : lang === 'fr' ? 'Payé' : 'Paid'}
+                        </span>
+                      )}
+                      {p.status === 'partial' && (
+                        <span className="px-2.5 py-0.5 bg-amber-50 text-amber-700 text-[10px] font-black rounded-full inline-block border border-amber-200">
+                          {lang === 'ar' ? 'مدفوع جزئياً' : lang === 'fr' ? 'Partiel' : 'Partial'}
+                        </span>
+                      )}
+                      {p.status === 'unpaid' && (
+                        <span className="px-2.5 py-0.5 bg-rose-50 text-rose-700 text-[10px] font-black rounded-full inline-block border border-rose-200">
+                          {lang === 'ar' ? 'آجل (دين)' : lang === 'fr' ? 'À crédit' : 'Unpaid'}
+                        </span>
+                      )}
+                    </div>
+                  </div>
+
+                  {/* Row 2: Financial Figures (3-column grid identical to Sales Invoices) */}
+                  <div className="grid grid-cols-3 gap-2 bg-slate-50 p-2.5 rounded-xl border border-slate-100 text-center text-xs">
+                    <div>
+                      <span className="text-[10px] text-slate-400 font-bold block">{t.purchase.total}</span>
+                      <span className="font-mono font-black text-slate-900">
+                        {pTotal.toFixed(2)} <span className="text-[9px] font-normal">{config.currency}</span>
+                      </span>
+                    </div>
+                    <div>
+                      <span className="text-[10px] text-slate-400 font-bold block">{t.purchase.amountPaid}</span>
+                      <span className="font-mono font-bold text-emerald-700">
+                        {pPaid.toFixed(2)} <span className="text-[9px] font-normal">{config.currency}</span>
+                      </span>
+                    </div>
+                    <div>
+                      <span className="text-[10px] text-slate-400 font-bold block">{t.purchase.debtToSupplier}</span>
+                      <span className={`font-mono font-bold ${billDebt > 0 ? 'text-rose-600' : 'text-slate-400'}`}>
+                        {billDebt.toFixed(2)} <span className="text-[9px] font-normal">{config.currency}</span>
+                      </span>
+                    </div>
+                  </div>
+
+                  {/* Row 3: Action Buttons Grid (Fits cleanly on iPhone like Sales Invoices) */}
+                  <div className="flex flex-wrap items-center gap-1.5 pt-0.5">
+                    <button
+                      type="button"
+                      onClick={() => setViewingPurchase(p)}
+                      className="flex-1 min-w-[90px] py-2 px-2.5 bg-indigo-50 hover:bg-indigo-100 text-indigo-700 rounded-xl border border-indigo-200 text-xs font-black flex items-center justify-center gap-1.5 transition cursor-pointer"
+                    >
+                      <Eye className="w-3.5 h-3.5 shrink-0" />
+                      <span>{lang === 'ar' ? 'التفاصيل' : t.invoice.view}</span>
+                    </button>
+
+                    <button
+                      type="button"
+                      onClick={() => setReceiptPreviewPurchase(p)}
+                      className="flex-1 min-w-[85px] py-2 px-2.5 bg-slate-900 hover:bg-slate-800 text-white rounded-xl text-xs font-black flex items-center justify-center gap-1.5 transition cursor-pointer"
+                    >
+                      <Printer className="w-3.5 h-3.5 text-emerald-400 shrink-0" />
+                      <span>{lang === 'ar' ? 'إيصال' : 'Receipt'}</span>
+                    </button>
+
+                    <button
+                      type="button"
+                      onClick={() => handleExportPurchasePdf(p, 'a4')}
+                      className="py-2 px-2.5 bg-rose-50 hover:bg-rose-100 text-rose-700 rounded-xl border border-rose-200 text-xs font-black flex items-center justify-center gap-1 transition cursor-pointer"
+                    >
+                      <FileDown className="w-3.5 h-3.5 shrink-0" />
+                      <span>PDF</span>
+                    </button>
+
+                    <button
+                      type="button"
+                      onClick={() => setDeletingPurchaseId(p.id)}
+                      className="p-2 text-rose-600 bg-rose-50/60 hover:bg-rose-100 rounded-xl border border-rose-200/70 transition cursor-pointer"
+                      title={lang === 'ar' ? 'حذف الفاتورة' : 'Delete'}
+                    >
+                      <Trash2 className="w-4 h-4" />
+                    </button>
+                  </div>
+                </div>
+              );
+            })
+          ) : (
+            <div className="bg-white rounded-2xl border border-slate-100 text-center py-12 text-slate-400">
+              <Receipt className="w-10 h-10 stroke-[1.2] mx-auto text-slate-300 mb-2" />
+              <p className="text-xs font-bold">{lang === 'ar' ? 'لا يوجد فواتير تتبع مطابقة.' : 'No purchase records found.'}</p>
+            </div>
+          )}
+        </div>
+
+        {/* Historic Purchases Desktop Table (md+) */}
+        <div className="hidden md:block overflow-x-auto rounded-xl border border-slate-100">
           <table className="w-full text-xs text-left" id="purchases-table-control">
             <thead className="bg-slate-50 text-slate-400 font-black uppercase text-[10px] tracking-wider border-b border-slate-100 text-center">
               <tr>
@@ -587,6 +769,15 @@ export default function Purchases({
                             title={lang === 'ar' ? 'معاينة' : 'Preview'}
                           >
                             <Eye className="w-3.5 h-3.5" />
+                          </button>
+                          <button
+                            id={`receipt-po-${p.id}`}
+                            onClick={() => setReceiptPreviewPurchase(p)}
+                            className="p-1 px-2 bg-emerald-50 hover:bg-emerald-100 text-emerald-700 border border-emerald-200 rounded-lg transition text-[10px] font-black flex items-center gap-1 cursor-pointer"
+                            title={lang === 'ar' ? 'فاتورة صغيرة 80mm' : 'Receipt 80mm'}
+                          >
+                            <Receipt className="w-3 h-3" />
+                            <span>{lang === 'ar' ? 'إيصال' : 'Receipt'}</span>
                           </button>
                           <button
                             id={`pdf-po-${p.id}`}
@@ -1134,6 +1325,19 @@ export default function Purchases({
 
                 <div className="flex flex-wrap items-center gap-2">
                   <button
+                    type="button"
+                    onClick={() => {
+                      const po = viewingPurchase;
+                      setViewingPurchase(null);
+                      setReceiptPreviewPurchase(po);
+                    }}
+                    className="px-3.5 py-2 bg-emerald-600 hover:bg-emerald-700 text-white rounded-xl text-xs font-black flex items-center gap-1.5 cursor-pointer transition shadow-xs"
+                  >
+                    <Receipt className="w-4 h-4" />
+                    <span>{lang === 'ar' ? 'إيصال (80mm)' : 'Receipt (80mm)'}</span>
+                  </button>
+
+                  <button
                     id="pdf-btn-purchase"
                     type="button"
                     onClick={() => handleExportPurchasePdf(viewingPurchase)}
@@ -1152,7 +1356,7 @@ export default function Purchases({
                     title={lang === 'ar' ? 'طباعة الفاتورة' : 'Print Invoice'}
                   >
                     <Printer className="w-4 h-4" />
-                    <span>{lang === 'ar' ? 'طباعة' : 'Print'}</span>
+                    <span>{lang === 'ar' ? 'طباعة A4' : 'Print A4'}</span>
                   </button>
                 </div>
               </div>
@@ -1434,6 +1638,18 @@ export default function Purchases({
                 <div className="flex flex-wrap items-center gap-2">
                   <button
                     type="button"
+                    onClick={() => {
+                      const po = viewingPurchase;
+                      setViewingPurchase(null);
+                      setReceiptPreviewPurchase(po);
+                    }}
+                    className="px-4 py-2 bg-emerald-600 hover:bg-emerald-700 text-white rounded-xl text-xs font-black flex items-center gap-1.5 cursor-pointer transition shadow-xs"
+                  >
+                    <Receipt className="w-4 h-4" />
+                    <span>{lang === 'ar' ? 'فاتورة صغيرة (80mm)' : 'Receipt (80mm)'}</span>
+                  </button>
+                  <button
+                    type="button"
                     onClick={() => handleExportPurchasePdf(viewingPurchase)}
                     className="px-4 py-2 bg-rose-600 hover:bg-rose-700 text-white rounded-xl text-xs font-black flex items-center gap-1.5 cursor-pointer transition shadow-xs"
                   >
@@ -1456,6 +1672,93 @@ export default function Purchases({
           document.body
         );
       })()}
+
+      {/* MODAL: 80MM THERMAL RECEIPT PREVIEW & PRINT FOR PURCHASES */}
+      {receiptPreviewPurchase && createPortal(
+        <div
+          className="fixed inset-0 bg-slate-900/75 backdrop-blur-xs flex items-center justify-center p-2 sm:p-4 z-[120] overflow-y-auto safe-modal-overlay"
+          onClick={() => setReceiptPreviewPurchase(null)}
+        >
+          <div
+            onClick={(e) => e.stopPropagation()}
+            className="bg-white rounded-2xl shadow-2xl border border-slate-200 w-full max-w-[360px] max-h-[92vh] overflow-hidden animate-fade-in flex flex-col my-auto"
+          >
+            <div className="flex justify-between items-center bg-slate-900 text-white px-4 py-3 border-b border-slate-800 shrink-0">
+              <div className="flex items-center gap-2">
+                <Receipt className="w-4 h-4 text-emerald-400" />
+                <span className="font-bold text-xs">
+                  {lang === 'ar' ? 'معاينة فاتورة شراء صغيرة (80mm)' : 'Ticket Achat (80mm)'}
+                </span>
+              </div>
+              <button
+                type="button"
+                onClick={() => setReceiptPreviewPurchase(null)}
+                className="p-1 hover:bg-slate-800 text-slate-400 hover:text-white rounded-lg transition cursor-pointer"
+              >
+                <X className="w-4 h-4" />
+              </button>
+            </div>
+
+            <div className="p-4 overflow-y-auto flex-1 bg-slate-100 flex justify-center">
+              <div
+                className="bg-white shadow-md border border-slate-200 p-3 w-full max-w-[302px] text-black"
+                dangerouslySetInnerHTML={{
+                  __html: buildUnified80mmReceiptHtml(
+                    {
+                      invoiceNumber: receiptPreviewPurchase.purchaseNumber,
+                      date: receiptPreviewPurchase.date,
+                      customerName: receiptPreviewPurchase.supplierName,
+                      sellerName: 'admin',
+                      docTitle: lang === 'ar' ? 'فاتورة مشتريات' : "Bon d'Achat",
+                      docNumberLabel: lang === 'ar' ? 'رقم الفاتورة:' : 'N°:',
+                      partyLabel: lang === 'ar' ? 'المورد :' : 'Fournisseur :',
+                      items: (receiptPreviewPurchase.items || []).map((it) => ({
+                        productName: it.productName,
+                        quantity: it.quantity,
+                        sellingPrice: it.purchasePrice,
+                        total: Number(it.purchasePrice || 0) * Number(it.quantity || 1),
+                      })),
+                      subtotal: receiptPreviewPurchase.total,
+                      total: receiptPreviewPurchase.total,
+                      amountPaid: receiptPreviewPurchase.amountPaid,
+                    },
+                    config,
+                    lang,
+                    lang === 'ar' ? 'تمت مراجعة وقبول السلع المستلمة بالمخزن' : 'Procured and verified in good condition'
+                  ),
+                }}
+              />
+            </div>
+
+            <div className="bg-white p-3 border-t border-slate-200 flex gap-2 shrink-0">
+              <button
+                type="button"
+                onClick={() => triggerPurchase80mmPrint(receiptPreviewPurchase)}
+                className="flex-1 py-2.5 bg-indigo-600 hover:bg-indigo-700 text-white font-bold rounded-xl text-xs transition flex items-center justify-center gap-1.5 shadow-sm cursor-pointer"
+              >
+                <Printer className="w-4 h-4" />
+                <span>{lang === 'ar' ? 'طباعة 80mm' : 'Imprimer 80mm'}</span>
+              </button>
+              <button
+                type="button"
+                onClick={() => handleExportPurchasePdf(receiptPreviewPurchase, '80mm')}
+                className="py-2.5 px-3 bg-rose-600 hover:bg-rose-700 text-white font-bold rounded-xl text-xs transition flex items-center justify-center gap-1 shadow-sm cursor-pointer"
+              >
+                <FileDown className="w-4 h-4" />
+                <span>PDF</span>
+              </button>
+              <button
+                type="button"
+                onClick={() => setReceiptPreviewPurchase(null)}
+                className="py-2.5 px-3 bg-slate-100 hover:bg-slate-200 text-slate-700 font-bold rounded-xl text-xs transition cursor-pointer"
+              >
+                {lang === 'ar' ? 'إغلاق' : 'Fermer'}
+              </button>
+            </div>
+          </div>
+        </div>,
+        document.body
+      )}
 
       {/* CUSTOM OVERLAY MODAL: Purchase Invoice Deletion Confirmation */}
       {deletingPurchaseId && createPortal(

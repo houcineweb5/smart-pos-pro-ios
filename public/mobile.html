@@ -1023,7 +1023,7 @@
 
     function renderMobileCart() {
       const cur = (storeData.config && storeData.config.currency) || 'د.ج';
-      document.getElementById('pos-cart-count').textContent = mobileCart.reduce((s, i) => s + i.quantity, 0);
+      document.getElementById('pos-cart-count').textContent = mobileCart.length;
       const container = document.getElementById('pos-cart-items');
 
       if (mobileCart.length === 0) {
@@ -1207,7 +1207,7 @@
         <div class="product-item">
           <div>
             <div style="font-weight:900; font-size:12px;">${inv.invoiceNumber} - ${inv.customerName}</div>
-            <div style="font-size:10px; color:#64748b;">${inv.date ? new Date(inv.date).toLocaleString('ar-DZ') : ''} | المنتجات: ${(inv.items || []).reduce((s, i) => s + Number(i.quantity || 1), 0)}</div>
+            <div style="font-size:10px; color:#64748b;">${inv.date ? new Date(inv.date).toLocaleString('ar-DZ') : ''} | المنتجات: ${(inv.items || []).length}</div>
           </div>
           <div style="font-weight:900; font-family:Arial; color:#0f172a;">
             ${Number(inv.total || 0).toFixed(2)} ${cur}

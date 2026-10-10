@@ -234,7 +234,7 @@ export default function UsersManagement({
     setPassword(emp.passwordHash);
     setRole(emp.role);
     setAllowedTabs(emp.allowedTabs || []);
-    setPhotoUrl(emp.photoUrl || '');
+    setPhotoUrl(emp.id === 'emp-admin' || emp.username === 'admin' ? '/sp-icon.png' : emp.photoUrl || '');
     setIsAddingNew(true);
   };
 
@@ -273,6 +273,7 @@ export default function UsersManagement({
       return;
     }
 
+    const isAdminUser = editingEmployee?.id === 'emp-admin' || username.trim().toLowerCase() === 'admin';
     const targetEmployee: Employee = {
       id: editingEmployee?.id || 'emp_' + Date.now(),
       username: username.trim().toLowerCase(),
@@ -280,7 +281,7 @@ export default function UsersManagement({
       passwordHash: password,
       role,
       allowedTabs,
-      photoUrl,
+      photoUrl: isAdminUser ? '/sp-icon.png' : photoUrl,
       createdAt: editingEmployee?.createdAt || new Date().toISOString(),
     };
 
@@ -531,8 +532,12 @@ export default function UsersManagement({
                 <div key={emp.id} className="p-4 space-y-3 hover:bg-slate-50/50 transition text-start">
                   <div className="flex items-start justify-between gap-3">
                     <div className="flex items-center gap-2.5 min-w-0">
-                      {emp.photoUrl ? (
-                        <img src={emp.photoUrl} alt={emp.name} className="w-10 h-10 rounded-full object-cover border border-slate-200 shrink-0" />
+                      {emp.id === 'emp-admin' || emp.username === 'admin' || emp.photoUrl ? (
+                        <img
+                          src={emp.id === 'emp-admin' || emp.username === 'admin' ? '/sp-icon.png' : emp.photoUrl}
+                          alt={emp.name}
+                          className="w-10 h-10 rounded-full object-cover border border-slate-200 shrink-0"
+                        />
                       ) : (
                         <div className={`w-10 h-10 rounded-full font-black text-xs flex items-center justify-center border uppercase tracking-wider shrink-0 ${
                           emp.role === 'admin' ? 'bg-indigo-50 border-indigo-200 text-indigo-700' : 'bg-slate-100 border-slate-200 text-slate-600'
@@ -635,8 +640,12 @@ export default function UsersManagement({
                       {/* Name Card */}
                       <td className="p-4 whitespace-nowrap">
                         <div className="flex items-center gap-2.5 text-start">
-                          {emp.photoUrl ? (
-                            <img src={emp.photoUrl} alt={emp.name} className="w-9 h-9 rounded-full object-cover border border-slate-200" />
+                          {emp.id === 'emp-admin' || emp.username === 'admin' || emp.photoUrl ? (
+                            <img
+                              src={emp.id === 'emp-admin' || emp.username === 'admin' ? '/sp-icon.png' : emp.photoUrl}
+                              alt={emp.name}
+                              className="w-9 h-9 rounded-full object-cover border border-slate-200"
+                            />
                           ) : (
                             <div className={`w-9 h-9 rounded-full font-black text-xs flex items-center justify-center border uppercase tracking-wider ${
                               emp.role === 'admin' ? 'bg-indigo-50 border-indigo-200 text-indigo-700' : 'bg-slate-100 border-slate-200 text-slate-600'

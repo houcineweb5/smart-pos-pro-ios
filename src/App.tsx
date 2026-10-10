@@ -119,7 +119,11 @@ export default function App() {
                 parsed.allowedTabs.push(tab);
               }
             });
-            if (parsed.role === 'admin') {
+            if (parsed.role === 'admin' || parsed.username === 'admin') {
+              parsed.photoUrl = '/sp-icon.png';
+              if (parsed.passwordHash === 'admin') {
+                parsed.passwordHash = 'smartpos';
+              }
               if (!parsed.allowedTabs.includes('repairs')) {
                 parsed.allowedTabs.push('repairs');
               }
@@ -187,6 +191,19 @@ export default function App() {
       (p: Product) => p && !deletedSet.has(p.id)
     );
     let changed = docs.length !== rawDocs.length || invs.length !== rawInvs.length;
+
+    const rawEmployees: Employee[] = Array.isArray(dataset.employees) ? dataset.employees : [];
+    const normalizedEmployees = rawEmployees.map((emp) => {
+      if (emp && (emp.id === 'emp-admin' || emp.username === 'admin')) {
+        const nextPwd = emp.passwordHash === 'admin' ? 'smartpos' : emp.passwordHash;
+        const nextPhoto = '/sp-icon.png';
+        if (emp.passwordHash !== nextPwd || emp.photoUrl !== nextPhoto) {
+          changed = true;
+          return { ...emp, passwordHash: nextPwd, photoUrl: nextPhoto };
+        }
+      }
+      return emp;
+    });
 
     const findProd = (it: any) => {
       if (!it.productId) return undefined;
@@ -257,6 +274,7 @@ export default function App() {
     }
     return {
       ...dataset,
+      employees: normalizedEmployees,
       products: prods,
       invoices: invs,
       commercialDocuments: updatedDocs,
@@ -537,7 +555,8 @@ export default function App() {
         finalEmp.allowedTabs.push(tab);
       }
     });
-    if (finalEmp.role === 'admin') {
+    if (finalEmp.role === 'admin' || finalEmp.username === 'admin') {
+      finalEmp.photoUrl = '/sp-icon.png';
       if (!finalEmp.allowedTabs.includes('repairs')) {
         finalEmp.allowedTabs = [...finalEmp.allowedTabs, 'repairs'];
       }
@@ -2294,8 +2313,12 @@ export default function App() {
                   {currentUser.role === 'admin' ? (lang === 'ar' ? 'مدير عام الصلاحيات' : 'Admin') : (lang === 'ar' ? 'موظف مبيعات' : 'Staff')}
                 </p>
               </div>
-              {currentUser.photoUrl ? (
-                <img src={currentUser.photoUrl} alt={currentUser.name} className="w-7 h-7 sm:w-8 sm:h-8 rounded-full object-cover border border-slate-200" />
+              {currentUser.role === 'admin' || currentUser.username === 'admin' || currentUser.photoUrl ? (
+                <img
+                  src={currentUser.role === 'admin' || currentUser.username === 'admin' ? '/sp-icon.png' : currentUser.photoUrl}
+                  alt={currentUser.name}
+                  className="w-7 h-7 sm:w-8 sm:h-8 rounded-full object-cover border border-slate-200"
+                />
               ) : (
                 <div className="w-7 h-7 sm:w-8 sm:h-8 rounded-full bg-slate-100 border border-slate-200 flex items-center justify-center font-black text-xs text-slate-700 uppercase">
                   {currentUser.name.slice(0, 2)}
@@ -2521,12 +2544,13 @@ export default function App() {
             <MobileAndCloudSync
               allData={data}
               onUpdateAllData={(merged) => {
-                setData(merged);
-                saveStoredData(merged);
+                const reconciled = reconcileFacturesDataset(merged);
+                setData(reconciled);
+                saveStoredData(reconciled);
                 fetch('/api/save', {
                   method: 'POST',
                   headers: { 'Content-Type': 'application/json' },
-                  body: JSON.stringify(merged),
+                  body: JSON.stringify(reconciled),
                 }).catch(() => {});
               }}
               config={config}

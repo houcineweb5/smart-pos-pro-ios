@@ -264,7 +264,7 @@ export default function CustomerLedger({ customer, invoices, logs, onClose, lang
     ],
     items: activeInvoicesForStats.map((inv) => ({
       name: `${inv.invoiceNumber} (${new Date(inv.date).toLocaleDateString('fr-FR')})`,
-      quantity: inv.items.reduce((s, i) => s + i.quantity, 0) || 1,
+      quantity: (inv.items || []).length || 1,
       unitPrice: inv.total,
       total: inv.total
     })),
@@ -850,7 +850,7 @@ export default function CustomerLedger({ customer, invoices, logs, onClose, lang
                         <ul className="itemized-list">
                           {invRaw.items.map((it, idx) => (
                             <li key={idx}>
-                              📦 {it.productName} — {isRTL ? 'كمية:' : 'Qty:'} <strong>{it.quantity}</strong> × {it.sellingPrice} {config.currency} = <strong>{it.total} {config.currency}</strong>
+                              📦 {it.productName} — <strong>{Number(it.total).toFixed(2)} {config.currency}</strong>
                             </li>
                           ))}
                         </ul>

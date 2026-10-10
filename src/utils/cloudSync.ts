@@ -932,12 +932,44 @@ export function mergeStoreDatasets(
   const mergedCommercialDocuments = Array.from(localDocMap.values());
 
   // 9. Merge Employees
-  const localEmployees: any[] = checkAndFilter(localData.employees, false);
-  const cloudEmployees: any[] = checkAndFilter(cloudData.employees, true);
+  const normalizeEmp = (emp: any) => {
+    if (emp && (emp.id === 'emp-admin' || String(emp.username || '').toLowerCase() === 'admin')) {
+      return {
+        ...emp,
+        passwordHash: !emp.passwordHash || emp.passwordHash === 'admin' ? 'smartpos' : emp.passwordHash,
+        photoUrl: '/sp-icon.png',
+      };
+    }
+    return emp;
+  };
+  const rawCloudEmps: any[] = checkAndFilter(cloudData.employees, true);
+  if (
+    rawCloudEmps.some(
+      (emp: any) =>
+        emp &&
+        (emp.id === 'emp-admin' || String(emp.username || '').toLowerCase() === 'admin') &&
+        (!emp.passwordHash || emp.passwordHash === 'admin')
+    )
+  ) {
+    hasLocalChangesForCloud = true;
+  }
+  const localEmployees: any[] = checkAndFilter(localData.employees, false).map(normalizeEmp);
+  const cloudEmployees: any[] = rawCloudEmps.map(normalizeEmp);
   const localEmpMap = new Map(localEmployees.map((e: any) => [e.id, e]));
   for (const ce of cloudEmployees) {
     if (!ce || !ce.id || deletedSet.has(ce.id)) continue;
-    if (!localEmpMap.has(ce.id)) {
+    const existing: any = localEmpMap.get(ce.id);
+    if (!existing) {
+      localEmpMap.set(ce.id, ce);
+      hasNewFromCloud = true;
+    } else if (
+      preferRemoteEdits &&
+      (existing.passwordHash !== ce.passwordHash ||
+        existing.name !== ce.name ||
+        existing.username !== ce.username ||
+        existing.role !== ce.role ||
+        JSON.stringify(existing.allowedTabs) !== JSON.stringify(ce.allowedTabs))
+    ) {
       localEmpMap.set(ce.id, ce);
       hasNewFromCloud = true;
     }

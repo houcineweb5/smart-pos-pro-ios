@@ -64,12 +64,27 @@ export default function LoginScreen({ employees, onLogin, lang, onSetLang }: Log
     setError('');
 
     const trimmedUser = username.trim().toLowerCase();
-    const found = employees.find(
-      (emp) => emp.username.toLowerCase() === trimmedUser && emp.passwordHash === password
-    );
+    const found = employees.find((emp) => {
+      if (emp.username.toLowerCase() !== trimmedUser) return false;
+      const effectivePwd =
+        (emp.id === 'emp-admin' || emp.username.toLowerCase() === 'admin') &&
+        (!emp.passwordHash || emp.passwordHash === 'admin')
+          ? 'smartpos'
+          : emp.passwordHash;
+      return effectivePwd === password;
+    });
 
     if (found) {
-      onLogin(found);
+      onLogin(
+        found.id === 'emp-admin' || found.username.toLowerCase() === 'admin'
+          ? {
+              ...found,
+              passwordHash:
+                !found.passwordHash || found.passwordHash === 'admin' ? 'smartpos' : found.passwordHash,
+              photoUrl: '/sp-icon.png',
+            }
+          : found
+      );
     } else {
       setError(t.errorMsg);
     }

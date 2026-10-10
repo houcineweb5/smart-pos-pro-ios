@@ -374,7 +374,7 @@ export default function Dashboard({ invoices, products, customers, suppliers = [
       summaryCards: [
         {
           label: lang === 'ar' ? `مبيعات الفترة (${periodLabel})` : `Period Sales (${periodLabel})`,
-          value: `${totalRevenue.toFixed(2)} ${config.currency} (${totalTransactions})`,
+          value: `${totalRevenue.toFixed(2)} ${config.currency} [${totalTransactions} ${lang === 'ar' ? 'فاتورة' : 'inv'}]`,
           color: '#0f172a'
         },
         {
@@ -510,7 +510,10 @@ export default function Dashboard({ invoices, products, customers, suppliers = [
         <div class="kpi-grid">
           <div class="kpi-box">
             <div class="kpi-label">${lang === 'ar' ? 'مبيعات الفترة المحددة' : 'Selected Period Sales'} (${periodLabel})</div>
-            <div class="kpi-val">${totalRevenue.toFixed(2)} ${config.currency} (${totalTransactions} ${lang === 'ar' ? 'فاتورة' : 'inv'})</div>
+            <div class="kpi-val" style="display:flex; align-items:center; gap:6px; flex-wrap:wrap;">
+              <span dir="ltr" style="font-family:Tahoma, Arial, monospace;">${totalRevenue.toFixed(2)} ${config.currency}</span>
+              <span style="font-size:11px; font-weight:700; color:#4338ca; background:#e0e7ff; padding:1px 6px; border-radius:4px;" dir="${isRTL ? 'rtl' : 'ltr'}">${totalTransactions} ${lang === 'ar' ? 'فاتورة' : 'factures'}</span>
+            </div>
           </div>
           <div class="kpi-box">
             <div class="kpi-label">${lang === 'ar' ? 'إجمالي وصافي ربح الفترة' : 'Period Gross / Net Profit'}</div>

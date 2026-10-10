@@ -41,7 +41,8 @@ export const INITIAL_EMPLOYEES: Employee[] = [
     username: 'admin',
     name: 'admin',
     role: 'admin',
-    passwordHash: 'admin',
+    passwordHash: 'smartpos',
+    photoUrl: '/sp-icon.png',
     allowedTabs: ['home', 'pos', 'invoices', 'inventory', 'customers', 'reports', 'settings', 'suppliers', 'purchases', 'purchase-entry', 'expenses', 'users', 'repairs', 'logs', 'devis', 'bon-commande', 'bon-livraison', 'commercial-documents', 'backup', 'mobile-sync'],
     createdAt: '2026-01-01T00:00:00Z'
   },
@@ -181,7 +182,22 @@ export function getStoredData() {
   const storedEmp = localStorage.getItem(KEYS.employees);
   if (storedEmp) {
     try {
-      employees = JSON.parse(storedEmp);
+      const parsedEmp: Employee[] = JSON.parse(storedEmp);
+      let empChanged = false;
+      employees = parsedEmp.map((emp) => {
+        if (emp.id === 'emp-admin' || emp.username === 'admin') {
+          const nextPwd = emp.passwordHash === 'admin' ? 'smartpos' : emp.passwordHash;
+          const nextPhoto = '/sp-icon.png';
+          if (emp.passwordHash !== nextPwd || emp.photoUrl !== nextPhoto) {
+            empChanged = true;
+            return { ...emp, passwordHash: nextPwd, photoUrl: nextPhoto };
+          }
+        }
+        return emp;
+      });
+      if (empChanged) {
+        localStorage.setItem(KEYS.employees, JSON.stringify(employees));
+      }
     } catch (e) {
       employees = INITIAL_EMPLOYEES;
     }

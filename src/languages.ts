@@ -260,7 +260,7 @@ export const languages: Record<Language, Translations> = {
       customer: 'العميل',
       total: 'الإجمالي',
       paid: 'المدفوع',
-      remaining: 'المتبقي',
+      remaining: 'الباقي (كريدي)',
       status: 'الحالة',
       actions: 'إجراءات',
       paidStatus: 'مدفوعة كاملة',

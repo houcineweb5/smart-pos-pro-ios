@@ -567,7 +567,10 @@ export default function Invoices({ invoices, products = [], customers = [], conf
       amountPaid: invPaid,
       remainingDebt: remaining,
       notes: inv.notes,
-      footerText: t.invoice.thankYou || (lang === 'ar' ? 'شكراً لزيارتكم!' : 'Thank you!')
+      footerText: t.invoice.thankYou || (lang === 'ar' ? 'شكراً لزيارتكم!' : 'Thank you!'),
+      a4Theme: config.a4Theme || 'slate',
+      receiptTheme: config.receiptTheme || 'classic',
+      themeColor: config.printPrimaryColor
     };
   };
 
@@ -1374,6 +1377,10 @@ export default function Invoices({ invoices, products = [], customers = [], conf
                   </div>
 
                   <div className="w-full sm:w-72 space-y-2 text-xs font-semibold text-slate-700">
+                    <div className="flex justify-between">
+                      <span className="text-slate-500 font-bold">{lang === 'ar' ? 'عدد المنتجات' : 'Articles'}</span>
+                      <span className="font-mono font-bold">{safeItems.length}</span>
+                    </div>
                     <div className="flex justify-between">
                       <span className="text-slate-500 font-bold">{lang === 'ar' ? 'المجموع' : t.pos.subtotal}</span>
                       <span className="font-mono font-bold">{invSubtotal.toFixed(2)} {config.currency}</span>

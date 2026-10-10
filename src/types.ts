@@ -128,6 +128,9 @@ export interface StoreConfig {
   shortcutSellNoReceipt?: string;
   darkMode?: boolean;
   themeColor?: string;
+  receiptTheme?: 'classic' | 'navy' | 'emerald' | 'minimal' | 'modern';
+  a4Theme?: 'slate' | 'indigo' | 'emerald' | 'burgundy' | 'amber';
+  printPrimaryColor?: string;
 }
 
 export interface DashboardStats {

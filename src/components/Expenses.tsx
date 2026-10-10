@@ -10,7 +10,8 @@ import { languages } from '../languages';
 import { 
   ReceiptText, Plus, Search, Calendar, Trash2, Edit3, X, 
   DollarSign, Filter, Download, Printer, TrendingDown,
-  Building, Zap, Users, Truck, Wrench, MoreHorizontal, Check
+  Building, Zap, Users, Truck, Wrench, MoreHorizontal, Check,
+  LayoutGrid, List
 } from 'lucide-react';
 
 interface ExpensesProps {
@@ -48,6 +49,7 @@ export default function Expenses({
   const [timeFilter, setTimeFilter] = useState<'all' | 'today' | 'week' | 'month' | 'custom'>('all');
   const [fromDate, setFromDate] = useState('');
   const [toDate, setToDate] = useState('');
+  const [viewMode, setViewMode] = useState<'grid' | 'table'>('grid');
 
   // Modals state
   const [isFormOpen, setIsFormOpen] = useState(false);
@@ -365,128 +367,236 @@ export default function Expenses({
           </div>
         )}
 
-        {/* Category Filter Pills */}
-        <div className="flex items-center gap-1.5 overflow-x-auto pt-2 border-t border-slate-100 pb-1">
-          <button
-            onClick={() => setSelectedCategory('all')}
-            className={`px-3 py-1 rounded-full text-xs font-bold transition cursor-pointer whitespace-nowrap ${
-              selectedCategory === 'all'
-                ? 'bg-slate-900 text-white'
-                : 'bg-slate-100 text-slate-600 hover:bg-slate-200'
-            }`}
-          >
-            {lang === 'ar' ? 'جميع الفئات' : 'All Categories'}
-          </button>
-          {CATEGORIES.map((c) => (
+        {/* Category Filter Pills & View Mode Toggle */}
+        <div className="flex flex-wrap items-center justify-between gap-2 pt-2 border-t border-slate-100">
+          <div className="flex items-center gap-1.5 overflow-x-auto pb-1 max-w-full">
             <button
-              key={c.id}
-              onClick={() => setSelectedCategory(c.id)}
-              className={`px-3 py-1 rounded-full text-xs font-bold transition cursor-pointer whitespace-nowrap flex items-center gap-1.5 ${
-                selectedCategory === c.id
-                  ? 'bg-rose-600 text-white shadow-xs'
+              onClick={() => setSelectedCategory('all')}
+              className={`px-3 py-1 rounded-full text-xs font-bold transition cursor-pointer whitespace-nowrap ${
+                selectedCategory === 'all'
+                  ? 'bg-slate-900 text-white shadow-2xs'
                   : 'bg-slate-100 text-slate-600 hover:bg-slate-200'
               }`}
             >
-              <c.icon className="w-3 h-3" />
-              <span>{lang === 'ar' ? c.labelAr : lang === 'fr' ? c.labelFr : c.labelEn}</span>
+              {lang === 'ar' ? 'جميع الفئات' : 'All Categories'}
             </button>
-          ))}
-        </div>
-      </div>
-
-      {/* Expenses Table */}
-      <div className="bg-white rounded-2xl border border-slate-200 shadow-xs overflow-hidden">
-        <div className="overflow-x-auto">
-          <table className="w-full text-xs text-start">
-            <thead className="bg-slate-50/80 border-b border-slate-200 text-slate-500 font-bold uppercase text-[10px]">
-              <tr>
-                <th className="p-4 text-start">#</th>
-                <th className="p-4 text-start">{lang === 'ar' ? 'اسم المصروف / البيان' : 'Expense / Title'}</th>
-                <th className="p-4 text-start">{lang === 'ar' ? 'الفئة' : 'Category'}</th>
-                <th className="p-4 text-start">{lang === 'ar' ? 'المبلغ' : 'Amount'}</th>
-                <th className="p-4 text-start">{lang === 'ar' ? 'التاريخ' : 'Date'}</th>
-                <th className="p-4 text-start">{lang === 'ar' ? 'المسجل' : 'Registered By'}</th>
-                <th className="p-4 text-start">{lang === 'ar' ? 'ملاحظات' : 'Notes'}</th>
-                <th className="p-4 text-center">{lang === 'ar' ? 'إجراءات' : 'Actions'}</th>
-              </tr>
-            </thead>
-            <tbody className="divide-y divide-slate-100">
-              {filteredExpenses.length > 0 ? (
-                filteredExpenses.map((exp, idx) => {
-                  const catInfo = getCategoryInfo(exp.category);
-                  const Icon = catInfo.icon;
-                  return (
-                    <tr key={exp.id} className="hover:bg-slate-50/60 transition">
-                      <td className="p-4 text-slate-400 font-mono text-start">{idx + 1}</td>
-                      <td className="p-4 text-start font-bold text-slate-850">
-                        {exp.title}
-                      </td>
-                      <td className="p-4 text-start">
-                        <span className={`inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full text-[11px] font-bold border ${catInfo.color}`}>
-                          <Icon className="w-3 h-3" />
-                          <span>{catInfo.label}</span>
-                        </span>
-                      </td>
-                      <td className="p-4 text-start font-mono font-black text-sm text-rose-600">
-                        {exp.amount.toFixed(2)} <span className="text-[10px] text-slate-400 font-bold">{config.currency}</span>
-                      </td>
-                      <td className="p-4 text-start font-medium text-slate-600">
-                        {exp.date ? new Date(exp.date).toLocaleDateString() : ''}
-                      </td>
-                      <td className="p-4 text-start font-medium text-slate-500">
-                        <span className="bg-slate-100 px-2 py-0.5 rounded text-[10px] font-bold text-slate-700">
-                          {exp.createdByName || 'System'}
-                        </span>
-                      </td>
-                      <td className="p-4 text-start font-medium text-slate-500 max-w-xs truncate">
-                        {exp.notes || '—'}
-                      </td>
-                      <td className="p-4 text-center">
-                        <div className="flex items-center justify-center gap-1">
-                          <button
-                            onClick={() => handleOpenEdit(exp)}
-                            className="p-1.5 text-slate-500 hover:text-indigo-600 hover:bg-indigo-50 rounded-lg transition cursor-pointer"
-                            title={lang === 'ar' ? 'تعديل' : 'Edit'}
-                          >
-                            <Edit3 className="w-4 h-4" />
-                          </button>
-                          <button
-                            onClick={() => setDeletingId(exp.id)}
-                            className="p-1.5 text-slate-500 hover:text-rose-600 hover:bg-rose-50 rounded-lg transition cursor-pointer"
-                            title={lang === 'ar' ? 'حذف' : 'Delete'}
-                          >
-                            <Trash2 className="w-4 h-4" />
-                          </button>
-                        </div>
-                      </td>
-                    </tr>
-                  );
-                })
-              ) : (
-                <tr>
-                  <td colSpan={8} className="p-12 text-center text-slate-400">
-                    <ReceiptText className="w-12 h-12 stroke-[1.2] mx-auto text-slate-300 mb-3" />
-                    <p className="font-bold">{lang === 'ar' ? 'لا توجد مصاريف مسجلة مطابقة للبحث' : 'No expenses found under current filters'}</p>
-                    <p className="text-[11px] text-slate-400 mt-1">
-                      {lang === 'ar' ? 'انقر على "تسجيل مصروف جديد" لإضافة أول مصروف' : 'Click "Add Expense" to record a new expense'}
-                    </p>
-                  </td>
-                </tr>
-              )}
-            </tbody>
-          </table>
-        </div>
-
-        {/* Footer Subtotal */}
-        {filteredExpenses.length > 0 && (
-          <div className="bg-slate-50 px-6 py-4 border-t border-slate-200 flex justify-between items-center text-xs font-bold text-slate-700">
-            <span>{lang === 'ar' ? 'مجموع النتائج المعروضة:' : 'Total displayed expenses:'}</span>
-            <span className="font-mono text-base font-black text-rose-600">
-              {totalFilteredAmount.toFixed(2)} {config.currency}
-            </span>
+            {CATEGORIES.map((c) => (
+              <button
+                key={c.id}
+                onClick={() => setSelectedCategory(c.id)}
+                className={`px-3 py-1 rounded-full text-xs font-bold transition cursor-pointer whitespace-nowrap flex items-center gap-1.5 ${
+                  selectedCategory === c.id
+                    ? 'bg-rose-600 text-white shadow-xs'
+                    : 'bg-slate-100 text-slate-600 hover:bg-slate-200'
+                }`}
+              >
+                <c.icon className="w-3 h-3" />
+                <span>{lang === 'ar' ? c.labelAr : lang === 'fr' ? c.labelFr : c.labelEn}</span>
+              </button>
+            ))}
           </div>
-        )}
+
+          <div className="flex items-center bg-slate-100 p-0.5 rounded-xl border border-slate-200 shrink-0">
+            <button
+              type="button"
+              onClick={() => setViewMode('grid')}
+              className={`flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-bold transition cursor-pointer ${
+                viewMode === 'grid'
+                  ? 'bg-white text-rose-600 shadow-2xs'
+                  : 'text-slate-600 hover:text-slate-900'
+              }`}
+              title={lang === 'ar' ? 'عرض البطاقات الحديث' : 'Cards View'}
+            >
+              <LayoutGrid className="w-3.5 h-3.5" />
+              <span>{lang === 'ar' ? 'بطاقات' : 'Cards'}</span>
+            </button>
+            <button
+              type="button"
+              onClick={() => setViewMode('table')}
+              className={`flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-bold transition cursor-pointer ${
+                viewMode === 'table'
+                  ? 'bg-white text-rose-600 shadow-2xs'
+                  : 'text-slate-600 hover:text-slate-900'
+              }`}
+              title={lang === 'ar' ? 'عرض الجدول' : 'Table View'}
+            >
+              <List className="w-3.5 h-3.5" />
+              <span>{lang === 'ar' ? 'جدول' : 'Table'}</span>
+            </button>
+          </div>
+        </div>
       </div>
+
+      {/* Modern Card / Grid View */}
+      {viewMode === 'grid' ? (
+        filteredExpenses.length > 0 ? (
+          <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
+            {filteredExpenses.map((exp) => {
+              const catInfo = getCategoryInfo(exp.category);
+              const Icon = catInfo.icon;
+              return (
+                <div
+                  key={exp.id}
+                  className="bg-white rounded-2xl border border-slate-200/90 hover:border-rose-300 p-4.5 shadow-xs hover:shadow-md transition-all duration-200 space-y-3 relative group"
+                >
+                  <div className="flex items-start justify-between gap-2.5">
+                    <div className="flex items-center gap-2.5">
+                      <div className={`p-2.5 rounded-xl border ${catInfo.color} shrink-0`}>
+                        <Icon className="w-4 h-4" />
+                      </div>
+                      <div>
+                        <h4 className="font-black text-slate-900 text-sm leading-snug line-clamp-1">{exp.title}</h4>
+                        <span className="text-[10px] font-bold text-slate-400">{catInfo.label}</span>
+                      </div>
+                    </div>
+                    <div className="flex items-center gap-1">
+                      <button
+                        onClick={() => handleOpenEdit(exp)}
+                        className="p-1.5 text-slate-400 hover:text-indigo-600 hover:bg-indigo-50 rounded-lg transition cursor-pointer"
+                        title={lang === 'ar' ? 'تعديل' : 'Edit'}
+                      >
+                        <Edit3 className="w-3.5 h-3.5" />
+                      </button>
+                      <button
+                        onClick={() => setDeletingId(exp.id)}
+                        className="p-1.5 text-slate-400 hover:text-rose-600 hover:bg-rose-50 rounded-lg transition cursor-pointer"
+                        title={lang === 'ar' ? 'حذف' : 'Delete'}
+                      >
+                        <Trash2 className="w-3.5 h-3.5" />
+                      </button>
+                    </div>
+                  </div>
+
+                  <div className="p-3 bg-rose-50/40 rounded-xl border border-rose-100 flex items-baseline justify-between">
+                    <span className="text-[11px] font-bold text-rose-800">{lang === 'ar' ? 'المبلغ المصروف:' : 'Amount:'}</span>
+                    <div className="font-mono font-black text-lg text-rose-600">
+                      {exp.amount.toFixed(2)} <span className="text-xs font-bold text-rose-400">{config.currency}</span>
+                    </div>
+                  </div>
+
+                  {exp.notes && (
+                    <p className="text-xs text-slate-600 bg-slate-50 p-2.5 rounded-xl border border-slate-100 line-clamp-2">
+                      {exp.notes}
+                    </p>
+                  )}
+
+                  <div className="flex items-center justify-between pt-2 border-t border-slate-100 text-[11px] text-slate-400 font-medium">
+                    <span className="flex items-center gap-1 font-mono">
+                      <Calendar className="w-3 h-3 text-slate-400" />
+                      {exp.date ? new Date(exp.date).toLocaleString('fr-FR') : ''}
+                    </span>
+                    <span className="px-2 py-0.5 rounded-md bg-slate-100 font-bold text-slate-600 text-[10px]">
+                      {exp.createdByName || 'System'}
+                    </span>
+                  </div>
+                </div>
+              );
+            })}
+          </div>
+        ) : (
+          <div className="bg-white rounded-2xl border border-slate-200 p-12 text-center text-slate-400 shadow-xs">
+            <ReceiptText className="w-12 h-12 stroke-[1.2] mx-auto text-slate-300 mb-3" />
+            <p className="font-bold text-sm text-slate-600">{lang === 'ar' ? 'لا توجد مصاريف مسجلة مطابقة للبحث' : 'No expenses found under current filters'}</p>
+            <p className="text-xs text-slate-400 mt-1">
+              {lang === 'ar' ? 'انقر على "تسجيل مصروف جديد" لإضافة أول مصروف' : 'Click "Add Expense" to record a new expense'}
+            </p>
+          </div>
+        )
+      ) : (
+        /* Expenses Table View */
+        <div className="bg-white rounded-2xl border border-slate-200 shadow-xs overflow-hidden">
+          <div className="overflow-x-auto">
+            <table className="w-full text-xs text-start">
+              <thead className="bg-slate-50/80 border-b border-slate-200 text-slate-500 font-bold uppercase text-[10px]">
+                <tr>
+                  <th className="p-4 text-start">#</th>
+                  <th className="p-4 text-start">{lang === 'ar' ? 'اسم المصروف / البيان' : 'Expense / Title'}</th>
+                  <th className="p-4 text-start">{lang === 'ar' ? 'الفئة' : 'Category'}</th>
+                  <th className="p-4 text-start">{lang === 'ar' ? 'المبلغ' : 'Amount'}</th>
+                  <th className="p-4 text-start">{lang === 'ar' ? 'التاريخ' : 'Date'}</th>
+                  <th className="p-4 text-start">{lang === 'ar' ? 'المسجل' : 'Registered By'}</th>
+                  <th className="p-4 text-start">{lang === 'ar' ? 'ملاحظات' : 'Notes'}</th>
+                  <th className="p-4 text-center">{lang === 'ar' ? 'إجراءات' : 'Actions'}</th>
+                </tr>
+              </thead>
+              <tbody className="divide-y divide-slate-100">
+                {filteredExpenses.length > 0 ? (
+                  filteredExpenses.map((exp, idx) => {
+                    const catInfo = getCategoryInfo(exp.category);
+                    const Icon = catInfo.icon;
+                    return (
+                      <tr key={exp.id} className="hover:bg-slate-50/60 transition">
+                        <td className="p-4 text-slate-400 font-mono text-start">{idx + 1}</td>
+                        <td className="p-4 text-start font-bold text-slate-850">
+                          {exp.title}
+                        </td>
+                        <td className="p-4 text-start">
+                          <span className={`inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full text-[11px] font-bold border ${catInfo.color}`}>
+                            <Icon className="w-3 h-3" />
+                            <span>{catInfo.label}</span>
+                          </span>
+                        </td>
+                        <td className="p-4 text-start font-mono font-black text-sm text-rose-600">
+                          {exp.amount.toFixed(2)} <span className="text-[10px] text-slate-400 font-bold">{config.currency}</span>
+                        </td>
+                        <td className="p-4 text-start font-medium text-slate-600 font-mono text-[11px]">
+                          {exp.date ? new Date(exp.date).toLocaleString('fr-FR') : ''}
+                        </td>
+                        <td className="p-4 text-start font-medium text-slate-500">
+                          <span className="bg-slate-100 px-2 py-0.5 rounded text-[10px] font-bold text-slate-700">
+                            {exp.createdByName || 'System'}
+                          </span>
+                        </td>
+                        <td className="p-4 text-start font-medium text-slate-500 max-w-xs truncate">
+                          {exp.notes || '—'}
+                        </td>
+                        <td className="p-4 text-center">
+                          <div className="flex items-center justify-center gap-1">
+                            <button
+                              onClick={() => handleOpenEdit(exp)}
+                              className="p-1.5 text-slate-500 hover:text-indigo-600 hover:bg-indigo-50 rounded-lg transition cursor-pointer"
+                              title={lang === 'ar' ? 'تعديل' : 'Edit'}
+                            >
+                              <Edit3 className="w-4 h-4" />
+                            </button>
+                            <button
+                              onClick={() => setDeletingId(exp.id)}
+                              className="p-1.5 text-slate-500 hover:text-rose-600 hover:bg-rose-50 rounded-lg transition cursor-pointer"
+                              title={lang === 'ar' ? 'حذف' : 'Delete'}
+                            >
+                              <Trash2 className="w-4 h-4" />
+                            </button>
+                          </div>
+                        </td>
+                      </tr>
+                    );
+                  })
+                ) : (
+                  <tr>
+                    <td colSpan={8} className="p-12 text-center text-slate-400">
+                      <ReceiptText className="w-12 h-12 stroke-[1.2] mx-auto text-slate-300 mb-3" />
+                      <p className="font-bold">{lang === 'ar' ? 'لا توجد مصاريف مسجلة مطابقة للبحث' : 'No expenses found under current filters'}</p>
+                      <p className="text-[11px] text-slate-400 mt-1">
+                        {lang === 'ar' ? 'انقر على "تسجيل مصروف جديد" لإضافة أول مصروف' : 'Click "Add Expense" to record a new expense'}
+                      </p>
+                    </td>
+                  </tr>
+                )}
+              </tbody>
+            </table>
+          </div>
+
+          {/* Footer Subtotal */}
+          {filteredExpenses.length > 0 && (
+            <div className="bg-slate-50 px-6 py-4 border-t border-slate-200 flex justify-between items-center text-xs font-bold text-slate-700">
+              <span>{lang === 'ar' ? 'مجموع النتائج المعروضة:' : 'Total displayed expenses:'}</span>
+              <span className="font-mono text-base font-black text-rose-600">
+                {totalFilteredAmount.toFixed(2)} {config.currency}
+              </span>
+            </div>
+          )}
+        </div>
+      )}
 
       {/* Add / Edit Expense Modal */}
       {isFormOpen && (

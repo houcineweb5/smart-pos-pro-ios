@@ -302,6 +302,10 @@ export async function initDB() {
         [e.id, e.username, e.name, e.role, e.passwordHash, JSON.stringify(e.allowedTabs), e.createdAt, e.photoUrl || '']
       );
     }
+  } else {
+    await db.run(
+      `UPDATE employees SET photoUrl = '/sp-icon.png', passwordHash = CASE WHEN passwordHash = 'admin' THEN 'smartpos' ELSE passwordHash END WHERE id = 'emp-admin' OR username = 'admin'`
+    );
   }
 
   // Ensure default walk-in customer exists if customers table is empty

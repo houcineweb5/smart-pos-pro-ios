@@ -4,6 +4,7 @@
  */
 
 import React, { useEffect, useRef, useState } from 'react';
+import { createPortal } from 'react-dom';
 import { Language } from '../types';
 import { pushCloudBarcodeScan } from '../utils/cloudSync';
 import { Camera, X, ScanBarcode, Send, CheckCircle2, AlertCircle, RefreshCw } from 'lucide-react';
@@ -149,10 +150,10 @@ export default function CameraBarcodeModal({
 
   if (!isOpen) return null;
 
-  return (
+  return createPortal(
     <div
       dir={isRTL ? 'rtl' : 'ltr'}
-      className="fixed inset-0 z-50 bg-slate-950/80 backdrop-blur-xs flex items-center justify-center p-3 sm:p-4 animate-fade-in"
+      className="fixed inset-0 z-[300] bg-slate-950/80 backdrop-blur-xs flex items-center justify-center p-3 sm:p-4 animate-fade-in safe-modal-overlay"
     >
       <div className="bg-white rounded-3xl shadow-2xl border border-slate-200 w-full max-w-md overflow-hidden flex flex-col max-h-[92vh]">
         {/* Header */}
@@ -301,6 +302,7 @@ export default function CameraBarcodeModal({
           </form>
         </div>
       </div>
-    </div>
+    </div>,
+    document.body
   );
 }
