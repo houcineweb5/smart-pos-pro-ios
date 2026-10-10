@@ -243,6 +243,49 @@
       margin-bottom: 10px;
     }
     .hidden { display: none !important; }
+    .inv-card {
+      background: #ffffff;
+      border: 1px solid #e2e8f0;
+      border-radius: 14px;
+      padding: 12px;
+      margin-bottom: 10px;
+      box-shadow: 0 1px 3px rgba(0,0,0,0.03);
+    }
+    .inv-modal-overlay {
+      position: fixed;
+      inset: 0;
+      background: rgba(15, 23, 42, 0.65);
+      backdrop-filter: blur(4px);
+      z-index: 1000;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      padding: 12px;
+    }
+    .inv-modal-content {
+      background: #fff;
+      border-radius: 20px;
+      width: 100%;
+      max-width: 500px;
+      max-height: 90vh;
+      display: flex;
+      flex-direction: column;
+      overflow: hidden;
+      box-shadow: 0 20px 25px -5px rgba(0,0,0,0.2);
+    }
+    @media print {
+      body * { visibility: hidden !important; }
+      #printable-report-area, #printable-report-area * { visibility: visible !important; }
+      #printable-report-area {
+        position: absolute !important;
+        left: 0 !important;
+        top: 0 !important;
+        width: 100% !important;
+        background: #fff !important;
+        padding: 0 !important;
+        margin: 0 !important;
+      }
+    }
   </style>
 </head>
 <body>
@@ -315,6 +358,9 @@
           <button class="btn btn-emerald" onclick="switchTab('scanner')">📷 قارئ باركود للكمبيوتر</button>
           <button class="btn btn-outline" onclick="switchTab('inventory')">📦 فحص وإدارة المخزون</button>
           <button class="btn btn-outline" onclick="switchTab('invoices')">🧾 الفواتير والديون</button>
+          <button class="btn btn-primary" style="grid-column: span 2; background: linear-gradient(135deg, #059669, #047857); color: #fff; font-weight:900;" onclick="printMobileSalesProfitReport()">
+            🖨️ طباعة تقرير المبيعات والأرباح والديون
+          </button>
         </div>
       </div>
 
@@ -466,7 +512,15 @@
 
       <!-- All Invoices List -->
       <div class="card">
-        <h3 style="font-size:14px; font-weight:900; margin-bottom:8px;">🧾 سجل الفواتير</h3>
+        <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:8px;">
+          <h3 style="font-size:14px; font-weight:900;">🧾 سجل وفواتير المبيعات</h3>
+          <button class="btn btn-emerald" style="padding:5px 10px; font-size:11px;" onclick="startInvoiceBarcodeCameraScan()">
+            📷 مسح باركود الفاتورة
+          </button>
+        </div>
+        <div style="display:flex; gap:6px; margin-bottom:10px;">
+          <input type="text" id="mobile-inv-search" placeholder="🔍 ابحث برقم الفاتورة، اسم الزبون، أو امسح الباركود..." oninput="renderInvoicesAndCustomers()" />
+        </div>
         <div id="mobile-invoices-list"></div>
       </div>
     </div>
@@ -493,8 +547,34 @@
     <button class="nav-item" id="nav-invoices" onclick="switchTab('invoices')">
       <span class="nav-icon">☁️</span>
       <span>الفواتير والربط</span>
-    </button>
   </nav>
+
+  <!-- Modal for Invoice Details & Reprint on Mobile -->
+  <div id="invoice-details-modal" class="inv-modal-overlay hidden">
+    <div class="inv-modal-content">
+      <div style="padding:14px; background:#f8fafc; border-bottom:1px solid #e2e8f0; display:flex; justify-content:space-between; align-items:center;">
+        <h3 id="modal-inv-title" style="font-size:14px; font-weight:900; margin:0;">تفاصيل الفاتورة</h3>
+        <button class="btn btn-outline" style="padding:4px 10px; font-size:12px;" onclick="closeInvoiceModal()">✕ إغلاق</button>
+      </div>
+      <div id="modal-inv-body" style="padding:14px; overflow-y:auto; flex:1;"></div>
+      <div style="padding:12px; background:#f8fafc; border-top:1px solid #e2e8f0; display:flex; gap:8px;">
+        <button class="btn btn-primary btn-block" onclick="printCurrentModalInvoice()">🖨️ طباعة الفاتورة</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- Modal for Invoice Barcode Scanner on Mobile -->
+  <div id="invoice-scanner-modal" class="inv-modal-overlay hidden">
+    <div class="inv-modal-content" style="max-width:400px; text-align:center; padding:16px;">
+      <h3 style="font-size:14px; font-weight:900; margin-bottom:6px;">📷 مسح باركود الفاتورة بالكاميرا</h3>
+      <p style="font-size:11px; color:#64748b; margin-bottom:12px;">وجّه الكاميرا نحو الباركود المطبوع أسفل الفاتورة للبحث الفوري عنها وعرضها</p>
+      <div id="inv-barcode-reader-box" style="width:100%; border-radius:14px; overflow:hidden; background:#000; min-height:220px;"></div>
+      <button class="btn btn-rose btn-block" style="margin-top:12px;" onclick="stopInvoiceBarcodeScanner()">إلغاء ✕</button>
+    </div>
+  </div>
+
+  <!-- Hidden Container for Printable Report -->
+  <div id="printable-report-area" class="hidden"></div>
 
   <script>
     const STORAGE_DATA_KEY = 'smartpos_mobile_cached_data_v1';
@@ -1130,18 +1210,64 @@
       );
 
       const container = document.getElementById('inventory-list-container');
-      container.innerHTML = filtered.slice(0, 50).map(p => {
+      if (!filtered.length) {
+        container.innerHTML = '<div style="text-align:center; padding:24px; color:#94a3b8; font-size:13px; font-weight:700;">لا توجد منتجات مطابقة في المخزون</div>';
+        return;
+      }
+
+      container.innerHTML = filtered.slice(0, 60).map(p => {
         const st = Number(p.stock || 0);
-        const badgeClass = st <= 0 ? 'badge-out' : st <= Number(p.minStock || 5) ? 'badge-low' : 'badge-ok';
+        const minSt = Number(p.minStock || 5);
+        const isOutOfStock = st <= 0;
+        const isLowStock = st > 0 && st <= minSt;
+        const badgeColor = isOutOfStock ? '#be123c' : isLowStock ? '#b45309' : '#15803d';
+        const badgeBg = isOutOfStock ? '#ffe4e6' : isLowStock ? '#fef3c7' : '#dcfce7';
+        const badgeLabel = isOutOfStock ? 'نفذ من المخزن (0)' : isLowStock ? `كمية منخفضة (${st})` : `متوفر (${st})`;
+        const sellP = Number(p.sellingPrice || 0);
+        const buyP = Number(p.purchasePrice || 0);
+        const profitMargin = sellP > 0 && buyP > 0 ? (((sellP - buyP) / sellP) * 100).toFixed(0) : null;
+
         return `
-          <div class="product-item">
-            <div>
-              <div style="font-weight:900; font-size:12px;">${p.name}</div>
-              <div style="font-size:10px; color:#64748b;">SKU: ${p.sku || '-'} | الشراء: ${Number(p.purchasePrice || 0).toFixed(2)}</div>
+          <div class="inv-card">
+            <div style="display:flex; justify-content:space-between; align-items:flex-start; gap:8px; margin-bottom:8px;">
+              <div style="flex:1;">
+                <div style="font-weight:900; font-size:13px; color:#0f172a; line-height:1.4;">${p.name}</div>
+                <div style="display:flex; flex-wrap:wrap; align-items:center; gap:6px; margin-top:4px;">
+                  <span style="background:#f1f5f9; color:#475569; font-size:10px; font-weight:800; padding:2px 6px; border-radius:6px; font-family:monospace;">
+                    🏷️ ${p.sku || 'بدون باركود'}
+                  </span>
+                  <span style="background:#eef2ff; color:#4338ca; font-size:10px; font-weight:800; padding:2px 6px; border-radius:6px;">
+                    ${p.category || 'عام'}
+                  </span>
+                </div>
+              </div>
+              <span style="background:${badgeBg}; color:${badgeColor}; font-size:10px; font-weight:900; padding:3px 8px; border-radius:99px; white-space:nowrap;">
+                ${badgeLabel}
+              </span>
             </div>
-            <div style="text-align:left;">
-              <div style="font-weight:900; color:#4f46e5; font-family:Arial; font-size:13px;">${Number(p.sellingPrice || 0).toFixed(2)} ${cur}</div>
-              <span class="badge ${badgeClass}">المخزون: ${st}</span>
+
+            <!-- Price Grid -->
+            <div style="display:grid; grid-template-columns:1fr 1fr 1fr; gap:6px; background:#f8fafc; padding:8px; border-radius:10px; border:1px solid #f1f5f9; text-align:center; margin-bottom:8px;">
+              <div>
+                <div style="font-size:10px; color:#64748b; font-weight:700;">سعر البيع</div>
+                <div style="font-size:13px; font-weight:900; color:#4f46e5; font-family:Arial;">${sellP.toFixed(2)}</div>
+              </div>
+              <div>
+                <div style="font-size:10px; color:#64748b; font-weight:700;">سعر الشراء</div>
+                <div style="font-size:12px; font-weight:800; color:#475569; font-family:Arial;">${buyP.toFixed(2)}</div>
+              </div>
+              <div>
+                <div style="font-size:10px; color:#64748b; font-weight:700;">الهامش</div>
+                <div style="font-size:12px; font-weight:900; color:#10b981; font-family:Arial;">${profitMargin !== null ? `+${profitMargin}%` : '-'}</div>
+              </div>
+            </div>
+
+            <!-- Card Actions -->
+            <div style="display:flex; justify-content:space-between; align-items:center; gap:6px;">
+              <span style="font-size:10px; color:#94a3b8; font-weight:700;">الوحدة: ${p.unit || 'قطعة'}</span>
+              <button class="btn btn-primary" style="padding:6px 14px; font-size:11px;" onclick="addProductToMobileCart('${p.id}'); switchTab('pos');">
+                🛒 بيع هذا المنتج
+              </button>
             </div>
           </div>
         `;
@@ -1185,6 +1311,9 @@
       await pushMobileChangesToServerAndCloud();
     }
 
+    let currentModalInvoice = null;
+    let invBarcodeScanner = null;
+
     function renderInvoicesAndCustomers() {
       const cur = (storeData.config && storeData.config.currency) || 'د.ج';
       const custEl = document.getElementById('mobile-customers-list');
@@ -1201,19 +1330,361 @@
         </div>
       `).join('') : '<div style="text-align:center; font-size:12px; color:#94a3b8;">لا يوجد زبائن</div>';
 
+      const q = (document.getElementById('mobile-inv-search')?.value || '').toLowerCase().trim();
       const invEl = document.getElementById('mobile-invoices-list');
-      const invs = (storeData.invoices || []).slice(0, 25);
-      invEl.innerHTML = invs.length ? invs.map(inv => `
-        <div class="product-item">
+      const allInvs = storeData.invoices || [];
+      const filteredInvs = allInvs.filter(inv => {
+        if (!q) return true;
+        const num = (inv.invoiceNumber || '').toLowerCase();
+        const numNorm = num.replace(/[^a-z0-9]/g, '');
+        const qNorm = q.replace(/[^a-z0-9]/g, '');
+        const cName = (inv.customerName || '').toLowerCase();
+        return num.includes(q) || (qNorm && numNorm.includes(qNorm)) || cName.includes(q);
+      });
+
+      invEl.innerHTML = filteredInvs.length ? filteredInvs.slice(0, 30).map(inv => {
+        const isPaid = inv.status === 'paid' || (Number(inv.amountPaid || 0) >= Number(inv.total || 0));
+        const statusBg = isPaid ? '#dcfce7' : '#fee2e2';
+        const statusCol = isPaid ? '#15803d' : '#b91c1c';
+        const statusTxt = isPaid ? 'مدفوعة' : 'آجل / كريدي';
+
+        return `
+          <div class="product-item" style="cursor:pointer;" onclick="openInvoiceModal('${inv.id}')">
+            <div style="flex:1;">
+              <div style="display:flex; align-items:center; gap:6px;">
+                <span style="font-weight:900; font-size:12px; color:#0f172a;">${inv.invoiceNumber}</span>
+                <span style="font-size:10px; font-weight:800; padding:2px 6px; border-radius:99px; background:${statusBg}; color:${statusCol};">${statusTxt}</span>
+              </div>
+              <div style="font-size:11px; font-weight:700; color:#475569; margin-top:2px;">الزبون: ${inv.customerName}</div>
+              <div style="font-size:10px; color:#94a3b8;">${inv.date ? new Date(inv.date).toLocaleString('ar-DZ') : ''} | مواد: ${(inv.items || []).length}</div>
+            </div>
+            <div style="text-align:left;">
+              <div style="font-weight:900; font-family:Arial; color:#4f46e5; font-size:14px;">
+                ${Number(inv.total || 0).toFixed(2)} ${cur}
+              </div>
+              <span style="font-size:10px; color:#64748b; font-weight:700;">معاينة 👁️</span>
+            </div>
+          </div>
+        `;
+      }).join('') : '<div style="text-align:center; font-size:12px; color:#94a3b8; padding:16px;">لا توجد فواتير مطابقة</div>';
+    }
+
+    function openInvoiceModal(invId) {
+      const inv = (storeData.invoices || []).find(i => i.id === invId || i.invoiceNumber === invId);
+      if (!inv) return;
+      currentModalInvoice = inv;
+      const cur = (storeData.config && storeData.config.currency) || 'د.ج';
+      document.getElementById('modal-inv-title').textContent = `فاتورة رقم ${inv.invoiceNumber}`;
+      
+      const itemsHtml = (inv.items || []).map((it, idx) => `
+        <div style="display:flex; justify-content:space-between; align-items:center; padding:6px 0; border-bottom:1px solid #f1f5f9; font-size:12px;">
           <div>
-            <div style="font-weight:900; font-size:12px;">${inv.invoiceNumber} - ${inv.customerName}</div>
-            <div style="font-size:10px; color:#64748b;">${inv.date ? new Date(inv.date).toLocaleString('ar-DZ') : ''} | المنتجات: ${(inv.items || []).length}</div>
+            <div style="font-weight:800; color:#0f172a;">${it.productName || it.name}</div>
+            <div style="font-size:10px; color:#64748b;">الكمية: ${it.quantity} × ${Number(it.sellingPrice || it.unitPrice || 0).toFixed(2)}</div>
           </div>
           <div style="font-weight:900; font-family:Arial; color:#0f172a;">
-            ${Number(inv.total || 0).toFixed(2)} ${cur}
+            ${Number(it.total || 0).toFixed(2)} ${cur}
           </div>
         </div>
-      `).join('') : '<div style="text-align:center; font-size:12px; color:#94a3b8;">لا توجد فواتير</div>';
+      `).join('');
+
+      const invTotal = Number(inv.total || 0);
+      const invPaid = Number(inv.amountPaid || 0);
+      const debt = Math.max(0, invTotal - invPaid);
+
+      document.getElementById('modal-inv-body').innerHTML = `
+        <div style="background:#f8fafc; padding:10px; border-radius:12px; margin-bottom:12px; font-size:12px;">
+          <div style="display:flex; justify-content:space-between; margin-bottom:4px;">
+            <span style="color:#64748b;">الزبون:</span>
+            <span style="font-weight:900; color:#0f172a;">${inv.customerName}</span>
+          </div>
+          <div style="display:flex; justify-content:space-between; margin-bottom:4px;">
+            <span style="color:#64748b;">التاريخ:</span>
+            <span style="font-family:Arial;">${inv.date ? new Date(inv.date).toLocaleString('ar-DZ') : ''}</span>
+          </div>
+          <div style="display:flex; justify-content:space-between;">
+            <span style="color:#64748b;">طريقة الدفع:</span>
+            <span style="font-weight:800;">${inv.paymentMethod === 'debt' ? 'آجل (كريدي)' : 'نقداً'}</span>
+          </div>
+        </div>
+
+        <h4 style="font-size:12px; font-weight:900; color:#0f172a; margin-bottom:6px;">قائمة المواد:</h4>
+        <div style="margin-bottom:12px;">
+          ${itemsHtml}
+        </div>
+
+        <div style="background:#f1f5f9; padding:10px; border-radius:12px; font-size:13px; font-weight:900;">
+          <div style="display:flex; justify-content:space-between; margin-bottom:4px;">
+            <span>المجموع:</span>
+            <span style="color:#4f46e5; font-family:Arial;">${invTotal.toFixed(2)} ${cur}</span>
+          </div>
+          <div style="display:flex; justify-content:space-between; margin-bottom:4px; font-size:12px; color:#15803d;">
+            <span>المدفوع:</span>
+            <span style="font-family:Arial;">${invPaid.toFixed(2)} ${cur}</span>
+          </div>
+          ${debt > 0 ? `
+            <div style="display:flex; justify-content:space-between; font-size:12px; color:#b91c1c;">
+              <span>المتبقي (دين):</span>
+              <span style="font-family:Arial;">${debt.toFixed(2)} ${cur}</span>
+            </div>
+          ` : ''}
+        </div>
+      `;
+
+      document.getElementById('invoice-details-modal').classList.remove('hidden');
+    }
+
+    function closeInvoiceModal() {
+      document.getElementById('invoice-details-modal').classList.add('hidden');
+      currentModalInvoice = null;
+    }
+
+    function printCurrentModalInvoice() {
+      if (!currentModalInvoice) return;
+      const inv = currentModalInvoice;
+      const cur = (storeData.config && storeData.config.currency) || 'د.ج';
+      const storeName = (storeData.config && storeData.config.name) || 'Smart POS';
+      const footerMsg = (storeData.config && storeData.config.receiptFooterMessage) || 'شكراً لتعاملكم معنا ومرحباً بكم في أي وقت!';
+      
+      const itemsRows = (inv.items || []).map(it => `
+        <tr>
+          <td style="padding:4px; border-bottom:1px solid #ddd; text-align:right;">${it.productName || it.name}</td>
+          <td style="padding:4px; border-bottom:1px solid #ddd; text-align:center;">${it.quantity}</td>
+          <td style="padding:4px; border-bottom:1px solid #ddd; text-align:center;">${Number(it.sellingPrice || it.unitPrice || 0).toFixed(2)}</td>
+          <td style="padding:4px; border-bottom:1px solid #ddd; text-align:left;">${Number(it.total || 0).toFixed(2)}</td>
+        </tr>
+      `).join('');
+
+      const printHtml = `
+        <div style="font-family:Tahoma, Arial; font-size:12px; direction:rtl; padding:20px; max-width:400px; margin:0 auto; color:#000;">
+          <div style="text-align:center; margin-bottom:12px; border-bottom:2px solid #000; padding-bottom:8px;">
+            <h2 style="margin:0; font-size:18px;">${storeName}</h2>
+            <p style="margin:2px 0; font-size:12px;">فاتورة مبيعات رقم: <b>${inv.invoiceNumber}</b></p>
+            <p style="margin:2px 0; font-size:11px;">التاريخ: ${inv.date ? new Date(inv.date).toLocaleString('ar-DZ') : ''}</p>
+            <p style="margin:2px 0; font-size:12px;">الزبون: <b>${inv.customerName}</b></p>
+          </div>
+          <table style="width:100%; border-collapse:collapse; margin-bottom:12px; font-size:11px;">
+            <thead>
+              <tr style="border-bottom:1.5px solid #000;">
+                <th style="padding:4px; text-align:right;">الصنف</th>
+                <th style="padding:4px; text-align:center;">الكمية</th>
+                <th style="padding:4px; text-align:center;">السعر</th>
+                <th style="padding:4px; text-align:left;">المجموع</th>
+              </tr>
+            </thead>
+            <tbody>${itemsRows}</tbody>
+          </table>
+          <div style="border-top:1.5px solid #000; padding-top:6px; font-size:13px; font-weight:900;">
+            <div style="display:flex; justify-content:space-between; margin-bottom:4px;">
+              <span>المجموع الكلي:</span>
+              <span>${Number(inv.total || 0).toFixed(2)} ${cur}</span>
+            </div>
+            <div style="display:flex; justify-content:space-between; margin-bottom:4px; font-size:12px;">
+              <span>المبلغ المدفوع:</span>
+              <span>${Number(inv.amountPaid || 0).toFixed(2)} ${cur}</span>
+            </div>
+          </div>
+          <div style="text-align:center; margin-top:16px; border-top:1px dashed #000; padding-top:8px; font-size:11px; font-weight:700;">
+            ${footerMsg}
+          </div>
+        </div>
+      `;
+
+      const printArea = document.getElementById('printable-report-area');
+      printArea.innerHTML = printHtml;
+      printArea.classList.remove('hidden');
+      window.print();
+      setTimeout(() => printArea.classList.add('hidden'), 1000);
+    }
+
+    function startInvoiceBarcodeCameraScan() {
+      document.getElementById('invoice-scanner-modal').classList.remove('hidden');
+      invBarcodeScanner = new Html5Qrcode("inv-barcode-reader-box");
+      invBarcodeScanner.start(
+        { facingMode: "environment" },
+        { fps: 12, qrbox: { width: 260, height: 130 } },
+        (decodedText) => {
+          const raw = decodedText.trim();
+          const clean = raw.toLowerCase().replace(/[^a-z0-9]/g, '');
+          const allInvs = storeData.invoices || [];
+          const match = allInvs.find(inv => {
+            const num = (inv.invoiceNumber || '').toLowerCase();
+            const numClean = num.replace(/[^a-z0-9]/g, '');
+            return num === raw.toLowerCase() || (clean && numClean === clean) || (clean && numClean.includes(clean));
+          });
+
+          if (match) {
+            playBeep(true);
+            stopInvoiceBarcodeScanner();
+            showToast(`✓ تم العثور على الفاتورة ${match.invoiceNumber}`);
+            openInvoiceModal(match.id);
+          } else {
+            playBeep(false);
+            showToast(`لم يتم العثور على فاتورة مطابقة للباركود: ${raw}`, true);
+          }
+        },
+        () => {}
+      ).catch(() => {
+        showToast('تعذر تشغيل الكاميرا، تأكد من منح الصلاحيات', true);
+      });
+    }
+
+    function stopInvoiceBarcodeScanner() {
+      if (invBarcodeScanner) {
+        try {
+          invBarcodeScanner.stop().then(() => invBarcodeScanner.clear()).catch(() => {});
+        } catch (e) {}
+        invBarcodeScanner = null;
+      }
+      document.getElementById('invoice-scanner-modal').classList.add('hidden');
+    }
+
+    function printMobileSalesProfitReport() {
+      const cur = (storeData.config && storeData.config.currency) || 'د.ج';
+      const storeName = (storeData.config && storeData.config.name) || 'Smart POS';
+
+      let totalSales = 0, totalBuy = 0;
+      const validInvs = (storeData.invoices || []).filter(i => i.status !== 'refunded');
+
+      validInvs.forEach(inv => {
+        const amt = Number(inv.total || 0);
+        totalSales += amt;
+        let invBuy = 0;
+        (inv.items || []).forEach(it => {
+          const b = Number(it.purchasePrice || 0);
+          invBuy += b * Number(it.quantity || 1);
+        });
+        totalBuy += invBuy;
+      });
+
+      const expensesSum = (storeData.expenses || []).reduce((s, e) => s + Number(e.amount || 0), 0);
+      const grossProfit = Math.max(0, totalSales - totalBuy);
+      const netProfit = grossProfit - expensesSum;
+      const margin = totalSales > 0 ? ((netProfit / totalSales) * 100).toFixed(1) : '0.0';
+
+      const debtsList = (storeData.customers || []).filter(c => Number(c.debt || 0) > 0);
+      const totalDebt = debtsList.reduce((s, c) => s + Number(c.debt || 0), 0);
+
+      const section1Rows = `
+        <tr style="border-bottom:1px solid #e2e8f0; font-size:12px; font-weight:800; text-align:center;">
+          <td style="padding:8px; color:#4338ca; font-family:Arial;">${totalSales.toFixed(2)}</td>
+          <td style="padding:8px; color:#475569; font-family:Arial;">${totalBuy.toFixed(2)}</td>
+          <td style="padding:8px; color:#047857; font-family:Arial;">${grossProfit.toFixed(2)}</td>
+          <td style="padding:8px; color:#b91c1c; font-family:Arial;">${expensesSum.toFixed(2)}</td>
+          <td style="padding:8px; color:#047857; font-family:Arial; font-size:14px; font-weight:900;">${netProfit.toFixed(2)}</td>
+          <td style="padding:8px; color:#4338ca; font-family:Arial;">${margin}%</td>
+        </tr>
+      `;
+
+      const debtsRows = debtsList.slice(0, 30).map((c, i) => `
+        <tr style="border-bottom:1px solid #f1f5f9; font-size:11px;">
+          <td style="padding:6px; text-align:center;">${i + 1}</td>
+          <td style="padding:6px; font-weight:800;">${c.name}</td>
+          <td style="padding:6px; text-align:center;">${c.phone || '-'}</td>
+          <td style="padding:6px; text-align:left; font-weight:900; color:#b91c1c; font-family:Arial;">${Number(c.debt || 0).toFixed(2)} ${cur}</td>
+        </tr>
+      `).join('');
+
+      const invsRows = validInvs.slice(0, 40).map((inv, i) => {
+        let invCost = 0;
+        (inv.items || []).forEach(it => {
+          invCost += Number(it.purchasePrice || 0) * Number(it.quantity || 1);
+        });
+        const invTot = Number(inv.total || 0);
+        const invProf = invTot - invCost;
+        return `
+          <tr style="border-bottom:1px solid #f1f5f9; font-size:11px;">
+            <td style="padding:6px; text-align:center;">${i + 1}</td>
+            <td style="padding:6px; font-weight:800; font-family:Arial;">${inv.invoiceNumber}</td>
+            <td style="padding:6px;">${inv.customerName}</td>
+            <td style="padding:6px; text-align:center; font-family:Arial;">${inv.date ? new Date(inv.date).toLocaleDateString('ar-DZ') : ''}</td>
+            <td style="padding:6px; text-align:left; font-weight:900; font-family:Arial;">${invTot.toFixed(2)}</td>
+            <td style="padding:6px; text-align:left; font-weight:900; color:#047857; font-family:Arial;">+${invProf.toFixed(2)}</td>
+          </tr>
+        `;
+      }).join('');
+
+      const reportHtml = `
+        <div style="font-family:Tahoma, Arial, sans-serif; direction:rtl; padding:24px; color:#0f172a; max-width:800px; margin:0 auto; background:#fff;">
+          <!-- Header -->
+          <div style="display:flex; justify-content:space-between; align-items:center; border-bottom:2px solid #0f172a; padding-bottom:12px; margin-bottom:16px;">
+            <div>
+              <h1 style="margin:0; font-size:20px; font-weight:900;">${storeName}</h1>
+              <p style="margin:4px 0 0; font-size:12px; color:#475569;">تقرير المبيعات الشامل والأرباح والديون</p>
+            </div>
+            <div style="text-align:left; font-size:11px; color:#64748b;">
+              <div>تاريخ التقرير: <b>${new Date().toLocaleDateString('ar-DZ')}</b></div>
+              <div>العملة: <b>${cur}</b></div>
+            </div>
+          </div>
+
+          <!-- Section 1 -->
+          <div style="margin-bottom:20px;">
+            <h3 style="font-size:14px; font-weight:900; color:#1e293b; margin-bottom:8px;">1. ملخص المبيعات، الأرباح، والمصاريف الإجمالية:</h3>
+            <table style="width:100%; border-collapse:collapse; border:1px solid #cbd5e1; border-radius:8px;">
+              <thead style="background:#f1f5f9; font-size:11px; font-weight:900; color:#1e293b;">
+                <tr>
+                  <th style="padding:8px; border-bottom:1px solid #cbd5e1;">إجمالي المبيعات</th>
+                  <th style="padding:8px; border-bottom:1px solid #cbd5e1;">تكلفة الشراء</th>
+                  <th style="padding:8px; border-bottom:1px solid #cbd5e1;">الربح الإجمالي</th>
+                  <th style="padding:8px; border-bottom:1px solid #cbd5e1;">المصاريف</th>
+                  <th style="padding:8px; border-bottom:1px solid #cbd5e1;">صافي الأرباح</th>
+                  <th style="padding:8px; border-bottom:1px solid #cbd5e1;">نسبة الهامش</th>
+                </tr>
+              </thead>
+              <tbody>${section1Rows}</tbody>
+            </table>
+          </div>
+
+          <!-- Section 2: Debts -->
+          <div style="margin-bottom:20px;">
+            <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:8px;">
+              <h3 style="font-size:14px; font-weight:900; color:#1e293b; margin:0;">2. قائمة ديون الزبائن المستحقة:</h3>
+              <span style="font-size:12px; font-weight:900; color:#b91c1c;">إجمالي الديون: ${totalDebt.toFixed(2)} ${cur}</span>
+            </div>
+            <table style="width:100%; border-collapse:collapse; border:1px solid #cbd5e1;">
+              <thead style="background:#f8fafc; font-size:11px; font-weight:900; color:#475569;">
+                <tr>
+                  <th style="padding:6px; border-bottom:1px solid #cbd5e1; width:35px;">#</th>
+                  <th style="padding:6px; border-bottom:1px solid #cbd5e1; text-align:right;">اسم الزبون</th>
+                  <th style="padding:6px; border-bottom:1px solid #cbd5e1; text-align:center;">رقم الهاتف</th>
+                  <th style="padding:6px; border-bottom:1px solid #cbd5e1; text-align:left;">المبلغ المستحق</th>
+                </tr>
+              </thead>
+              <tbody>${debtsRows || '<tr><td colspan="4" style="text-align:center; padding:12px; color:#94a3b8;">لا توجد ديون مسجلة</td></tr>'}</tbody>
+            </table>
+          </div>
+
+          <!-- Section 3: Invoices Detail -->
+          <div style="margin-bottom:20px;">
+            <h3 style="font-size:14px; font-weight:900; color:#1e293b; margin-bottom:8px;">3. تفاصيل فواتير المبيعات وأرباحها:</h3>
+            <table style="width:100%; border-collapse:collapse; border:1px solid #cbd5e1;">
+              <thead style="background:#f8fafc; font-size:11px; font-weight:900; color:#475569;">
+                <tr>
+                  <th style="padding:6px; border-bottom:1px solid #cbd5e1; width:35px;">#</th>
+                  <th style="padding:6px; border-bottom:1px solid #cbd5e1; text-align:right;">رقم الفاتورة</th>
+                  <th style="padding:6px; border-bottom:1px solid #cbd5e1; text-align:right;">الزبون</th>
+                  <th style="padding:6px; border-bottom:1px solid #cbd5e1; text-align:center;">التاريخ</th>
+                  <th style="padding:6px; border-bottom:1px solid #cbd5e1; text-align:left;">المجموع (${cur})</th>
+                  <th style="padding:6px; border-bottom:1px solid #cbd5e1; text-align:left;">الربح الصافي (${cur})</th>
+                </tr>
+              </thead>
+              <tbody>${invsRows || '<tr><td colspan="6" style="text-align:center; padding:12px; color:#94a3b8;">لا توجد فواتير</td></tr>'}</tbody>
+            </table>
+          </div>
+
+          <!-- Footer -->
+          <div style="text-align:center; font-size:10px; color:#94a3b8; border-top:1px solid #cbd5e1; padding-top:10px; margin-top:20px;">
+            تم استخراج هذا التقرير آلياً بواسطة تطبيق Smart POS Mobile في ${new Date().toLocaleString('ar-DZ')}
+          </div>
+        </div>
+      `;
+
+      const printArea = document.getElementById('printable-report-area');
+      printArea.innerHTML = reportHtml;
+      printArea.classList.remove('hidden');
+      window.print();
+      setTimeout(() => printArea.classList.add('hidden'), 1000);
     }
 
     // Camera Scanners

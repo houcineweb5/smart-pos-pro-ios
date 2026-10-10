@@ -131,6 +131,18 @@ export interface StoreConfig {
   receiptTheme?: 'classic' | 'navy' | 'emerald' | 'minimal' | 'modern';
   a4Theme?: 'slate' | 'indigo' | 'emerald' | 'burgundy' | 'amber';
   printPrimaryColor?: string;
+  defaultPrintMode?: '80mm' | 'a4';
+  showLogoOnInvoice?: boolean;
+  showPhoneOnInvoice?: boolean;
+  showAddressOnInvoice?: boolean;
+  showEmailOnInvoice?: boolean;
+  showTaxNumberOnInvoice?: boolean;
+  showCashierOnInvoice?: boolean;
+  showBarcodeOnInvoice?: boolean;
+  showDebtOnInvoice?: boolean;
+  receiptFooterMessage?: string;
+  receiptReturnPolicy?: string;
+  invoiceNotesDefault?: string;
 }
 
 export interface DashboardStats {

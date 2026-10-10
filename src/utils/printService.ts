@@ -66,6 +66,8 @@ export interface PdfDocumentMeta {
   themeColor?: string;
   receiptTheme?: 'classic' | 'navy' | 'emerald' | 'minimal' | 'modern';
   a4Theme?: 'slate' | 'indigo' | 'emerald' | 'burgundy' | 'amber';
+  isReport?: boolean;
+  showBarcode?: boolean;
 }
 
 const CODE39_MAP: Record<string, string> = {
@@ -415,6 +417,74 @@ export function buildUnified80mmReceiptHtml(
 }
 
 /**
+ * A4 Business Palettes for structured invoices, reports, and prints
+ */
+export const A4_PRINT_THEMES: Record<
+  string,
+  {
+    nameAr: string;
+    nameEn: string;
+    primary: string;
+    headerBg: string;
+    border: string;
+    accentBg: string;
+    badgeBg: string;
+    badgeText: string;
+  }
+> = {
+  slate: {
+    nameAr: 'رمادي تنفيذي',
+    nameEn: 'Executive Slate',
+    primary: '#0f172a',
+    headerBg: '#1e293b',
+    border: '#cbd5e1',
+    accentBg: '#f8fafc',
+    badgeBg: '#f1f5f9',
+    badgeText: '#0f172a',
+  },
+  indigo: {
+    nameAr: 'أزرق ملكي (نيلي)',
+    nameEn: 'Royal Indigo',
+    primary: '#4338ca',
+    headerBg: '#3730a3',
+    border: '#c7d2fe',
+    accentBg: '#eef2ff',
+    badgeBg: '#e0e7ff',
+    badgeText: '#3730a3',
+  },
+  emerald: {
+    nameAr: 'أخضر زمردي',
+    nameEn: 'Emerald Green',
+    primary: '#065f46',
+    headerBg: '#047857',
+    border: '#a7f3d0',
+    accentBg: '#ecfdf5',
+    badgeBg: '#d1fae5',
+    badgeText: '#065f46',
+  },
+  burgundy: {
+    nameAr: 'عنابي / خمري',
+    nameEn: 'Burgundy Wine',
+    primary: '#9f1239',
+    headerBg: '#881337',
+    border: '#fecdd3',
+    accentBg: '#fff1f2',
+    badgeBg: '#ffe4e6',
+    badgeText: '#9f1239',
+  },
+  amber: {
+    nameAr: 'كهرماني دافئ',
+    nameEn: 'Warm Amber',
+    primary: '#b45309',
+    headerBg: '#92400e',
+    border: '#fde68a',
+    accentBg: '#fffbeb',
+    badgeBg: '#fef3c7',
+    badgeText: '#92400e',
+  },
+};
+
+/**
  * Self-contained A4 HTML generator from PdfDocumentMeta.
  * Guarantees that A4 printing never suffers from dark mode, mobile responsive breakpoints,
  * overflow scroll containers, or missing modal DOM, and never shows internal profit!
@@ -426,15 +496,9 @@ export function buildStructuredA4Html(meta: PdfDocumentMeta): string {
   const fontStack = `'Tajawal', 'Cairo', -apple-system, BlinkMacSystemFont, 'Segoe UI', Tahoma, Arial, sans-serif`;
   const prevBal = Number(meta.previousBalance || 0);
 
-  const a4Themes: Record<string, { primary: string; headerBg: string; border: string }> = {
-    slate: { primary: '#0f172a', headerBg: '#0f172a', border: '#334155' },
-    indigo: { primary: '#4338ca', headerBg: '#3730a3', border: '#4338ca' },
-    emerald: { primary: '#065f46', headerBg: '#064e3b', border: '#059669' },
-    burgundy: { primary: '#9f1239', headerBg: '#881337', border: '#be123c' },
-    amber: { primary: '#b45309', headerBg: '#92400e', border: '#d97706' }
-  };
-  const activeA4 = a4Themes[meta.a4Theme || 'slate'] || a4Themes.slate;
+  const activeA4 = A4_PRINT_THEMES[meta.a4Theme || 'slate'] || A4_PRINT_THEMES.slate;
   const primaryBrandColor = meta.themeColor ? meta.themeColor : activeA4.primary;
+  const headerBgColor = meta.themeColor ? meta.themeColor : activeA4.headerBg;
 
   const summaryCardsHtml =
     meta.summaryCards && meta.summaryCards.length > 0
@@ -443,7 +507,7 @@ export function buildStructuredA4Html(meta: PdfDocumentMeta): string {
         ${meta.summaryCards
           .map(
             (c) => `
-          <div style="border: 1px solid #cbd5e1; border-radius: 8px; padding: 10px 12px; background: #f8fafc;">
+          <div style="border: 1px solid ${activeA4.border}; border-radius: 8px; padding: 10px 12px; background: #f8fafc;">
             <div style="font-size: 11px; font-weight: 700; color: #64748b;">${c.label}</div>
             <div style="font-size: 15px; font-weight: 800; color: ${c.color || primaryBrandColor}; margin-top: 4px; font-family: Tahoma, Arial, sans-serif;">${c.value}</div>
           </div>
@@ -454,12 +518,56 @@ export function buildStructuredA4Html(meta: PdfDocumentMeta): string {
     `
       : '';
 
+  // Specialized Financial / Statistical Report Layout (Matching Photo 2 exactly)
+  if (meta.isReport) {
+    return `
+    <div style="font-family: ${fontStack}; color: #0f172a; background: #ffffff; direction: ${isRTL ? 'rtl' : 'ltr'}; padding: 5mm; width: 100%; box-sizing: border-box;">
+      <div style="display: flex; justify-content: space-between; align-items: flex-start; border-bottom: 2.5px solid ${primaryBrandColor}; padding-bottom: 12px; margin-bottom: 14px;">
+        <div style="text-align: ${alignStart};">
+          <h1 style="margin: 0; font-size: 20px; font-weight: 900; color: #0f172a;">${meta.storeName || 'Smart POS'} - ${meta.title}</h1>
+          <div style="font-size: 11.5px; color: #475569; font-weight: 700; margin-top: 4px;">
+            ${meta.customerLabel || (isRTL ? 'الفترة المحددة:' : 'Period:')} <b>${meta.customerName || ''}</b>  |  ${isRTL ? 'تاريخ الطباعة:' : 'Printed:'} <span dir="ltr">${meta.date || ''}</span>
+          </div>
+        </div>
+        <div style="text-align: ${alignEnd}; font-size: 12px; font-weight: 800; color: #0f172a;">
+          ${meta.storePhone ? `<div>${meta.storePhone}</div>` : ''}
+          ${meta.storeAddress ? `<div style="font-size: 11px; color: #475569; font-weight: 700; margin-top: 2px;">${meta.storeAddress}</div>` : ''}
+        </div>
+      </div>
+
+      ${summaryCardsHtml}
+
+      ${meta.extraSections && meta.extraSections.length > 0 ? meta.extraSections.map((sec) => `
+        <div style="margin-bottom: 16px;">
+          <div style="font-size: 13px; font-weight: 800; margin-bottom: 6px; padding: 6px 10px; background: ${activeA4.accentBg || '#f1f5f9'}; border-${isRTL ? 'right' : 'left'}: 4px solid ${primaryBrandColor}; border-radius: 4px; color: #0f172a;">
+            ${sec.title}
+          </div>
+          <table style="width: 100%; border-collapse: collapse; font-size: 11.5px;">
+            <thead>
+              <tr style="background: ${headerBgColor}; color: #ffffff;">
+                ${sec.headers.map(h => `<th style="padding: 7px 9px; text-align: ${alignStart}; font-weight: 800; border: 1px solid ${headerBgColor};">${h}</th>`).join('')}
+              </tr>
+            </thead>
+            <tbody>
+              ${sec.rows.map((row, rIdx) => `
+                <tr style="background: ${rIdx % 2 === 1 ? '#f8fafc' : '#ffffff'};">
+                  ${row.map(cell => `<td style="padding: 7px 9px; text-align: ${alignStart}; color: #0f172a; font-weight: 700; border: 1px solid #cbd5e1;">${cell ?? ''}</td>`).join('')}
+                </tr>
+              `).join('')}
+            </tbody>
+          </table>
+        </div>
+      `).join('') : ''}
+    </div>
+    `;
+  }
+
   const itemsTableHtml =
     meta.items && meta.items.length > 0
       ? `
       <table style="width: 100%; border-collapse: collapse; margin-bottom: 18px; font-size: 12px;">
         <thead>
-          <tr style="background: ${activeA4.headerBg}; color: #ffffff;">
+          <tr style="background: ${headerBgColor}; color: #ffffff;">
             <th style="padding: 9px 10px; text-align: ${alignStart}; font-weight: 800; width: 7%; border: 1px solid ${activeA4.border};">#</th>
             <th style="padding: 9px 10px; text-align: ${alignStart}; font-weight: 800; width: 43%; border: 1px solid ${activeA4.border};">${meta.customTableHeaders?.name || (isRTL ? 'البيان / الصنف' : 'Désignation')}</th>
             <th style="padding: 9px 10px; text-align: center; font-weight: 800; width: 14%; border: 1px solid ${activeA4.border};">${meta.customTableHeaders?.qty || (isRTL ? 'الكمية' : 'Qté')}</th>
@@ -497,14 +605,16 @@ export function buildStructuredA4Html(meta: PdfDocumentMeta): string {
           .map(
             (sec) => `
           <div style="margin-bottom: 16px;">
-            <h3 style="margin: 0 0 8px 0; font-size: 14px; font-weight: 800; color: #0f172a;">${sec.title}</h3>
+            <div style="font-size: 13px; font-weight: 800; margin-bottom: 6px; padding: 6px 10px; background: ${activeA4.accentBg || '#f1f5f9'}; border-${isRTL ? 'right' : 'left'}: 4px solid ${primaryBrandColor}; border-radius: 4px; color: #0f172a;">
+              ${sec.title}
+            </div>
             <table style="width: 100%; border-collapse: collapse; font-size: 11.5px;">
               <thead>
-                <tr style="background: #1e293b; color: #ffffff;">
+                <tr style="background: ${headerBgColor}; color: #ffffff;">
                   ${sec.headers
                     .map(
                       (h) =>
-                        `<th style="padding: 7px 9px; text-align: ${alignStart}; font-weight: 800; border: 1px solid #1e293b;">${h}</th>`
+                        `<th style="padding: 7px 9px; text-align: ${alignStart}; font-weight: 800; border: 1px solid ${headerBgColor};">${h}</th>`
                     )
                     .join('')}
                 </tr>
@@ -535,7 +645,7 @@ export function buildStructuredA4Html(meta: PdfDocumentMeta): string {
   return `
     <div style="font-family: ${fontStack}; color: #0f172a; background: #ffffff; direction: ${isRTL ? 'rtl' : 'ltr'}; padding: 4mm; width: 100%; box-sizing: border-box;">
       <!-- Top Header -->
-      <div style="display: flex; justify-content: space-between; align-items: flex-start; border-bottom: 2.5px solid ${activeA4.primary}; padding-bottom: 14px; margin-bottom: 16px;">
+      <div style="display: flex; justify-content: space-between; align-items: flex-start; border-bottom: 2.5px solid ${primaryBrandColor}; padding-bottom: 14px; margin-bottom: 16px;">
         <div style="text-align: ${alignStart};">
           <h1 style="margin: 0; font-size: 22px; font-weight: 900; color: #0f172a;">${meta.storeName || 'Smart POS'}</h1>
           ${meta.storeAddress ? `<div style="font-size: 12px; color: #334155; font-weight: 700; margin-top: 4px;">${meta.storeAddress}</div>` : ''}
@@ -550,7 +660,7 @@ export function buildStructuredA4Html(meta: PdfDocumentMeta): string {
           </div>
         </div>
         <div style="text-align: ${alignEnd};">
-          <div style="font-size: 18px; font-weight: 900; color: ${activeA4.primary};">${meta.title || ''}</div>
+          <div style="font-size: 18px; font-weight: 900; color: ${primaryBrandColor};">${meta.title || ''}</div>
           <div style="font-size: 16px; font-weight: 900; color: #0f172a; font-family: Tahoma, Arial, sans-serif; margin-top: 3px;">${meta.docNumber || ''}</div>
           <div style="font-size: 12px; font-weight: 700; color: #475569; margin-top: 3px;">${isRTL ? 'التاريخ:' : 'Date:'} <span style="font-family: Tahoma, Arial, sans-serif;" dir="ltr">${meta.date || ''}</span></div>
         </div>
@@ -622,9 +732,9 @@ export function buildStructuredA4Html(meta: PdfDocumentMeta): string {
           `
               : ''
           }
-          <div style="border-top: 2px solid ${activeA4.primary}; padding-top: 8px; margin-top: 6px; display: flex; justify-content: space-between; align-items: center; font-size: 15px; font-weight: 900; color: #0f172a;">
+          <div style="border-top: 2px solid ${primaryBrandColor}; padding-top: 8px; margin-top: 6px; display: flex; justify-content: space-between; align-items: center; font-size: 15px; font-weight: 900; color: #0f172a;">
             <span>${prevBal > 0 ? (isRTL ? 'مجموع الفاتورة:' : 'Total Facture:') : isRTL ? 'المجموع الإجمالي:' : 'TOTAL:'}</span>
-            <span style="font-family: Tahoma, Arial, sans-serif; color: ${activeA4.primary}; font-size: 16px;" dir="ltr">${Number(meta.total || 0).toFixed(2)} ${meta.currency}</span>
+            <span style="font-family: Tahoma, Arial, sans-serif; color: ${primaryBrandColor}; font-size: 16px;" dir="ltr">${Number(meta.total || 0).toFixed(2)} ${meta.currency}</span>
           </div>
           ${
             prevBal > 0
@@ -1112,90 +1222,136 @@ function paintDocumentContentOnContext(
     y += 22;
   } else {
     // --- A4 OFFICIAL DOCUMENT LAYOUT ---
-    drawText(meta.storeName || 'Smart POS', startX, y, {
-      size: 24,
-      weight: '900',
-      color: '#0f172a',
-      align: startAlign,
-    });
-    drawText(meta.title, endX, y, {
-      size: 19,
-      weight: '900',
-      color: '#4f46e5',
-      align: endAlign,
-    });
-    y += 32;
+    const activeA4 = A4_PRINT_THEMES[meta.a4Theme || 'slate'] || A4_PRINT_THEMES.slate;
+    const primaryColor = meta.themeColor || activeA4.primary;
+    const headerBgColor = meta.themeColor || activeA4.headerBg;
 
-    if (meta.storeAddress || meta.storePhone || meta.storeEmail) {
-      const storeDetails = [meta.storeAddress, meta.storePhone, meta.storeEmail]
-        .filter(Boolean)
-        .join('  |  ');
-      drawText(storeDetails, startX, y, {
-        size: 12,
+    if (meta.isReport) {
+      // Clean Report Header matching Photo 2
+      drawText(`${meta.storeName || 'Smart POS'} - ${meta.title}`, startX, y, {
+        size: 19,
+        weight: '900',
+        color: '#0f172a',
+        align: startAlign,
+      });
+      if (meta.storePhone) {
+        drawText(meta.storePhone, endX, y, {
+          size: 13,
+          weight: '900',
+          color: '#0f172a',
+          align: endAlign,
+        });
+      }
+      y += 25;
+
+      const reportSubtitle = `${meta.customerLabel || (isRTL ? 'الفترة المحددة:' : 'Period:')} ${meta.customerName || ''} | ${isRTL ? 'تاريخ الطباعة:' : 'Printed:'} ${meta.date}`;
+      drawText(reportSubtitle, startX, y, {
+        size: 11,
         weight: '700',
         color: '#475569',
         align: startAlign,
-        maxWidth: contentWidth * 0.6,
+        maxWidth: contentWidth * 0.7,
       });
-    }
-    drawText(meta.docNumber, endX, y, {
-      size: 17,
-      weight: '900',
-      color: '#0f172a',
-      align: endAlign,
-      isNumeric: true,
-    });
-    y += 24;
+      if (meta.storeAddress) {
+        drawText(meta.storeAddress, endX, y, {
+          size: 10.5,
+          weight: '700',
+          color: '#64748b',
+          align: endAlign,
+          maxWidth: contentWidth * 0.3,
+        });
+      }
+      y += 24;
 
-    if (meta.storeRegNumber) {
-      drawText(`ICE / RC: ${meta.storeRegNumber}`, startX, y, {
-        size: 11,
-        weight: '700',
-        color: '#64748b',
+      drawLine(y, true, primaryColor);
+      y += 16;
+    } else {
+      // Standard Invoice / Document Header
+      drawText(meta.storeName || 'Smart POS', startX, y, {
+        size: 24,
+        weight: '900',
+        color: '#0f172a',
         align: startAlign,
       });
-    }
-    drawText(`${isRTL ? 'التاريخ:' : 'Date:'} ${meta.date}`, endX, y, {
-      size: 12,
-      weight: '700',
-      color: '#475569',
-      align: endAlign,
-    });
-    y += 26;
-
-    drawLine(y, true, '#cbd5e1');
-    y += 16;
-
-    // Customer Card
-    ctx.fillStyle = '#f8fafc';
-    ctx.fillRect(pad, y, contentWidth, 62);
-    ctx.strokeStyle = '#cbd5e1';
-    ctx.lineWidth = 1;
-    ctx.strokeRect(pad, y, contentWidth, 62);
-
-    const cardStartX = isRTL ? startX - 16 : startX + 16;
-    const cardEndX = isRTL ? endX + 16 : endX - 16;
-    drawText(
-      meta.customerLabel || (isRTL ? 'بيانات العميل / المورد:' : 'Client / Supplier:'),
-      cardStartX,
-      y + 11,
-      { size: 11, weight: '800', color: '#64748b', align: startAlign }
-    );
-    drawText(meta.customerName, cardStartX, y + 31, {
-      size: 15,
-      weight: '900',
-      color: '#0f172a',
-      align: startAlign,
-    });
-    if (meta.customerPhone) {
-      drawText(`${isRTL ? 'الهاتف:' : 'Tel:'} ${meta.customerPhone}`, cardEndX, y + 31, {
-        size: 13,
-        weight: '700',
-        color: '#334155',
+      drawText(meta.title, endX, y, {
+        size: 19,
+        weight: '900',
+        color: primaryColor,
         align: endAlign,
       });
+      y += 32;
+
+      if (meta.storeAddress || meta.storePhone || meta.storeEmail) {
+        const storeDetails = [meta.storeAddress, meta.storePhone, meta.storeEmail]
+          .filter(Boolean)
+          .join('  |  ');
+        drawText(storeDetails, startX, y, {
+          size: 12,
+          weight: '700',
+          color: '#475569',
+          align: startAlign,
+          maxWidth: contentWidth * 0.6,
+        });
+      }
+      drawText(meta.docNumber, endX, y, {
+        size: 17,
+        weight: '900',
+        color: '#0f172a',
+        align: endAlign,
+        isNumeric: true,
+      });
+      y += 24;
+
+      if (meta.storeRegNumber) {
+        drawText(`ICE / RC: ${meta.storeRegNumber}`, startX, y, {
+          size: 11,
+          weight: '700',
+          color: '#64748b',
+          align: startAlign,
+        });
+      }
+      drawText(`${isRTL ? 'التاريخ:' : 'Date:'} ${meta.date}`, endX, y, {
+        size: 12,
+        weight: '700',
+        color: '#475569',
+        align: endAlign,
+      });
+      y += 26;
+
+      drawLine(y, true, primaryColor);
+      y += 16;
+
+      // Customer Card
+      ctx.fillStyle = '#f8fafc';
+      ctx.fillRect(pad, y, contentWidth, 62);
+      ctx.strokeStyle = activeA4.border;
+      ctx.lineWidth = 1;
+      ctx.strokeRect(pad, y, contentWidth, 62);
+
+      const cardStartX = isRTL ? startX - 16 : startX + 16;
+      const cardEndX = isRTL ? endX + 16 : endX - 16;
+      drawText(
+        meta.customerLabel || (isRTL ? 'بيانات العميل / المورد:' : 'Client / Supplier:'),
+        cardStartX,
+        y + 11,
+        { size: 11, weight: '800', color: '#64748b', align: startAlign }
+      );
+      drawText(meta.customerName, cardStartX, y + 31, {
+        size: 15,
+        weight: '900',
+        color: '#0f172a',
+        align: startAlign,
+      });
+      if (meta.customerPhone) {
+        drawText(`${isRTL ? 'الهاتف:' : 'Tel:'} ${meta.customerPhone}`, cardEndX, y + 31, {
+          size: 13,
+          weight: '700',
+          color: '#334155',
+          align: endAlign,
+        });
+      }
+      y += 80;
     }
-    y += 80;
 
     // Optional Summary KPI Cards
     if (meta.summaryCards && meta.summaryCards.length > 0) {
@@ -1214,7 +1370,7 @@ function paintDocumentContentOnContext(
 
         ctx.fillStyle = '#f8fafc';
         ctx.fillRect(cardX, cardY, cardW, cardH);
-        ctx.strokeStyle = '#cbd5e1';
+        ctx.strokeStyle = activeA4.border;
         ctx.lineWidth = 1;
         ctx.strokeRect(cardX, cardY, cardW, cardH);
 
@@ -1227,21 +1383,21 @@ function paintDocumentContentOnContext(
           maxWidth: cardW - 24,
         });
         drawText(card.value, textX, cardY + 32, {
-          size: 15,
+          size: 14.5,
           weight: '900',
-          color: card.color || '#0f172a',
+          color: card.color || primaryColor,
           align: startAlign,
           maxWidth: cardW - 24,
         });
       });
 
       const totalRows = Math.ceil(meta.summaryCards.length / cols);
-      y += totalRows * (cardH + gap) + 10;
+      y += totalRows * (cardH + gap) + 12;
     }
 
-    // Items Table
-    if (meta.items.length > 0) {
-      ctx.fillStyle = '#0f172a';
+    // Items Table (for standard invoices)
+    if (meta.items && meta.items.length > 0) {
+      ctx.fillStyle = headerBgColor;
       ctx.fillRect(pad, y, contentWidth, 34);
 
       const cIdx = isRTL ? startX - 14 : startX + 14;
@@ -1329,22 +1485,32 @@ function paintDocumentContentOnContext(
       y += 18;
     }
 
-    // Optional Extra Sections
+    // Optional Extra Sections (Used by Reports & Structured Documents)
     if (meta.extraSections && meta.extraSections.length > 0) {
       meta.extraSections.forEach((sec) => {
-        y += 8;
-        drawText(sec.title, startX, y, {
-          size: 14,
+        // Section Header bar with title
+        ctx.fillStyle = activeA4.accentBg || '#f1f5f9';
+        ctx.fillRect(pad, y, contentWidth, 28);
+        ctx.fillStyle = primaryColor;
+        if (isRTL) {
+          ctx.fillRect(logicalWidth - pad - 4, y, 4, 28);
+        } else {
+          ctx.fillRect(pad, y, 4, 28);
+        }
+
+        const secTitleX = isRTL ? startX - 14 : startX + 14;
+        drawText(sec.title, secTitleX, y + 6, {
+          size: 12.5,
           weight: '900',
           color: '#0f172a',
           align: startAlign,
         });
-        y += 24;
+        y += 34;
 
         const colCount = Math.max(1, sec.headers.length);
         const colW = contentWidth / colCount;
 
-        ctx.fillStyle = '#1e293b';
+        ctx.fillStyle = headerBgColor;
         ctx.fillRect(pad, y, contentWidth, 30);
 
         sec.headers.forEach((h, hIdx) => {
@@ -1370,10 +1536,13 @@ function paintDocumentContentOnContext(
             const cx = isRTL
               ? logicalWidth - pad - cIdxCell * colW - 10
               : pad + cIdxCell * colW + 10;
-            drawText(String(cell ?? ''), cx, y + 6, {
+            const cellStr = String(cell ?? '');
+            const isProfitCell = cellStr.startsWith('+');
+            const cellColor = isProfitCell ? '#047857' : '#0f172a';
+            drawText(cellStr, cx, y + 6, {
               size: 11,
               weight: cIdxCell === row.length - 1 ? '800' : '700',
-              color: '#0f172a',
+              color: cellColor,
               align: startAlign,
               maxWidth: colW - 16,
             });
@@ -1385,109 +1554,114 @@ function paintDocumentContentOnContext(
       });
     }
 
-    const sumRow = (label: string, val: string, bold = false, color = '#1e293b') => {
-      drawText(label, startX, y, {
-        size: bold ? 15 : 13,
-        weight: bold ? '900' : '700',
-        color,
-        align: startAlign,
-      });
-      drawText(val, endX, y, {
-        size: bold ? 17 : 14,
-        weight: '800',
-        color,
-        align: endAlign,
-        isNumeric: true,
-      });
-      y += bold ? 28 : 23;
-    };
+    // Only paint payment totals, notes, and thank you footer for regular invoices (NOT financial reports)
+    if (!meta.isReport) {
+      const sumRow = (label: string, val: string, bold = false, color = '#1e293b') => {
+        drawText(label, startX, y, {
+          size: bold ? 15 : 13,
+          weight: bold ? '900' : '700',
+          color,
+          align: startAlign,
+        });
+        drawText(val, endX, y, {
+          size: bold ? 17 : 14,
+          weight: '800',
+          color,
+          align: endAlign,
+          isNumeric: true,
+        });
+        y += bold ? 28 : 23;
+      };
 
-    if (!meta.summaryCards && meta.items && meta.items.length > 0) {
-      sumRow(isRTL ? 'عدد المنتجات:' : 'Articles:', String(meta.items.length));
-    }
-    sumRow(
-      isRTL ? 'المجموع:' : 'Subtotal:',
-      `${Number(meta.subtotal || 0).toFixed(2)} ${meta.currency}`
-    );
-    if (meta.discount && meta.discount > 0) {
+      if (!meta.summaryCards && meta.items && meta.items.length > 0) {
+        sumRow(isRTL ? 'عدد المنتجات:' : 'Articles:', String(meta.items.length));
+      }
       sumRow(
-        isRTL ? 'الخصم:' : 'Discount:',
-        `-${Number(meta.discount).toFixed(2)} ${meta.currency}`,
-        false,
-        '#e11d48'
+        isRTL ? 'المجموع:' : 'Subtotal:',
+        `${Number(meta.subtotal || 0).toFixed(2)} ${meta.currency}`
       );
-    }
-    if (meta.tax && meta.tax > 0) {
-      sumRow(
-        isRTL ? 'الضريبة:' : 'Tax:',
-        `+${Number(meta.tax).toFixed(2)} ${meta.currency}`
-      );
-    }
+      if (meta.discount && meta.discount > 0) {
+        sumRow(
+          isRTL ? 'الخصم:' : 'Discount:',
+          `-${Number(meta.discount).toFixed(2)} ${meta.currency}`,
+          false,
+          '#e11d48'
+        );
+      }
+      if (meta.tax && meta.tax > 0) {
+        sumRow(
+          isRTL ? 'الضريبة:' : 'Tax:',
+          `+${Number(meta.tax).toFixed(2)} ${meta.currency}`,
+          false,
+          '#475569'
+        );
+      }
 
-    const prevBalA4 = Number(meta.previousBalance || 0);
-    drawLine(y, true, '#0f172a');
-    y += 10;
-    sumRow(
-      isRTL ? 'المجموع الإجمالي الصافي:' : 'Grand Total:',
-      `${Number(meta.total || 0).toFixed(2)} ${meta.currency}`,
-      prevBalA4 <= 0,
-      '#4f46e5'
-    );
-
-    if (prevBalA4 > 0) {
-      sumRow(
-        isRTL ? 'كريدي قديم / مبلغ سابق مضاف:' : 'Previous Balance Added:',
-        `+${prevBalA4.toFixed(2)} ${meta.currency}`,
-        false,
-        '#d97706'
-      );
-      sumRow(
-        isRTL ? 'المجموع النهائي (مع الكريدي القديم):' : 'Total Including Previous Balance:',
-        `${(Number(meta.total || 0) + prevBalA4).toFixed(2)} ${meta.currency}`,
-        true,
-        '#0f172a'
-      );
-    }
-
-    if (meta.amountPaid !== undefined) {
-      sumRow(
-        isRTL ? 'المبلغ المؤدى:' : 'Amount Paid:',
-        `${Number(meta.amountPaid).toFixed(2)} ${meta.currency}`,
-        false,
-        '#059669'
-      );
-    }
-    if (meta.remainingDebt && meta.remainingDebt > 0) {
-      sumRow(
-        isRTL ? 'الباقي (كريدي):' : 'Reste (Crédit):',
-        `${Number(meta.remainingDebt).toFixed(2)} ${meta.currency}`,
-        false,
-        '#e11d48'
-      );
-    }
-
-    if (meta.notes) {
+      const prevBalA4 = Number(meta.previousBalance || 0);
+      drawLine(y, true, primaryColor);
       y += 10;
-      drawText(`${isRTL ? 'ملاحظات:' : 'Notes:'} ${meta.notes}`, startX, y, {
-        size: 12,
-        weight: '700',
-        color: '#475569',
-        align: startAlign,
-        maxWidth: contentWidth,
-      });
-      y += 26;
-    }
+      sumRow(
+        isRTL ? 'المجموع الإجمالي الصافي:' : 'Grand Total:',
+        `${Number(meta.total || 0).toFixed(2)} ${meta.currency}`,
+        prevBalA4 <= 0,
+        primaryColor
+      );
 
-    y += 18;
-    drawLine(y, false, '#cbd5e1');
-    y += 12;
-    drawText(
-      meta.footerText || (isRTL ? 'شكراً لتعاملكم معنا ومرحباً بكم في أي وقت!' : 'Thank you for your business!'),
-      logicalWidth / 2,
-      y,
-      { size: 12, weight: '800', color: '#475569', align: 'center' }
-    );
-    y += 28;
+      if (prevBalA4 > 0) {
+        sumRow(
+          isRTL ? 'كريدي قديم / مبلغ سابق مضاف:' : 'Previous Balance Added:',
+          `+${prevBalA4.toFixed(2)} ${meta.currency}`,
+          false,
+          '#d97706'
+        );
+        sumRow(
+          isRTL ? 'المجموع النهائي (مع الكريدي القديم):' : 'Total Including Previous Balance:',
+          `${(Number(meta.total || 0) + prevBalA4).toFixed(2)} ${meta.currency}`,
+          true,
+          primaryColor
+        );
+      }
+
+      if (meta.amountPaid !== undefined) {
+        sumRow(
+          isRTL ? 'المبلغ المؤدى:' : 'Amount Paid:',
+          `${Number(meta.amountPaid).toFixed(2)} ${meta.currency}`,
+          false,
+          '#059669'
+        );
+      }
+      if (meta.remainingDebt && meta.remainingDebt > 0) {
+        sumRow(
+          isRTL ? 'الباقي (كريدي):' : 'Reste (Crédit):',
+          `${Number(meta.remainingDebt).toFixed(2)} ${meta.currency}`,
+          false,
+          '#e11d48'
+        );
+      }
+
+      if (meta.notes) {
+        y += 10;
+        drawText(`${isRTL ? 'ملاحظات:' : 'Notes:'} ${meta.notes}`, startX, y, {
+          size: 12,
+          weight: '700',
+          color: '#475569',
+          align: startAlign,
+          maxWidth: contentWidth,
+        });
+        y += 26;
+      }
+
+      y += 18;
+      drawLine(y, false, '#cbd5e1');
+      y += 12;
+      drawText(
+        meta.footerText || (isRTL ? 'شكراً لتعاملكم معنا ومرحباً بكم في أي وقت!' : 'Thank you for your business!'),
+        logicalWidth / 2,
+        y,
+        { size: 12, weight: '800', color: '#475569', align: 'center' }
+      );
+      y += 28;
+    }
   }
 
   return y + pad;

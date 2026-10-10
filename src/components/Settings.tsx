@@ -10,8 +10,10 @@ import { compressImageFile } from '../utils/cloudSync';
 import { 
   Settings as SettingsIcon, Save, Upload, 
   Palette, Building2, Coins, Keyboard, Check,
-  Printer, FileText
+  Printer, FileText, Eye, CheckSquare, Square,
+  Sparkles, Sliders, LayoutTemplate, MessageSquare
 } from 'lucide-react';
+import { A4_PRINT_THEMES } from '../utils/printService';
 
 interface SettingsProps {
   config: StoreConfig;
@@ -47,6 +49,7 @@ export default function Settings({
   }, [config]);
 
   const [successMsg, setSuccessMsg] = useState('');
+  const [previewDocType, setPreviewDocType] = useState<'a4' | 'receipt'>('a4');
 
   const handleLogoUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
@@ -430,38 +433,153 @@ export default function Settings({
           </div>
         </div>
 
-        {/* Section 4: Print Appearance & Color Customization (Small receipts & Big A4 invoices) */}
-        <div className="bg-white rounded-3xl border border-slate-200/80 shadow-xs overflow-hidden">
-          <div className="px-6 py-4.5 border-b border-slate-100 flex items-center gap-3 bg-slate-50/50">
-            <div className="p-2 bg-indigo-50 text-indigo-600 rounded-xl">
-              <Printer className="w-5 h-5" />
+        {/* Section 4: Dedicated Print Customization & Invoice Design Menu */}
+        <div className="bg-white rounded-3xl border border-slate-200/80 shadow-xs overflow-hidden" id="section-print-customization">
+          <div className="px-6 py-4.5 border-b border-slate-100 flex flex-wrap items-center justify-between gap-3 bg-gradient-to-r from-slate-50 to-indigo-50/30">
+            <div className="flex items-center gap-3">
+              <div className="p-2.5 bg-indigo-600 text-white rounded-xl shadow-xs">
+                <Printer className="w-5 h-5" />
+              </div>
+              <div>
+                <h2 className="text-base sm:text-lg font-black text-slate-900 flex items-center gap-2">
+                  <span>{lang === 'ar' ? 'تخصيص وتصميم فواتير الطباعة (A4 والإيصالات)' : 'Invoice & Receipt Print Design & Layout'}</span>
+                  <span className="text-[10px] bg-indigo-100 text-indigo-700 font-black px-2 py-0.5 rounded-full uppercase tracking-wider">
+                    {lang === 'ar' ? 'قائمة متقدمة' : 'Pro Layout'}
+                  </span>
+                </h2>
+                <p className="text-xs text-slate-500 font-medium mt-0.5">
+                  {lang === 'ar' ? 'تحكم كامل بألوان الطباعة، العناصر المعروضة، التذييل، والمعاينة الحية' : 'Full control over print palettes, visible fields, footers, and live layout preview'}
+                </p>
+              </div>
             </div>
-            <div>
-              <h2 className="text-base sm:text-lg font-black text-slate-900">
-                {lang === 'ar' ? 'تخصيص أشكال وألوان طباعة الفواتير (الصغيرة والكبيرة)' : 'Invoice & Receipt Print Styling & Colors'}
-              </h2>
-              <p className="text-xs text-slate-400 font-medium">
-                {lang === 'ar' ? 'اختيار نمط الإيصالات الحرارية الصغيرة 80mm وفواتير A4 الكبيرة' : 'Customize layout style and color accents for thermal receipts and A4 invoices'}
-              </p>
+
+            {/* Live Preview Toggle Pill */}
+            <div className="flex items-center gap-1.5 bg-white p-1 rounded-2xl border border-slate-200 shadow-2xs">
+              <button
+                type="button"
+                onClick={() => setPreviewDocType('a4')}
+                className={`px-3 py-1.5 rounded-xl text-xs font-bold transition flex items-center gap-1.5 cursor-pointer ${
+                  previewDocType === 'a4'
+                    ? 'bg-indigo-600 text-white shadow-2xs'
+                    : 'text-slate-600 hover:text-slate-900 hover:bg-slate-50'
+                }`}
+              >
+                <FileText className="w-3.5 h-3.5" />
+                <span>{lang === 'ar' ? 'معاينة A4' : 'A4 Preview'}</span>
+              </button>
+              <button
+                type="button"
+                onClick={() => setPreviewDocType('receipt')}
+                className={`px-3 py-1.5 rounded-xl text-xs font-bold transition flex items-center gap-1.5 cursor-pointer ${
+                  previewDocType === 'receipt'
+                    ? 'bg-slate-900 text-white shadow-2xs'
+                    : 'text-slate-600 hover:text-slate-900 hover:bg-slate-50'
+                }`}
+              >
+                <Printer className="w-3.5 h-3.5" />
+                <span>{lang === 'ar' ? 'معاينة 80mm' : '80mm Preview'}</span>
+              </button>
             </div>
           </div>
 
-          <div className="p-6 sm:p-7 space-y-6">
-            {/* 80mm Thermal Receipt Themes */}
-            <div>
-              <div className="flex items-center gap-2 mb-3">
+          <div className="p-6 sm:p-7 space-y-7">
+            {/* 1. Large Invoice A4 Themes & Custom Color Picker */}
+            <div className="space-y-3.5">
+              <div className="flex flex-wrap items-center justify-between gap-2">
+                <div className="flex items-center gap-2">
+                  <FileText className="w-4 h-4 text-indigo-600" />
+                  <h3 className="text-sm font-black text-slate-800">
+                    {lang === 'ar' ? 'ألوان وسمات الفواتير الكبيرة (A4 الرسمية والتجارية):' : 'Large Invoice Palettes (A4 Official Documents):'}
+                  </h3>
+                </div>
+                <span className="text-[11px] text-slate-400 font-semibold">
+                  {lang === 'ar' ? 'تنطبق على طباعة الكمبيوتر وتقارير المبيعات والأرباح وتطبيق iPhone' : 'Applies to desktop print, reports, and iPhone export'}
+                </span>
+              </div>
+
+              <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-5 gap-3">
+                {[
+                  { id: 'slate', nameAr: 'رمادي تنفيذي', nameEn: 'Executive Slate', dotBg: 'bg-slate-900', hex: '#0f172a' },
+                  { id: 'indigo', nameAr: 'أزرق ملكي (نيلي)', nameEn: 'Royal Indigo', dotBg: 'bg-indigo-700', hex: '#4338ca' },
+                  { id: 'emerald', nameAr: 'أخضر زمردي', nameEn: 'Emerald Green', dotBg: 'bg-emerald-700', hex: '#065f46' },
+                  { id: 'burgundy', nameAr: 'عنابي / خمري', nameEn: 'Burgundy Wine', dotBg: 'bg-rose-900', hex: '#9f1239' },
+                  { id: 'amber', nameAr: 'كهرماني دافئ', nameEn: 'Warm Amber', dotBg: 'bg-amber-600', hex: '#b45309' },
+                ].map((th) => {
+                  const isCurrent = (formConfig.a4Theme || 'slate') === th.id;
+                  return (
+                    <button
+                      key={th.id}
+                      type="button"
+                      onClick={() => {
+                        const updated: StoreConfig = { ...formConfig, a4Theme: th.id as any, printPrimaryColor: th.hex };
+                        setFormConfig(updated);
+                        onSaveConfig(updated);
+                      }}
+                      className={`flex flex-col gap-2 p-3.5 rounded-2xl border text-start transition cursor-pointer ${
+                        isCurrent
+                          ? 'bg-slate-50 border-indigo-600 text-slate-900 shadow-sm ring-2 ring-indigo-500/20'
+                          : 'bg-white border-slate-200 text-slate-700 hover:border-slate-300'
+                      }`}
+                    >
+                      <div className="flex items-center justify-between">
+                        <span className={`w-4 h-4 rounded-full ${th.dotBg} ring-2 ring-white shadow-2xs`} />
+                        {isCurrent && <Check className="w-4 h-4 text-indigo-600" />}
+                      </div>
+                      <span className="text-xs font-bold truncate">
+                        {lang === 'ar' ? th.nameAr : th.nameEn}
+                      </span>
+                    </button>
+                  );
+                })}
+              </div>
+
+              {/* Custom hex color input */}
+              <div className="flex flex-wrap items-center gap-3 p-3 bg-slate-50/70 border border-slate-200/80 rounded-2xl">
+                <span className="text-xs font-bold text-slate-700">
+                  {lang === 'ar' ? 'أو اختر درجة لون مخصصة (Custom Hex):' : 'Or choose custom accent color (Hex):'}
+                </span>
+                <div className="flex items-center gap-2">
+                  <input
+                    type="color"
+                    value={formConfig.printPrimaryColor || (A4_PRINT_THEMES[formConfig.a4Theme || 'slate']?.primary || '#0f172a')}
+                    onChange={(e) => {
+                      const updated = { ...formConfig, printPrimaryColor: e.target.value };
+                      setFormConfig(updated);
+                      onSaveConfig(updated);
+                    }}
+                    className="w-8 h-8 rounded-lg cursor-pointer border border-slate-300 bg-transparent p-0.5"
+                    title={lang === 'ar' ? 'انقر لاختيار لون مخصص' : 'Click to pick custom color'}
+                  />
+                  <input
+                    type="text"
+                    value={formConfig.printPrimaryColor || ''}
+                    placeholder="#4338ca"
+                    onChange={(e) => {
+                      const updated = { ...formConfig, printPrimaryColor: e.target.value };
+                      setFormConfig(updated);
+                      onSaveConfig(updated);
+                    }}
+                    className="w-28 px-3 py-1.5 bg-white border border-slate-200 rounded-xl text-xs font-mono font-bold uppercase focus:outline-none focus:ring-1 focus:ring-indigo-500"
+                  />
+                </div>
+              </div>
+            </div>
+
+            {/* 2. 80mm Thermal Receipt Themes */}
+            <div className="pt-5 border-t border-slate-100 space-y-3.5">
+              <div className="flex items-center gap-2">
                 <Printer className="w-4 h-4 text-slate-600" />
-                <h3 className="text-sm font-bold text-slate-800">
+                <h3 className="text-sm font-black text-slate-800">
                   {lang === 'ar' ? 'نمط وألوان الفواتير الصغيرة (الإيصال الحراري 80mm):' : 'Small Thermal Receipt Styles (80mm):'}
                 </h3>
               </div>
               <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-5 gap-3">
                 {[
-                  { id: 'classic', nameAr: 'كلاسيكي (أبيض وأسود)', nameEn: 'Classic (B&W)', dotBg: 'bg-slate-900', border: 'border-slate-800' },
-                  { id: 'navy', nameAr: 'كحلي أنيق', nameEn: 'Navy Blue', dotBg: 'bg-blue-900', border: 'border-blue-900' },
-                  { id: 'emerald', nameAr: 'أخضر زمردي', nameEn: 'Emerald Green', dotBg: 'bg-emerald-700', border: 'border-emerald-700' },
-                  { id: 'modern', nameAr: 'بنفسجي عصري', nameEn: 'Indigo Modern', dotBg: 'bg-indigo-600', border: 'border-indigo-600' },
-                  { id: 'minimal', nameAr: 'بسيط رمادي', nameEn: 'Minimal Slate', dotBg: 'bg-slate-500', border: 'border-slate-500' },
+                  { id: 'classic', nameAr: 'كلاسيكي (أبيض وأسود)', nameEn: 'Classic (B&W)', dotBg: 'bg-slate-900' },
+                  { id: 'navy', nameAr: 'كحلي أنيق', nameEn: 'Navy Blue', dotBg: 'bg-blue-900' },
+                  { id: 'emerald', nameAr: 'أخضر زمردي', nameEn: 'Emerald Green', dotBg: 'bg-emerald-700' },
+                  { id: 'modern', nameAr: 'بنفسجي عصري', nameEn: 'Indigo Modern', dotBg: 'bg-indigo-600' },
+                  { id: 'minimal', nameAr: 'بسيط رمادي', nameEn: 'Minimal Slate', dotBg: 'bg-slate-500' },
                 ].map((th) => {
                   const isCurrent = (formConfig.receiptTheme || 'classic') === th.id;
                   return (
@@ -492,48 +610,264 @@ export default function Settings({
               </div>
             </div>
 
-            {/* A4 Invoice Themes */}
-            <div className="pt-4 border-t border-slate-100">
-              <div className="flex items-center gap-2 mb-3">
-                <FileText className="w-4 h-4 text-slate-600" />
-                <h3 className="text-sm font-bold text-slate-800">
-                  {lang === 'ar' ? 'نمط وألوان الفواتير الكبيرة (A4 الرسمية والتجارية):' : 'Large Invoice Styles (A4 Documents):'}
+            {/* 3. Invoice Elements Visibility (Show / Hide toggles) */}
+            <div className="pt-5 border-t border-slate-100 space-y-3.5">
+              <div className="flex items-center gap-2">
+                <Sliders className="w-4 h-4 text-indigo-600" />
+                <h3 className="text-sm font-black text-slate-800">
+                  {lang === 'ar' ? 'عناصر ومعلومات الفاتورة المطبوعة (إظهار / إخفاء):' : 'Printed Invoice Elements (Show / Hide):'}
                 </h3>
               </div>
-              <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-5 gap-3">
+              <p className="text-xs text-slate-500 font-medium">
+                {lang === 'ar' ? 'حدد الحقول والمعلومات التي ترغب في ظهورها أو إخفائها عند طباعة الفواتير:' : 'Select which fields should appear on printed receipts and invoices:'}
+              </p>
+
+              <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-3">
                 {[
-                  { id: 'slate', nameAr: 'رمادي تنفيذي', nameEn: 'Executive Slate', dotBg: 'bg-slate-800' },
-                  { id: 'indigo', nameAr: 'أزرق ملكي (نيلي)', nameEn: 'Royal Indigo', dotBg: 'bg-indigo-700' },
-                  { id: 'emerald', nameAr: 'أخضر زمردي', nameEn: 'Emerald Green', dotBg: 'bg-emerald-700' },
-                  { id: 'burgundy', nameAr: 'عنابي / خمري', nameEn: 'Burgundy Wine', dotBg: 'bg-rose-900' },
-                  { id: 'amber', nameAr: 'كهرماني دافئ', nameEn: 'Warm Amber', dotBg: 'bg-amber-600' },
-                ].map((th) => {
-                  const isCurrent = (formConfig.a4Theme || 'slate') === th.id;
+                  {
+                    key: 'showLogoOnInvoice' as const,
+                    labelAr: 'شعار المحل (Logo)',
+                    labelEn: 'Store Logo',
+                    defaultVal: true
+                  },
+                  {
+                    key: 'showPhoneOnInvoice' as const,
+                    labelAr: 'رقم هاتف المحل والزبون',
+                    labelEn: 'Store & Customer Phone',
+                    defaultVal: true
+                  },
+                  {
+                    key: 'showAddressOnInvoice' as const,
+                    labelAr: 'عنوان المحل والفرع',
+                    labelEn: 'Store Address',
+                    defaultVal: true
+                  },
+                  {
+                    key: 'showEmailOnInvoice' as const,
+                    labelAr: 'البريد الإلكتروني',
+                    labelEn: 'Email Address',
+                    defaultVal: true
+                  },
+                  {
+                    key: 'showTaxNumberOnInvoice' as const,
+                    labelAr: 'السجل التجاري / ICE',
+                    labelEn: 'Commercial Reg / ICE',
+                    defaultVal: true
+                  },
+                  {
+                    key: 'showCashierOnInvoice' as const,
+                    labelAr: 'اسم الكاشير / البائع',
+                    labelEn: 'Cashier / Seller Name',
+                    defaultVal: true
+                  },
+                  {
+                    key: 'showBarcodeOnInvoice' as const,
+                    labelAr: 'باركود الفاتورة (Code-39)',
+                    labelEn: 'Invoice Barcode (Code-39)',
+                    defaultVal: true
+                  },
+                  {
+                    key: 'showDebtOnInvoice' as const,
+                    labelAr: 'تفاصيل الكريدي والديون',
+                    labelEn: 'Debts & Remaining Balance',
+                    defaultVal: true
+                  },
+                ].map((item) => {
+                  const isChecked = formConfig[item.key] !== false;
                   return (
                     <button
-                      key={th.id}
+                      key={item.key}
                       type="button"
                       onClick={() => {
-                        const updated = { ...formConfig, a4Theme: th.id as any };
+                        const updated = { ...formConfig, [item.key]: !isChecked };
                         setFormConfig(updated);
                         onSaveConfig(updated);
                       }}
-                      className={`flex flex-col gap-2 p-3.5 rounded-2xl border text-start transition cursor-pointer ${
-                        isCurrent
-                          ? 'bg-slate-50 border-indigo-600 text-slate-900 shadow-sm ring-2 ring-indigo-500/20'
-                          : 'bg-white border-slate-200 text-slate-700 hover:border-slate-300'
+                      className={`flex items-center justify-between p-3 rounded-2xl border text-start transition cursor-pointer ${
+                        isChecked
+                          ? 'bg-indigo-50/60 border-indigo-300 text-indigo-950 font-black shadow-2xs'
+                          : 'bg-slate-50/50 border-slate-200 text-slate-500 font-semibold'
                       }`}
                     >
-                      <div className="flex items-center justify-between">
-                        <span className={`w-4 h-4 rounded-full ${th.dotBg} ring-2 ring-white shadow-2xs`} />
-                        {isCurrent && <Check className="w-4 h-4 text-indigo-600" />}
-                      </div>
-                      <span className="text-xs font-bold truncate">
-                        {lang === 'ar' ? th.nameAr : th.nameEn}
-                      </span>
+                      <span className="text-xs">{lang === 'ar' ? item.labelAr : item.labelEn}</span>
+                      {isChecked ? (
+                        <CheckSquare className="w-4.5 h-4.5 text-indigo-600 shrink-0" />
+                      ) : (
+                        <Square className="w-4.5 h-4.5 text-slate-400 shrink-0" />
+                      )}
                     </button>
                   );
                 })}
+              </div>
+            </div>
+
+            {/* 4. Custom Footer Texts & Return Policy */}
+            <div className="pt-5 border-t border-slate-100 space-y-4">
+              <div className="flex items-center gap-2">
+                <MessageSquare className="w-4 h-4 text-indigo-600" />
+                <h3 className="text-sm font-black text-slate-800">
+                  {lang === 'ar' ? 'تذييل ورسائل الفاتورة المخصصة (Footer Messages):' : 'Custom Invoice Footers & Policies:'}
+                </h3>
+              </div>
+
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                <div>
+                  <label className="block text-xs font-bold text-slate-700 mb-1.5">
+                    {lang === 'ar' ? 'رسالة الشكر والترحيب أسفل الفاتورة:' : 'Footer Thank You Message:'}
+                  </label>
+                  <input
+                    type="text"
+                    value={formConfig.receiptFooterMessage || ''}
+                    placeholder={lang === 'ar' ? 'شكراً لزيارتكم ومرحباً بكم دائماً!' : 'Thank you for your business!'}
+                    onChange={(e) => {
+                      const updated = { ...formConfig, receiptFooterMessage: e.target.value };
+                      setFormConfig(updated);
+                    }}
+                    className="w-full px-3.5 py-2.5 bg-slate-50/60 border border-slate-200 rounded-xl text-xs font-bold text-slate-800 focus:outline-none focus:ring-2 focus:ring-indigo-500 focus:bg-white transition"
+                  />
+                </div>
+
+                <div>
+                  <label className="block text-xs font-bold text-slate-700 mb-1.5">
+                    {lang === 'ar' ? 'سياسة الإرجاع والاستبدال أو الضمان:' : 'Return & Warranty Policy Note:'}
+                  </label>
+                  <input
+                    type="text"
+                    value={formConfig.receiptReturnPolicy || ''}
+                    placeholder={lang === 'ar' ? 'البضاعة المباعة ترد وتستبدل خلال 3 أيام مع إحضار الفاتورة' : 'Items can be exchanged within 3 days with receipt'}
+                    onChange={(e) => {
+                      const updated = { ...formConfig, receiptReturnPolicy: e.target.value };
+                      setFormConfig(updated);
+                    }}
+                    className="w-full px-3.5 py-2.5 bg-slate-50/60 border border-slate-200 rounded-xl text-xs font-bold text-slate-800 focus:outline-none focus:ring-2 focus:ring-indigo-500 focus:bg-white transition"
+                  />
+                </div>
+              </div>
+            </div>
+
+            {/* 5. Live Interactive Preview Card */}
+            <div className="pt-5 border-t border-slate-100 space-y-3">
+              <div className="flex items-center justify-between">
+                <div className="flex items-center gap-2">
+                  <Eye className="w-4 h-4 text-emerald-600" />
+                  <h3 className="text-sm font-black text-slate-800">
+                    {lang === 'ar' ? 'معاينة حية ومباشرة لشكل الفاتورة:' : 'Live Interactive Print Preview:'}
+                  </h3>
+                </div>
+                <span className="text-[11px] font-bold text-emerald-700 bg-emerald-50 px-2.5 py-0.5 rounded-full border border-emerald-200">
+                  {lang === 'ar' ? 'تحديث فوري مع التعديلات' : 'Real-time Preview'}
+                </span>
+              </div>
+
+              {/* Mini Preview Box */}
+              <div className="bg-slate-100 p-4 sm:p-6 rounded-2xl flex justify-center items-center">
+                {previewDocType === 'a4' ? (
+                  // Mini A4 Preview
+                  <div
+                    className="bg-white rounded-xl shadow-md border p-5 w-full max-w-lg text-start space-y-3 font-sans transition-all"
+                    style={{ borderColor: (A4_PRINT_THEMES[formConfig.a4Theme || 'slate'] || A4_PRINT_THEMES.slate).border }}
+                  >
+                    {/* Top row */}
+                    <div className="flex justify-between items-start pb-3 border-b" style={{ borderColor: (A4_PRINT_THEMES[formConfig.a4Theme || 'slate'] || A4_PRINT_THEMES.slate).border }}>
+                      <div className="space-y-1">
+                        {formConfig.showLogoOnInvoice !== false && formConfig.logoUrl && (
+                          <img src={formConfig.logoUrl} alt="Logo" className="h-7 object-contain mb-1" />
+                        )}
+                        <h4 className="font-black text-sm" style={{ color: formConfig.printPrimaryColor || (A4_PRINT_THEMES[formConfig.a4Theme || 'slate'] || A4_PRINT_THEMES.slate).primary }}>
+                          {formConfig.name || 'اسم المحل التجاري'}
+                        </h4>
+                        {formConfig.showAddressOnInvoice !== false && formConfig.address && (
+                          <p className="text-[10px] text-slate-500">{formConfig.address}</p>
+                        )}
+                        {formConfig.showPhoneOnInvoice !== false && formConfig.phone && (
+                          <p className="text-[10px] text-slate-500">Tél: {formConfig.phone}</p>
+                        )}
+                      </div>
+                      <div className="text-end space-y-1">
+                        <span className="text-[10px] font-mono font-black px-2 py-0.5 rounded text-white" style={{ backgroundColor: formConfig.printPrimaryColor || (A4_PRINT_THEMES[formConfig.a4Theme || 'slate'] || A4_PRINT_THEMES.slate).primary }}>
+                          FAC-2026-001
+                        </span>
+                        <p className="text-[10px] text-slate-400 font-mono">10/10/2026</p>
+                        <p className="text-[10px] font-bold text-slate-800">الزبون: زبون تجريبي</p>
+                      </div>
+                    </div>
+
+                    {/* Table mini */}
+                    <div className="rounded-lg overflow-hidden border" style={{ borderColor: (A4_PRINT_THEMES[formConfig.a4Theme || 'slate'] || A4_PRINT_THEMES.slate).border }}>
+                      <table className="w-full text-[10px]">
+                        <thead style={{ backgroundColor: (A4_PRINT_THEMES[formConfig.a4Theme || 'slate'] || A4_PRINT_THEMES.slate).accentBg }}>
+                          <tr className="font-bold" style={{ color: formConfig.printPrimaryColor || (A4_PRINT_THEMES[formConfig.a4Theme || 'slate'] || A4_PRINT_THEMES.slate).primary }}>
+                            <th className="p-1.5 text-start">الصنف</th>
+                            <th className="p-1.5 text-center">الكمية</th>
+                            <th className="p-1.5 text-center">السعر</th>
+                            <th className="p-1.5 text-end">المجموع</th>
+                          </tr>
+                        </thead>
+                        <tbody className="divide-y divide-slate-100">
+                          <tr>
+                            <td className="p-1.5">منتج تجريبي رقم 1</td>
+                            <td className="p-1.5 text-center font-mono">2</td>
+                            <td className="p-1.5 text-center font-mono">150.00</td>
+                            <td className="p-1.5 text-end font-mono font-bold">300.00 {formConfig.currency}</td>
+                          </tr>
+                        </tbody>
+                      </table>
+                    </div>
+
+                    {/* Totals */}
+                    <div className="flex justify-between items-center pt-2 text-xs font-black">
+                      <span className="text-slate-600">المجموع الصافي:</span>
+                      <span className="font-mono text-sm" style={{ color: formConfig.printPrimaryColor || (A4_PRINT_THEMES[formConfig.a4Theme || 'slate'] || A4_PRINT_THEMES.slate).primary }}>
+                        300.00 {formConfig.currency}
+                      </span>
+                    </div>
+
+                    {/* Barcode */}
+                    {formConfig.showBarcodeOnInvoice !== false && (
+                      <div className="text-center pt-2">
+                        <div className="inline-block px-3 py-1 bg-slate-50 border border-slate-200 rounded font-mono text-[9px] font-black tracking-widest">
+                          ||||| | |||| ||| | ||||| FAC-2026-001
+                        </div>
+                      </div>
+                    )}
+
+                    {/* Footer note */}
+                    <div className="text-center text-[10px] text-slate-500 font-bold pt-2 border-t border-slate-100">
+                      {formConfig.receiptFooterMessage || 'شكراً لتعاملكم معنا ومرحباً بكم في أي وقت!'}
+                    </div>
+                  </div>
+                ) : (
+                  // Mini 80mm Receipt Preview
+                  <div className="bg-white rounded-lg shadow-md border border-slate-300 p-4 w-64 text-center space-y-2 font-mono text-[10px] transition-all">
+                    {formConfig.showLogoOnInvoice !== false && formConfig.logoUrl && (
+                      <img src={formConfig.logoUrl} alt="Logo" className="h-6 object-contain mx-auto mb-1" />
+                    )}
+                    <h4 className="font-black text-xs text-slate-900">{formConfig.name || 'اسم المحل'}</h4>
+                    {formConfig.showPhoneOnInvoice !== false && formConfig.phone && <p className="text-[9px] text-slate-500">Tél: {formConfig.phone}</p>}
+                    <div className="border-t border-dashed border-slate-300 pt-1 text-[9px] flex justify-between">
+                      <span>FAC-2026-001</span>
+                      <span>10/10/2026</span>
+                    </div>
+                    <div className="border-t border-dashed border-slate-300 py-1 text-[9px] text-start">
+                      <div className="flex justify-between font-bold">
+                        <span>منتج تجريبي x2</span>
+                        <span>300.00 {formConfig.currency}</span>
+                      </div>
+                    </div>
+                    <div className="border-t border-dashed border-slate-300 pt-1 flex justify-between font-black text-[11px] text-slate-900">
+                      <span>TOTAL:</span>
+                      <span>300.00 {formConfig.currency}</span>
+                    </div>
+                    {formConfig.showBarcodeOnInvoice !== false && (
+                      <div className="py-1 tracking-widest text-[9px] font-bold">
+                        ||||| | |||| ||| | |||||
+                      </div>
+                    )}
+                    <div className="border-t border-dashed border-slate-300 pt-1 text-[9px] text-slate-500">
+                      {formConfig.receiptFooterMessage || 'شكراً لزيارتكم!'}
+                    </div>
+                  </div>
+                )}
               </div>
             </div>
           </div>

@@ -3,14 +3,15 @@
  * SPDX-License-Identifier: Apache-2.0
  */
 
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import { createPortal } from 'react-dom';
 import { ActiveTab, Customer, Invoice, Language, Product, SaleItem, StoreConfig } from '../types';
 import { languages } from '../languages';
-import { Receipt, Search, Eye, Printer, X, DollarSign, Calendar, CheckSquare, AlertTriangle, Clock, Trash2, RotateCcw, MessageCircle, Share2, CheckCircle2, User, FileSpreadsheet, FileDown, ArrowRight, TrendingUp, Edit, Plus, Save } from 'lucide-react';
+import { Receipt, Search, Eye, Printer, X, DollarSign, Calendar, CheckSquare, AlertTriangle, Clock, Trash2, RotateCcw, MessageCircle, Share2, CheckCircle2, User, FileSpreadsheet, FileDown, ArrowRight, TrendingUp, Edit, Plus, Save, Camera, ScanBarcode } from 'lucide-react';
 import { generateBarcodeSvg } from '../utils/barcode';
 import { parseDecimal, sanitizeDecimalInput } from '../utils/numberInput';
-import { printHtmlContent, exportStructuredPdf, PdfDocumentMeta, buildUnified80mmReceiptHtml } from '../utils/printService';
+import { printHtmlContent, exportStructuredPdf, PdfDocumentMeta, buildUnified80mmReceiptHtml, A4_PRINT_THEMES } from '../utils/printService';
+import CameraBarcodeModal from './CameraBarcodeModal';
 
 interface InvoicesProps {
   invoices: Invoice[];
@@ -63,6 +64,76 @@ export default function Invoices({ invoices, products = [], customers = [], conf
 
   // Custom state for delete confirmation dialog
   const [deletingInvoiceId, setDeletingInvoiceId] = useState<string | null>(null);
+
+  // Barcode search & camera scanner states
+  const [showBarcodeScannerModal, setShowBarcodeScannerModal] = useState(false);
+  const [barcodeScanToast, setBarcodeScanToast] = useState<string | null>(null);
+
+  const handleScanInvoiceBarcode = (code: string) => {
+    const cleanCode = String(code || '').trim();
+    if (!cleanCode) return;
+    setSearch(cleanCode);
+
+    const cleanAlpha = cleanCode.replace(/[^0-9A-Za-z]/g, '').toLowerCase();
+
+    const found = invoices.find((inv) => {
+      const invNum = String(inv.invoiceNumber || '').trim().toLowerCase();
+      const invId = String(inv.id || '').trim().toLowerCase();
+      const invNumAlpha = invNum.replace(/[^0-9A-Za-z]/g, '');
+      return (
+        invNum === cleanCode.toLowerCase() ||
+        invId === cleanCode.toLowerCase() ||
+        invNum.includes(cleanCode.toLowerCase()) ||
+        (cleanAlpha.length >= 3 && invNumAlpha.includes(cleanAlpha))
+      );
+    });
+
+    if (found) {
+      setViewInvoice(found);
+      setBarcodeScanToast(
+        lang === 'ar'
+          ? `✓ تم العثور على الفاتورة (${found.invoiceNumber}) للزبون: ${found.customerName}`
+          : `✓ Found invoice ${found.invoiceNumber} (${found.customerName})`
+      );
+      setTimeout(() => setBarcodeScanToast(null), 4500);
+    } else {
+      setBarcodeScanToast(
+        lang === 'ar'
+          ? `⚠️ لا توجد فاتورة تطابق هذا الباركود: ${cleanCode}`
+          : `⚠️ No invoice found matching: ${cleanCode}`
+      );
+      setTimeout(() => setBarcodeScanToast(null), 4500);
+    }
+  };
+
+  // Hardware Barcode Scanner Listener (USB / Bluetooth Barcode Gun)
+  useEffect(() => {
+    let buffer = '';
+    let lastKeyTime = Date.now();
+
+    const handleKeyDown = (e: KeyboardEvent) => {
+      const tag = (e.target as HTMLElement)?.tagName?.toLowerCase();
+      if (tag === 'input' || tag === 'textarea' || tag === 'select') return;
+
+      const now = Date.now();
+      if (now - lastKeyTime > 140) {
+        buffer = '';
+      }
+      lastKeyTime = now;
+
+      if (e.key === 'Enter') {
+        if (buffer.length >= 3) {
+          handleScanInvoiceBarcode(buffer);
+          buffer = '';
+        }
+      } else if (e.key.length === 1) {
+        buffer += e.key;
+      }
+    };
+
+    window.addEventListener('keydown', handleKeyDown);
+    return () => window.removeEventListener('keydown', handleKeyDown);
+  }, [invoices, lang]);
 
   const getSafeItems = (inv: Invoice | null | undefined) => {
     if (!inv) return [];
@@ -681,12 +752,25 @@ export default function Invoices({ invoices, products = [], customers = [], conf
             <input
               id="inv-search-id"
               type="text"
-              placeholder={t.invoice.search}
+              placeholder={lang === 'ar' ? 'بحث برقم الفاتورة، اسم الزبون، أو مسح الباركود...' : t.invoice.search}
               className={`w-full py-2.5 ${isRTL ? 'pr-10 pl-3' : 'pl-10 pr-3'} bg-slate-50 border border-slate-200 rounded-xl text-xs sm:text-sm focus:outline-none focus:ring-2 focus:ring-indigo-500 focus:bg-white transition`}
               value={search}
               onChange={(e) => setSearch(e.target.value)}
             />
           </div>
+
+          {/* Barcode Camera Scanner Button */}
+          <button
+            id="btn-scan-inv-barcode"
+            type="button"
+            onClick={() => setShowBarcodeScannerModal(true)}
+            className="px-3.5 py-2.5 bg-emerald-600 hover:bg-emerald-700 text-white rounded-xl text-xs font-bold flex items-center justify-center gap-1.5 transition cursor-pointer shadow-xs shrink-0"
+            title={lang === 'ar' ? 'مسح باركود الفاتورة المطبوعة بالكاميرا' : 'Scan printed invoice barcode'}
+          >
+            <Camera className="w-4 h-4 shrink-0" />
+            <ScanBarcode className="w-4 h-4 shrink-0" />
+            <span className="hidden sm:inline">{lang === 'ar' ? 'مسح باركود الفاتورة' : 'Scan Barcode'}</span>
+          </button>
 
           {/* Date Filter Toggle Button */}
           <button
@@ -703,6 +787,23 @@ export default function Invoices({ invoices, products = [], customers = [], conf
             <span>{lang === 'ar' ? 'تصفية بالتاريخ / الزبون' : 'Filtrer par Date / Client'}</span>
           </button>
         </div>
+
+        {/* Barcode Scan Result Notification */}
+        {barcodeScanToast && (
+          <div className="p-3 bg-emerald-50 border border-emerald-200 text-emerald-900 rounded-xl text-xs font-black flex items-center justify-between shadow-2xs animate-fade-in">
+            <div className="flex items-center gap-2">
+              <ScanBarcode className="w-4 h-4 text-emerald-600 shrink-0" />
+              <span>{barcodeScanToast}</span>
+            </div>
+            <button
+              type="button"
+              onClick={() => setBarcodeScanToast(null)}
+              className="text-slate-400 hover:text-slate-600 font-bold px-1.5 py-0.5 rounded cursor-pointer"
+            >
+              ✕
+            </button>
+          </div>
+        )}
 
         {/* Status filters - Wraps cleanly on iPhone so no button is ever cut off */}
         <div className="flex flex-wrap gap-1.5 bg-slate-100 p-1.5 rounded-xl border border-slate-200/60">
@@ -1184,6 +1285,8 @@ export default function Invoices({ invoices, products = [], customers = [], conf
         const prevBal = Number(viewInvoice.previousBalance) || 0;
         const billDebt = Math.max(0, invTotal - invPaid);
         const invProfit = calculateInvoiceProfit(viewInvoice);
+        const activeA4Theme = A4_PRINT_THEMES[config.a4Theme || 'slate'] || A4_PRINT_THEMES.slate;
+        const themePrimary = config.printPrimaryColor || activeA4Theme.primary;
 
         return createPortal(
           <div className="fixed inset-0 bg-slate-900/60 backdrop-blur-xs flex items-center justify-center p-2 sm:p-4 z-[100] overflow-y-auto safe-modal-overlay" id="invoice-bill-modal">
@@ -1264,7 +1367,8 @@ export default function Invoices({ invoices, products = [], customers = [], conf
                     id="print-btn-actual"
                     type="button"
                     onClick={triggerPrintLayout}
-                    className="px-2.5 py-1.5 bg-indigo-600 hover:bg-indigo-700 text-white rounded-lg text-xs font-semibold flex items-center gap-1 cursor-pointer transition shadow-xs"
+                    style={{ backgroundColor: themePrimary }}
+                    className="px-2.5 py-1.5 text-white rounded-lg text-xs font-semibold flex items-center gap-1 cursor-pointer transition shadow-xs"
                     title={lang === 'ar' ? 'طباعة A4' : 'Print A4'}
                   >
                     <Printer className="w-3.5 h-3.5" />
@@ -1276,10 +1380,10 @@ export default function Invoices({ invoices, products = [], customers = [], conf
               {/* Printable Area Body */}
               <div className="p-4 sm:p-8 space-y-6 overflow-y-auto flex-1" id="printable-area">
                 {/* Unified Side-by-Side Store & Customer Info Header */}
-                <div className="grid grid-cols-1 sm:grid-cols-2 gap-6 pb-6 border-b border-slate-200">
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-6 pb-6 border-b" style={{ borderColor: activeA4Theme.border }}>
                   {/* Store Details (Side 1) */}
                   <div className="text-start space-y-1">
-                    {config.logoUrl && (
+                    {config.showLogoOnInvoice !== false && config.logoUrl && (
                       <img
                         src={config.logoUrl}
                         alt="Store Logo"
@@ -1287,11 +1391,11 @@ export default function Invoices({ invoices, products = [], customers = [], conf
                         className="h-12 object-contain mb-2 bg-slate-50 border border-slate-200 rounded-lg p-1.5"
                       />
                     )}
-                    <h2 className="text-xl font-black text-slate-900">{config.name}</h2>
-                    {config.address && <p className="text-xs text-slate-600 font-medium">{config.address}</p>}
+                    <h2 className="text-xl font-black" style={{ color: themePrimary }}>{config.name}</h2>
+                    {config.showAddressOnInvoice !== false && config.address && <p className="text-xs text-slate-600 font-medium">{config.address}</p>}
                     <div className="text-xs text-slate-500 space-y-0.5 pt-1">
-                      {config.phone && <p>{lang === 'ar' ? 'الهاتف:' : 'Tél:'} {config.phone}</p>}
-                      {config.email && <p>{lang === 'ar' ? 'البريد:' : 'Email:'} {config.email}</p>}
+                      {config.showPhoneOnInvoice !== false && config.phone && <p>{lang === 'ar' ? 'الهاتف:' : 'Tél:'} {config.phone}</p>}
+                      {config.showEmailOnInvoice !== false && config.email && <p>{lang === 'ar' ? 'البريد:' : 'Email:'} {config.email}</p>}
                     </div>
                   </div>
 
@@ -1301,7 +1405,7 @@ export default function Invoices({ invoices, products = [], customers = [], conf
                       <span className="text-[11px] font-bold text-slate-400 uppercase tracking-wider block">
                         {lang === 'ar' ? 'رقم الفاتورة' : 'Invoice No.'}
                       </span>
-                      <h4 className="font-mono text-xl font-black text-slate-900">{viewInvoice.invoiceNumber}</h4>
+                      <h4 className="font-mono text-xl font-black" style={{ color: themePrimary }}>{viewInvoice.invoiceNumber}</h4>
                       <p className="text-xs text-slate-500 mt-1 flex items-center sm:justify-end gap-1 font-semibold">
                         <Calendar className="w-3.5 h-3.5 text-slate-400" />
                         {viewInvoice.date ? new Date(viewInvoice.date).toLocaleString('fr-FR') : ''}
@@ -1310,11 +1414,11 @@ export default function Invoices({ invoices, products = [], customers = [], conf
 
                     <div className="pt-2 border-t border-slate-100 sm:border-0 sm:pt-0">
                       <div className="inline-flex items-center gap-1.5 font-black text-slate-900 text-sm">
-                        <User className="w-4 h-4 text-indigo-600" />
+                        <User className="w-4 h-4" style={{ color: themePrimary }} />
                         <span>{lang === 'ar' ? 'الزبون :' : 'Client :'}</span>
-                        <span className="text-indigo-700">{viewInvoice.customerName}</span>
+                        <span style={{ color: themePrimary }}>{viewInvoice.customerName}</span>
                       </div>
-                      {custObj?.phone && (
+                      {config.showPhoneOnInvoice !== false && custObj?.phone && (
                         <p className="text-xs text-slate-600 font-semibold mt-0.5">{custObj.phone}</p>
                       )}
                     </div>
@@ -1322,10 +1426,10 @@ export default function Invoices({ invoices, products = [], customers = [], conf
                 </div>
 
                 {/* Items Table */}
-                <div className="border border-slate-100 rounded-xl overflow-x-auto text-[11px] sm:text-xs">
+                <div className="border rounded-xl overflow-x-auto text-[11px] sm:text-xs" style={{ borderColor: activeA4Theme.border }}>
                   <table className="w-full">
-                    <thead className="bg-slate-50/80">
-                      <tr className="text-slate-500 font-bold border-b border-slate-100">
+                    <thead style={{ backgroundColor: activeA4Theme.accentBg, borderBottom: `2px solid ${activeA4Theme.border}` }}>
+                      <tr style={{ color: themePrimary }} className="font-bold">
                         <th className="px-2 sm:px-4 py-2.5 text-start">{lang === 'ar' ? '#' : 'S.No.'}</th>
                         <th className="px-2 sm:px-4 py-2.5 text-start">{lang === 'ar' ? 'الصنف / المادة' : 'Item Description'}</th>
                         <th className="px-2 sm:px-4 py-2.5 text-center">{lang === 'ar' ? 'الكمية' : 'Qty'}</th>
@@ -1436,9 +1540,24 @@ export default function Invoices({ invoices, products = [], customers = [], conf
                   </div>
                 </div>
 
-                <div className="text-center text-xs text-slate-400 font-bold pt-6 border-t border-slate-100 uppercase tracking-widest font-sans">
-                  {t.invoice.thankYou}
+                {config.showBarcodeOnInvoice !== false && (
+                  <div className="flex flex-col items-center justify-center pt-4">
+                    <div
+                      dangerouslySetInnerHTML={{
+                        __html: generateBarcodeSvg(viewInvoice.invoiceNumber, 32)
+                      }}
+                    />
+                  </div>
+                )}
+
+                <div className="text-center text-xs text-slate-500 font-bold pt-4 border-t border-slate-100 tracking-wide font-sans">
+                  {config.receiptFooterMessage || t.invoice.thankYou}
                 </div>
+                {config.receiptReturnPolicy && (
+                  <div className="text-center text-[10px] text-slate-400 font-medium -mt-3">
+                    {config.receiptReturnPolicy}
+                  </div>
+                )}
               </div>
 
               {/* Internal Profit Summary Bar (Outside printable-area so it NEVER prints) */}
@@ -2092,6 +2211,16 @@ export default function Invoices({ invoices, products = [], customers = [], conf
         </div>,
         document.body
       )}
+
+      {/* Barcode Camera Scanner Modal */}
+      <CameraBarcodeModal
+        isOpen={showBarcodeScannerModal}
+        onClose={() => setShowBarcodeScannerModal(false)}
+        onScanCode={handleScanInvoiceBarcode}
+        lang={lang}
+        title={lang === 'ar' ? 'مسح باركود الفاتورة المطبوعة' : 'Scan Printed Invoice Barcode'}
+        allowWirelessPcSend={false}
+      />
     </div>
   );
 }

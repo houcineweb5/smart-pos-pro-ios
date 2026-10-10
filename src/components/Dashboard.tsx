@@ -7,7 +7,7 @@ import React, { useState } from 'react';
 import { Invoice, Product, Customer, Language, StoreConfig, Supplier, Expense } from '../types';
 import { languages } from '../languages';
 import { TrendingUp, AlertCircle, ShoppingBag, ArrowUpRight, ArrowDownRight, Award, DollarSign, Layers, ReceiptText, Printer, FileDown } from 'lucide-react';
-import { printHtmlContent, exportStructuredPdf, PdfDocumentMeta } from '../utils/printService';
+import { printHtmlContent, exportStructuredPdf, PdfDocumentMeta, A4_PRINT_THEMES } from '../utils/printService';
 
 interface DashboardProps {
   invoices: Invoice[];
@@ -357,6 +357,10 @@ export default function Dashboard({ invoices, products, customers, suppliers = [
     const suppliersWithDebt = suppliers.filter((s) => Number(s.debt || 0) > 0);
     const storeTitle = config.name || 'Smart POS';
 
+    const activeTheme = A4_PRINT_THEMES[config.a4Theme || 'slate'] || A4_PRINT_THEMES.slate;
+    const themePrimary = config.printPrimaryColor || activeTheme.primary;
+    const themeHeaderBg = config.printPrimaryColor || activeTheme.headerBg;
+
     const reportPdfMeta: PdfDocumentMeta = {
       title: lang === 'ar' ? 'تقرير المبيعات والأرباح والديون' : 'Sales, Profits & Debts Report',
       docNumber: `REP-${new Date().toISOString().slice(0, 10)}`,
@@ -366,95 +370,89 @@ export default function Dashboard({ invoices, products, customers, suppliers = [
       storeAddress: config.address,
       storeEmail: config.email,
       storeRegNumber: config.registrationNumber,
-      customerLabel: lang === 'ar' ? 'الفترة الزمنية للتقرير:' : 'Report Period:',
+      customerLabel: lang === 'ar' ? 'الفترة المحددة:' : 'Report Period:',
       customerName: periodLabel,
       currency: config.currency,
       mode: 'a4',
       isRTL,
+      isReport: true,
+      a4Theme: config.a4Theme || 'slate',
+      themeColor: config.printPrimaryColor,
       summaryCards: [
         {
-          label: lang === 'ar' ? `مبيعات الفترة (${periodLabel})` : `Period Sales (${periodLabel})`,
+          label: lang === 'ar' ? `مبيعات الفترة المحددة (${periodLabel})` : `Period Sales (${periodLabel})`,
           value: `${totalRevenue.toFixed(2)} ${config.currency} [${totalTransactions} ${lang === 'ar' ? 'فاتورة' : 'inv'}]`,
           color: '#0f172a'
         },
         {
-          label: lang === 'ar' ? 'مجمل / صافي الربح' : 'Gross / Net Profit',
+          label: lang === 'ar' ? 'إجمالي وصافي ربح الفترة' : 'Gross / Net Profit',
           value: `${totalProfit.toFixed(2)} / ${trueNetOperatingProfit.toFixed(2)} ${config.currency}`,
           color: '#047857'
         },
         {
-          label: lang === 'ar' ? 'ديون الزبائن / الموردين' : 'Customer / Supplier Debts',
+          label: lang === 'ar' ? 'ديون الزبائن / ديون الموردين' : 'Customer / Supplier Debts',
           value: `${totalDebt.toFixed(2)} / ${totalSupplierDebt.toFixed(2)} ${config.currency}`,
           color: '#be123c'
         }
       ],
-      customTableHeaders: {
-        name: lang === 'ar' ? 'الزبون / رقم الفاتورة' : 'Customer / Invoice',
-        qty: lang === 'ar' ? 'التاريخ' : 'Date',
-        price: lang === 'ar' ? 'ربح الفاتورة' : 'Profit',
-        total: lang === 'ar' ? 'صافي الفاتورة' : 'Net Total'
-      },
-      items: periodInvoices.map((inv) => {
-        const figs = getInvoiceNetFigures(inv);
-        return {
-          name: `${inv.customerName || '-'} (${inv.invoiceNumber || '#' + inv.id.slice(0, 8)})`,
-          quantity: inv.date ? new Date(inv.date).toLocaleDateString('fr-FR') : '-',
-          unitPrice: figs.netProfit,
-          total: figs.netRev
-        };
-      }),
+      items: [],
       extraSections: [
         {
-          title: lang === 'ar' ? '1. ملخص الأرباح والمبيعات (اليومي، الأسبوعي، الشهري، الشامل)' : '1. Sales & Profits Summary',
+          title: lang === 'ar' ? '1. ملخص الأرباح والمبيعات (اليومية، الأسبوعية، الشهرية، والشاملة)' : '1. Sales & Profits Summary',
           headers: [
-            lang === 'ar' ? 'الفترة' : 'Period',
-            lang === 'ar' ? 'الفواتير' : 'Invoices',
-            lang === 'ar' ? 'المبيعات' : 'Sales',
+            lang === 'ar' ? 'الفترة الزمنية' : 'Period',
+            lang === 'ar' ? 'عدد الفواتير' : 'Invoices',
+            lang === 'ar' ? 'إجمالي المبيعات' : 'Total Sales',
             lang === 'ar' ? 'مجمل الربح' : 'Gross Profit',
-            lang === 'ar' ? 'صافي الربح' : 'Net Profit'
+            lang === 'ar' ? 'المصاريف' : 'Expenses',
+            lang === 'ar' ? 'صافي الربح الحقيقي' : 'Net Profit'
           ],
           rows: [
             [
-              lang === 'ar' ? 'اليوم' : 'Today',
+              lang === 'ar' ? 'اليوم (يومي)' : 'Today (Daily)',
               String(daily.count),
               `${daily.rev.toFixed(2)} ${config.currency}`,
               `${daily.grossProfit.toFixed(2)} ${config.currency}`,
+              `${daily.expSum.toFixed(2)} ${config.currency}`,
               `${daily.netProfit.toFixed(2)} ${config.currency}`
             ],
             [
-              lang === 'ar' ? 'الأسبوع (7 أيام)' : 'Weekly',
+              lang === 'ar' ? 'الأسبوع (آخر 7 أيام)' : 'Weekly (Last 7 Days)',
               String(weekly.count),
               `${weekly.rev.toFixed(2)} ${config.currency}`,
               `${weekly.grossProfit.toFixed(2)} ${config.currency}`,
+              `${weekly.expSum.toFixed(2)} ${config.currency}`,
               `${weekly.netProfit.toFixed(2)} ${config.currency}`
             ],
             [
-              lang === 'ar' ? 'الشهر (30 يوم)' : 'Monthly',
+              lang === 'ar' ? 'الشهر (آخر 30 يوم)' : 'Monthly (Last 30 Days)',
               String(monthly.count),
               `${monthly.rev.toFixed(2)} ${config.currency}`,
               `${monthly.grossProfit.toFixed(2)} ${config.currency}`,
+              `${monthly.expSum.toFixed(2)} ${config.currency}`,
               `${monthly.netProfit.toFixed(2)} ${config.currency}`
             ],
             [
-              lang === 'ar' ? 'الإجمالي العام' : 'All Time',
+              lang === 'ar' ? 'الإجمالي العام (الكل)' : 'All Time Total',
               String(allTime.count),
               `${allTime.rev.toFixed(2)} ${config.currency}`,
               `${allTime.grossProfit.toFixed(2)} ${config.currency}`,
+              `${allTime.expSum.toFixed(2)} ${config.currency}`,
               `${allTime.netProfit.toFixed(2)} ${config.currency}`
             ]
           ]
         },
         {
-          title: lang === 'ar' ? '2. بيان الديون المستحقة (ديون الزبائن والموردين)' : '2. Customer & Supplier Debts',
+          title: lang === 'ar' ? '2. بيان الديون المستحقة (ديون الزبائن وديون الموردين)' : '2. Customer & Supplier Debts',
           headers: [
-            lang === 'ar' ? 'الاسم' : 'Name',
-            lang === 'ar' ? 'الصفة' : 'Type',
+            lang === 'ar' ? 'الاسم (زبون / مورد)' : 'Name',
+            lang === 'ar' ? 'النوع' : 'Type',
             lang === 'ar' ? 'الهاتف' : 'Phone',
             lang === 'ar' ? 'مبلغ الدين' : 'Debt Amount'
           ],
           rows:
             customersWithDebt.length === 0 && suppliersWithDebt.length === 0
-              ? [[lang === 'ar' ? 'لا توجد ديون مسجلة' : 'No active debts', '-', '-', `0.00 ${config.currency}`]]
+              ? [[lang === 'ar' ? 'لا توجد ديون مسجلة حالياً' : 'No active debts', '-', '-', `0.00 ${config.currency}`]]
               : [
                   ...customersWithDebt.map((c) => [
                     c.name,
@@ -469,27 +467,49 @@ export default function Dashboard({ invoices, products, customers, suppliers = [
                     `${Number(s.debt || 0).toFixed(2)} ${config.currency}`
                   ])
                 ]
+        },
+        {
+          title: lang === 'ar' ? `3. تفاصيل فواتير المبيعات والأرباح (${periodLabel})` : `3. Sales Invoices & Profits (${periodLabel})`,
+          headers: [
+            lang === 'ar' ? 'رقم الفاتورة' : 'Invoice #',
+            lang === 'ar' ? 'التاريخ' : 'Date',
+            lang === 'ar' ? 'الزبون' : 'Customer',
+            lang === 'ar' ? 'مبلغ الفاتورة الصافي' : 'Net Total',
+            lang === 'ar' ? 'ربح الفاتورة' : 'Profit'
+          ],
+          rows:
+            periodInvoices.length === 0
+              ? [[lang === 'ar' ? 'لا توجد فواتير في هذه الفترة' : 'No invoices in this period', '-', '-', `0.00 ${config.currency}`, `0.00 ${config.currency}`]]
+              : periodInvoices.map((inv) => {
+                  const figs = getInvoiceNetFigures(inv);
+                  return [
+                    inv.invoiceNumber || '#' + inv.id.slice(0, 8),
+                    new Date(inv.date).toLocaleString('fr-FR', { dateStyle: 'short', timeStyle: 'short' }),
+                    inv.customerName || '-',
+                    `${figs.netRev.toFixed(2)} ${config.currency}`,
+                    `+${figs.netProfit.toFixed(2)} ${config.currency}`
+                  ];
+                })
         }
       ],
       subtotal: totalRevenue,
       total: totalRevenue,
-      remainingDebt: totalDebt,
-      notes: `${lang === 'ar' ? 'صافي الربح التشغيلي للفترة:' : 'Net Operating Profit:'} ${trueNetOperatingProfit.toFixed(2)} ${config.currency} | ${lang === 'ar' ? 'إجمالي ديون الزبائن:' : 'Customer Debts:'} ${totalDebt.toFixed(2)} ${config.currency}`
+      remainingDebt: totalDebt
     };
 
     const html = `
       <style>
         .smartpos-report-print { font-family: 'Cairo', 'Tajawal', 'Segoe UI', Tahoma, Arial, sans-serif; color: #0f172a; background: #fff; font-size: 12px; direction: ${isRTL ? 'rtl' : 'ltr'}; }
         .smartpos-report-print * { box-sizing: border-box; }
-        .smartpos-report-print .header { display: flex; justify-content: space-between; align-items: center; border-bottom: 2px solid #0f172a; padding-bottom: 12px; margin-bottom: 16px; }
-        .smartpos-report-print .title { font-size: 18px; font-weight: 900; margin: 0; color: #1e1b4b; }
+        .smartpos-report-print .header { display: flex; justify-content: space-between; align-items: center; border-bottom: 2.5px solid ${themePrimary}; padding-bottom: 12px; margin-bottom: 16px; }
+        .smartpos-report-print .title { font-size: 18px; font-weight: 900; margin: 0; color: #0f172a; }
         .smartpos-report-print .subtitle { font-size: 11px; color: #475569; margin-top: 4px; font-weight: 700; }
-        .smartpos-report-print .section-title { font-size: 13px; font-weight: 800; margin: 16px 0 8px; padding: 6px 10px; background: #f1f5f9; border-${isRTL ? 'right' : 'left'}: 4px solid #4f46e5; border-radius: 4px; }
+        .smartpos-report-print .section-title { font-size: 13px; font-weight: 800; margin: 16px 0 8px; padding: 6px 10px; background: ${activeTheme.accentBg || '#f1f5f9'}; border-${isRTL ? 'right' : 'left'}: 4px solid ${themePrimary}; border-radius: 4px; color: #0f172a; }
         .smartpos-report-print table { width: 100%; border-collapse: collapse; margin-bottom: 14px; }
         .smartpos-report-print th, .smartpos-report-print td { border: 1px solid #cbd5e1; padding: 7px 9px; text-align: ${isRTL ? 'right' : 'left'}; font-size: 11px; }
-        .smartpos-report-print th { background: #f8fafc; font-weight: 800; color: #1e293b; }
+        .smartpos-report-print th { background: ${themeHeaderBg}; font-weight: 800; color: #ffffff; border-color: ${themeHeaderBg}; }
         .smartpos-report-print .kpi-grid { display: grid; grid-template-columns: repeat(3, 1fr); gap: 10px; margin-bottom: 14px; }
-        .smartpos-report-print .kpi-box { border: 1px solid #cbd5e1; border-radius: 8px; padding: 10px; background: #f8fafc; }
+        .smartpos-report-print .kpi-box { border: 1px solid ${activeTheme.border || '#cbd5e1'}; border-radius: 8px; padding: 10px; background: #f8fafc; }
         .smartpos-report-print .kpi-label { font-size: 10px; color: #64748b; font-weight: 700; }
         .smartpos-report-print .kpi-val { font-size: 15px; font-weight: 900; margin-top: 3px; font-family: monospace; }
         .smartpos-report-print .profit { color: #047857; font-weight: 800; }

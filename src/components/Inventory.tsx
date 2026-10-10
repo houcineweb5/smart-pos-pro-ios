@@ -708,8 +708,130 @@ export default function Inventory({ products, config, onSaveProduct, onDeletePro
         </div>
       </div>
 
-      {/* Product Table Grid */}
-      <div className="bg-white border border-slate-100 rounded-2xl shadow-xs overflow-hidden" id="inv-table-section">
+      {/* Mobile-Friendly Product Cards Grid (Optimized for iPhone & Mobile) */}
+      <div className="block md:hidden space-y-3" id="inv-mobile-cards-section">
+        {sortedProducts.length > 0 ? (
+          sortedProducts.map((p) => {
+            const isLow = p.stock <= p.minStock;
+            const isOut = p.stock === 0;
+
+            return (
+              <div
+                key={p.id}
+                className="bg-white border border-slate-200/80 rounded-2xl p-3.5 shadow-xs space-y-3"
+              >
+                {/* Header: Name, Image, Category & Stock Status */}
+                <div className="flex items-start justify-between gap-3">
+                  <div className="flex items-center gap-2.5 min-w-0 flex-1">
+                    {p.imageUrl ? (
+                      <img
+                        src={p.imageUrl}
+                        alt={p.name}
+                        className="w-11 h-11 rounded-xl object-cover shrink-0 border border-slate-200 shadow-2xs"
+                      />
+                    ) : (
+                      <div className="w-11 h-11 rounded-xl bg-slate-100 border border-slate-200 flex items-center justify-center text-slate-400 shrink-0">
+                        <Package className="w-5 h-5" />
+                      </div>
+                    )}
+                    <div className="min-w-0 flex-1">
+                      <h4 className="font-black text-slate-900 text-sm truncate leading-snug">
+                        {p.name}
+                      </h4>
+                      <div className="flex items-center gap-1.5 mt-1">
+                        <span className="font-mono text-[10px] text-slate-500 bg-slate-100 px-2 py-0.5 rounded-md font-semibold">
+                          {p.sku}
+                        </span>
+                        <span className="text-[10px] text-indigo-700 bg-indigo-50 px-2 py-0.5 rounded-md font-bold">
+                          {p.category}
+                        </span>
+                      </div>
+                    </div>
+                  </div>
+
+                  {/* Stock Badge */}
+                  <div className="shrink-0 text-end">
+                    <span
+                      className={`text-xs font-black px-2.5 py-1 rounded-full inline-block ${
+                        isOut
+                          ? 'bg-rose-50 text-rose-700 border border-rose-200'
+                          : isLow
+                          ? 'bg-amber-50 text-amber-700 border border-amber-200'
+                          : 'bg-emerald-50 text-emerald-700 border border-emerald-200'
+                      }`}
+                    >
+                      {p.stock} {p.unit}
+                    </span>
+                    <span className="block text-[10px] font-bold text-slate-400 mt-0.5">
+                      {isOut ? t.inventory.outOfStock : isLow ? t.inventory.lowStock : t.inventory.okStock}
+                    </span>
+                  </div>
+                </div>
+
+                {/* Pricing Grid */}
+                <div className="grid grid-cols-3 gap-2 bg-slate-50 p-2.5 rounded-xl border border-slate-100 text-center">
+                  <div className="p-1.5 bg-white rounded-lg border border-slate-200/60 shadow-2xs">
+                    <span className="block text-[10px] font-bold text-slate-400">{t.inventory.sellingPrice}</span>
+                    <span className="font-black text-xs sm:text-sm text-indigo-600 font-mono">
+                      {p.sellingPrice.toFixed(2)}
+                    </span>
+                  </div>
+                  <div className="p-1.5 bg-white rounded-lg border border-slate-200/60 shadow-2xs">
+                    <span className="block text-[10px] font-bold text-slate-400">{t.inventory.purchasePrice}</span>
+                    <span className="font-bold text-xs text-slate-700 font-mono">
+                      {p.purchasePrice.toFixed(2)}
+                    </span>
+                  </div>
+                  <div className="p-1.5 bg-white rounded-lg border border-slate-200/60 shadow-2xs">
+                    <span className="block text-[10px] font-bold text-slate-400">
+                      {lang === 'ar' ? 'الجملة' : 'Gros'}
+                    </span>
+                    <span className="font-bold text-xs text-slate-700 font-mono">
+                      {(p.wholesalePrice ?? p.sellingPrice).toFixed(2)}
+                    </span>
+                  </div>
+                </div>
+
+                {/* Actions Row */}
+                <div className="flex items-center justify-end gap-2 pt-1 border-t border-slate-100">
+                  <button
+                    onClick={() => {
+                      setBarcodeSelection({ [p.id]: Math.max(1, p.stock || 1) });
+                      setShowBarcodeModal(true);
+                    }}
+                    className="px-2.5 py-1.5 bg-indigo-50 hover:bg-indigo-100 text-indigo-700 rounded-lg text-xs font-bold flex items-center gap-1 transition cursor-pointer"
+                  >
+                    <Barcode className="w-3.5 h-3.5" />
+                    <span>{lang === 'ar' ? 'باركود' : 'Code'}</span>
+                  </button>
+                  <button
+                    onClick={() => handleStartEdit(p)}
+                    className="px-2.5 py-1.5 bg-slate-100 hover:bg-slate-200 text-slate-700 rounded-lg text-xs font-bold flex items-center gap-1 transition cursor-pointer"
+                  >
+                    <Edit3 className="w-3.5 h-3.5" />
+                    <span>{lang === 'ar' ? 'تعديل' : 'Modifier'}</span>
+                  </button>
+                  <button
+                    onClick={() => setDeletingProductId(p.id)}
+                    className="px-2.5 py-1.5 bg-rose-50 hover:bg-rose-100 text-rose-600 rounded-lg text-xs font-bold flex items-center gap-1 transition cursor-pointer"
+                  >
+                    <Trash2 className="w-3.5 h-3.5" />
+                    <span>{lang === 'ar' ? 'حذف' : 'Supprimer'}</span>
+                  </button>
+                </div>
+              </div>
+            );
+          })
+        ) : (
+          <div className="bg-white rounded-2xl p-8 text-center text-slate-400 border border-slate-100">
+            <Package className="w-10 h-10 stroke-[1.2] mx-auto text-slate-300 mb-2" />
+            <p className="text-xs font-bold">No products found matching filters.</p>
+          </div>
+        )}
+      </div>
+
+      {/* Product Table Grid (Desktop & Tablet) */}
+      <div className="hidden md:block bg-white border border-slate-100 rounded-2xl shadow-xs overflow-hidden" id="inv-table-section">
         <div className="overflow-x-auto">
           <table className="w-full text-right sm:text-inherit">
             <thead className="bg-slate-50 border-b border-slate-100">
