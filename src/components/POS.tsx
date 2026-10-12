@@ -393,6 +393,7 @@ export default function POS({ products, customers, config, onAddTransaction, onR
 
   const addToCart = (product: Product) => {
     if (!product || !product.id) return;
+    playBeep('success');
     setCart((prevCart) => {
       const safeCart = Array.isArray(prevCart) ? prevCart.filter((it) => it && it.product && it.product.id) : [];
       const existingIndex = safeCart.findIndex((item) => item.product.id === product.id);

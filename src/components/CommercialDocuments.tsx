@@ -348,7 +348,9 @@ export default function CommercialDocuments({
         quantity: Number.isInteger(nextQty) ? nextQty : Number(nextQty.toFixed(3)),
         total: (unit - (unit * disc / 100)) * nextQty
       };
-      setFormItems([updatedItem, ...formItems.filter((_, idx) => idx !== existingIndex)]);
+      const copy = [...formItems];
+      copy[existingIndex] = updatedItem;
+      setFormItems(copy);
       setProductSearch('');
       setShowProductDropdown(false);
       return;
@@ -365,17 +367,18 @@ export default function CommercialDocuments({
       total: modePrice
     };
 
-    // Remove any completely blank placeholder row when adding a real product, and put new product at top
+    // Remove any completely blank placeholder row when adding a real product, and preserve first-added order
     const nonEmptyRows = formItems.filter(
       i => Boolean(i.productId || i.productName.trim() || parseDecimal(i.sellingPrice, 0) > 0)
     );
-    setFormItems([newItemRow, ...nonEmptyRows]);
+    setFormItems([...nonEmptyRows, newItemRow]);
     setProductSearch('');
     setShowProductDropdown(false);
   };
 
   const handleAddCustomItem = () => {
     setFormItems(prev => [
+      ...prev,
       {
         productId: '',
         productName: '',
@@ -385,8 +388,7 @@ export default function CommercialDocuments({
         discount: 0,
         tax: 0,
         total: 0
-      },
-      ...prev
+      }
     ]);
   };
 
@@ -730,7 +732,10 @@ export default function CommercialDocuments({
       storeAddress: config.address,
       storeRegNumber: config.registrationNumber,
       customerLabel: lang === 'ar' ? 'الزبون' : 'Client',
-      customerName: doc.customerName,
+      customerName: (() => {
+        const matchedCust = customers.find(c => c.id === doc.customerId || c.name === doc.customerName);
+        return matchedCust?.ice ? `${doc.customerName} (ICE: ${matchedCust.ice})` : doc.customerName;
+      })(),
       customerPhone: doc.customerPhone,
       sellerName: doc.sellerName || 'admin',
       currency: config.currency,
@@ -2573,7 +2578,17 @@ export default function CommercialDocuments({
                 <span className="text-slate-400 font-black uppercase tracking-wider block mb-1 text-[10px]">
                   {lang === 'ar' ? 'المرسل إليه / بيانات العميل (Client)' : 'Informations Client'}
                 </span>
-                <p className="font-black text-slate-900 text-sm">{viewingDoc.customerName}</p>
+                <div className="flex items-center gap-2 flex-wrap">
+                  <p className="font-black text-slate-900 text-sm">{viewingDoc.customerName}</p>
+                  {(() => {
+                    const matchedCust = customers.find(c => c.id === viewingDoc.customerId || c.name === viewingDoc.customerName);
+                    return matchedCust?.ice ? (
+                      <span className="inline-block px-1.5 py-0.5 rounded text-[11px] font-mono font-bold bg-white text-slate-800 border border-slate-300">
+                        ICE: {matchedCust.ice}
+                      </span>
+                    ) : null;
+                  })()}
+                </div>
                 {viewingDoc.customerPhone && (
                   <p className="text-slate-600 font-medium mt-0.5">{lang === 'ar' ? 'الهاتف:' : 'Tél:'} <span className="font-mono font-bold text-slate-800">{viewingDoc.customerPhone}</span></p>
                 )}
@@ -2679,8 +2694,23 @@ export default function CommercialDocuments({
                 </div>
               </div>
 
+              {/* Arrêtée la présente facture clause */}
+              <div className="p-3 bg-slate-50 rounded-xl border border-slate-200 text-xs text-slate-700 font-bold text-start">
+                <span className="text-slate-500 font-normal">
+                  {lang === 'ar' ? 'حررت هذه الفاتورة بمبلغ إجمالي قدره:' : lang === 'fr' ? 'Arrêtée la présente facture à la somme de :' : 'Certified this invoice to the amount of:'}
+                </span>{' '}
+                <span className="font-black text-slate-900 font-mono">
+                  {(Number(viewingDoc.total || 0) + Number(viewingDoc.previousBalance || 0)).toFixed(2)} {config.currency}
+                </span>
+                {lang !== 'fr' && (
+                  <span className="text-[11px] text-slate-500 block mt-0.5 italic font-sans font-medium">
+                    (Arrêtée la présente facture à la somme de {(Number(viewingDoc.total || 0) + Number(viewingDoc.previousBalance || 0)).toFixed(2)} {config.currency})
+                  </span>
+                )}
+              </div>
+
               {/* Official Signatures & Stamp Blocks */}
-              <div className="grid grid-cols-2 gap-8 pt-6 border-t-2 border-slate-200">
+              <div className="grid grid-cols-2 gap-8 pt-4 border-t border-slate-200">
                 <div className="border border-dashed border-slate-300 rounded-2xl p-4 h-28 flex flex-col justify-between text-center bg-slate-50/40">
                   <span className="text-xs font-bold text-slate-600">
                     {viewingDoc.docType === 'devis' && (lang === 'ar' ? 'موافقة وتوقيع الزبون (Bon pour accord):' : 'Bon pour accord client:')}
@@ -2695,6 +2725,17 @@ export default function CommercialDocuments({
                     {lang === 'ar' ? 'خاتم وتوقيع المؤسسة:' : 'Cachet et Signature de l\'Entreprise:'}
                   </span>
                   <span className="text-[10px] text-slate-400 font-mono italic">Cachet & Signature</span>
+                </div>
+              </div>
+
+              {/* Company Info Footer Strip (Address, Phone, ICE) */}
+              <div className="pt-3 border-t border-slate-200 text-center text-[11px] text-slate-500 font-medium space-y-0.5">
+                <div className="font-bold text-slate-700">{config.name}</div>
+                <div className="flex flex-wrap items-center justify-center gap-x-4 gap-y-1 text-slate-600">
+                  {config.address && <span>{config.address}</span>}
+                  {config.phone && <span>{lang === 'ar' ? 'الهاتف:' : 'Tél:'} <b className="font-mono text-slate-800">{config.phone}</b></span>}
+                  {config.email && <span>{config.email}</span>}
+                  {config.registrationNumber && <span>ICE: <b className="font-mono text-slate-800">{config.registrationNumber}</b></span>}
                 </div>
               </div>
             </div>

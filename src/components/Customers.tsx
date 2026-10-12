@@ -52,6 +52,7 @@ export default function Customers({ customers, invoices, onSaveCustomer, onDelet
       name: '',
       phone: '',
       email: '',
+      ice: '',
       debt: 0,
       notes: '',
     });
@@ -77,6 +78,7 @@ export default function Customers({ customers, invoices, onSaveCustomer, onDelet
       name: editingCustomer.name,
       phone: editingCustomer.phone,
       email: editingCustomer.email || '',
+      ice: editingCustomer.ice ? editingCustomer.ice.trim() : '',
       debt: parseDecimal(editingCustomer.debt),
       notes: editingCustomer.notes || '',
       createdAt: editingCustomer.createdAt || new Date().toISOString(),
@@ -359,6 +361,11 @@ export default function Customers({ customers, invoices, onSaveCustomer, onDelet
                             {c.email}
                           </span>
                         )}
+                        {c.ice && (
+                          <span className="inline-flex items-center gap-1 px-1.5 py-0.5 bg-slate-100 text-slate-700 font-mono font-bold text-[10px] rounded border border-slate-200">
+                            ICE: {c.ice}
+                          </span>
+                        )}
                       </div>
                     </div>
                     {/* Action buttons */}
@@ -555,6 +562,20 @@ export default function Customers({ customers, invoices, onSaveCustomer, onDelet
                   value={editingCustomer.email || ''}
                   onChange={(e) => setEditingCustomer({ ...editingCustomer, email: e.target.value })}
                   className="w-full px-3.5 py-2.5 border border-slate-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-indigo-500 text-slate-600"
+                />
+              </div>
+
+              <div>
+                <label className="block text-xs font-bold text-slate-500 uppercase mb-1.5">
+                  {lang === 'ar' ? 'معرف المقاولة الضريبي (ICE)' : 'Identifiant ICE'}
+                </label>
+                <input
+                  id="form-c-ice"
+                  type="text"
+                  placeholder="ICE (ex: 001234567000089)"
+                  value={editingCustomer.ice || ''}
+                  onChange={(e) => setEditingCustomer({ ...editingCustomer, ice: e.target.value })}
+                  className="w-full px-3.5 py-2.5 border border-slate-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-indigo-500 text-slate-800 font-mono font-bold"
                 />
               </div>
 

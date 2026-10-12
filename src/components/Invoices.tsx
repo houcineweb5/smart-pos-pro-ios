@@ -617,7 +617,7 @@ export default function Invoices({ invoices, products = [], customers = [], conf
       storeEmail: config.email,
       storeRegNumber: config.registrationNumber,
       customerLabel: lang === 'ar' ? 'الزبون:' : 'Customer:',
-      customerName: inv.customerName || '',
+      customerName: cust?.ice ? `${inv.customerName || ''} (ICE: ${cust.ice})` : (inv.customerName || ''),
       customerPhone: cust?.phone,
       sellerName: inv.sellerName || 'Admin',
       currency: config.currency,
@@ -1413,10 +1413,15 @@ export default function Invoices({ invoices, products = [], customers = [], conf
                     </div>
 
                     <div className="pt-2 border-t border-slate-100 sm:border-0 sm:pt-0">
-                      <div className="inline-flex items-center gap-1.5 font-black text-slate-900 text-sm">
+                      <div className="inline-flex items-center gap-1.5 font-black text-slate-900 text-sm flex-wrap sm:justify-end">
                         <User className="w-4 h-4" style={{ color: themePrimary }} />
                         <span>{lang === 'ar' ? 'الزبون :' : 'Client :'}</span>
                         <span style={{ color: themePrimary }}>{viewInvoice.customerName}</span>
+                        {custObj?.ice && (
+                          <span className="inline-block px-1.5 py-0.5 rounded text-[11px] font-mono font-bold bg-slate-100 text-slate-800 border border-slate-300">
+                            ICE: {custObj.ice}
+                          </span>
+                        )}
                       </div>
                       {config.showPhoneOnInvoice !== false && custObj?.phone && (
                         <p className="text-xs text-slate-600 font-semibold mt-0.5">{custObj.phone}</p>
@@ -1540,6 +1545,21 @@ export default function Invoices({ invoices, products = [], customers = [], conf
                   </div>
                 </div>
 
+                {/* Arrêtée la présente facture clause */}
+                <div className="p-3 bg-slate-50 rounded-xl border border-slate-200 text-xs text-slate-700 font-bold text-start">
+                  <span className="text-slate-500 font-normal">
+                    {lang === 'ar' ? 'حررت هذه الفاتورة بمبلغ إجمالي قدره:' : lang === 'fr' ? 'Arrêtée la présente facture à la somme de :' : 'Certified this invoice to the amount of:'}
+                  </span>{' '}
+                  <span className="font-black text-slate-900 font-mono">
+                    {(Number(invTotal || 0) + Number(prevBal || 0)).toFixed(2)} {config.currency}
+                  </span>
+                  {lang !== 'fr' && (
+                    <span className="text-[11px] text-slate-500 block mt-0.5 italic font-sans font-medium">
+                      (Arrêtée la présente facture à la somme de {(Number(invTotal || 0) + Number(prevBal || 0)).toFixed(2)} {config.currency})
+                    </span>
+                  )}
+                </div>
+
                 {config.showBarcodeOnInvoice !== false && (
                   <div className="flex flex-col items-center justify-center pt-4">
                     <div
@@ -1558,6 +1578,16 @@ export default function Invoices({ invoices, products = [], customers = [], conf
                     {config.receiptReturnPolicy}
                   </div>
                 )}
+
+                {/* Company Info Footer Strip (Address, Phone, ICE) */}
+                <div className="pt-3 border-t border-slate-200 text-center text-[11px] text-slate-500 font-medium space-y-0.5">
+                  <div className="font-bold text-slate-700">{config.name}</div>
+                  <div className="flex flex-wrap items-center justify-center gap-x-4 gap-y-1 text-slate-600">
+                    {config.address && <span>{config.address}</span>}
+                    {config.phone && <span dir="ltr">📞 {config.phone}</span>}
+                    {config.registrationNumber && <span>ICE: <b>{config.registrationNumber}</b></span>}
+                  </div>
+                </div>
               </div>
 
               {/* Internal Profit Summary Bar (Outside printable-area so it NEVER prints) */}

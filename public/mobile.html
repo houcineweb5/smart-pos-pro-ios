@@ -540,13 +540,14 @@
       <span class="nav-icon">📷</span>
       <span>قارئ الباركود</span>
     </button>
+    <button class="nav-item" id="nav-invoices" onclick="switchTab('invoices')">
+      <span class="nav-icon">🧾</span>
+      <span>فواتير المبيعات</span>
+    </button>
     <button class="nav-item" id="nav-inventory" onclick="switchTab('inventory')">
       <span class="nav-icon">📦</span>
       <span>المخزون</span>
     </button>
-    <button class="nav-item" id="nav-invoices" onclick="switchTab('invoices')">
-      <span class="nav-icon">☁️</span>
-      <span>الفواتير والربط</span>
   </nav>
 
   <!-- Modal for Invoice Details & Reprint on Mobile -->
@@ -1605,12 +1606,12 @@
       }).join('');
 
       const reportHtml = `
-        <div style="font-family:Tahoma, Arial, sans-serif; direction:rtl; padding:24px; color:#0f172a; max-width:800px; margin:0 auto; background:#fff;">
+        <div style="font-family:'Cairo', 'Tajawal', Tahoma, Arial, sans-serif; direction:rtl; padding:24px; color:#0f172a; max-width:800px; margin:0 auto; background:#fff;">
           <!-- Header -->
-          <div style="display:flex; justify-content:space-between; align-items:center; border-bottom:2px solid #0f172a; padding-bottom:12px; margin-bottom:16px;">
+          <div style="display:flex; justify-content:space-between; align-items:center; border-bottom:2.5px solid #0f172a; padding-bottom:12px; margin-bottom:16px;">
             <div>
               <h1 style="margin:0; font-size:20px; font-weight:900;">${storeName}</h1>
-              <p style="margin:4px 0 0; font-size:12px; color:#475569;">تقرير المبيعات الشامل والأرباح والديون</p>
+              <p style="margin:4px 0 0; font-size:12px; color:#475569; font-weight:700;">تقرير المبيعات والأرباح والديون</p>
             </div>
             <div style="text-align:left; font-size:11px; color:#64748b;">
               <div>تاريخ التقرير: <b>${new Date().toLocaleDateString('ar-DZ')}</b></div>
@@ -1618,9 +1619,28 @@
             </div>
           </div>
 
+          <!-- Top 3 KPI Grid matching Windows format -->
+          <div style="display:grid; grid-template-columns:repeat(3, 1fr); gap:10px; margin-bottom:16px;">
+            <div style="border:1px solid #cbd5e1; border-radius:8px; padding:10px; background:#f8fafc;">
+              <div style="font-size:10px; color:#64748b; font-weight:700;">إجمالي مبيعات الفترة</div>
+              <div style="margin-top:4px; display:flex; flex-direction:column; gap:4px; align-items:flex-start;">
+                <span dir="ltr" style="font-family:Tahoma, Arial, monospace; font-size:16px; font-weight:900;">${totalSales.toFixed(2)} ${cur}</span>
+                <span style="font-size:11px; font-weight:700; color:#4338ca; background:#e0e7ff; padding:2px 8px; border-radius:6px; display:inline-block;">${validInvs.length} فاتورة مبيعات</span>
+              </div>
+            </div>
+            <div style="border:1px solid #cbd5e1; border-radius:8px; padding:10px; background:#f8fafc;">
+              <div style="font-size:10px; color:#64748b; font-weight:700;">إجمالي وصافي الربح</div>
+              <div style="margin-top:4px; font-size:15px; font-weight:900; color:#047857; font-family:monospace;">${grossProfit.toFixed(2)} / ${netProfit.toFixed(2)} ${cur}</div>
+            </div>
+            <div style="border:1px solid #cbd5e1; border-radius:8px; padding:10px; background:#f8fafc;">
+              <div style="font-size:10px; color:#64748b; font-weight:700;">ديون الزبائن المستحقة</div>
+              <div style="margin-top:4px; font-size:15px; font-weight:900; color:#be123c; font-family:monospace;">${totalDebt.toFixed(2)} ${cur}</div>
+            </div>
+          </div>
+
           <!-- Section 1 -->
           <div style="margin-bottom:20px;">
-            <h3 style="font-size:14px; font-weight:900; color:#1e293b; margin-bottom:8px;">1. ملخص المبيعات، الأرباح، والمصاريف الإجمالية:</h3>
+            <h3 style="font-size:13px; font-weight:800; color:#0f172a; margin:16px 0 8px; padding:6px 10px; background:#f1f5f9; border-right:4px solid #0f172a; border-radius:4px;">1. ملخص المبيعات، الأرباح، والمصاريف الإجمالية:</h3>
             <table style="width:100%; border-collapse:collapse; border:1px solid #cbd5e1; border-radius:8px;">
               <thead style="background:#f1f5f9; font-size:11px; font-weight:900; color:#1e293b;">
                 <tr>

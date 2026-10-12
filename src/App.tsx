@@ -2602,13 +2602,13 @@ export default function App() {
 
           <button
             type="button"
-            onClick={() => selectTab('inventory')}
+            onClick={() => selectTab('invoices')}
             className={`py-2 flex flex-col items-center justify-center gap-0.5 text-[10px] font-black cursor-pointer transition ${
-              activeTab === 'inventory' ? 'text-indigo-600' : 'text-slate-500'
+              activeTab === 'invoices' ? 'text-indigo-600' : 'text-slate-500'
             }`}
           >
-            <Package className="w-5 h-5" />
-            <span>{lang === 'ar' ? 'المخزون' : 'Stock'}</span>
+            <ClipboardList className="w-5 h-5" />
+            <span>{lang === 'ar' ? 'فواتير المبيعات' : lang === 'fr' ? 'Factures' : 'Sales Invoices'}</span>
           </button>
 
           <button

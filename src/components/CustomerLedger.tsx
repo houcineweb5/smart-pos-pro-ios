@@ -9,7 +9,7 @@ import {
   ArrowLeft, Calendar, FileText, Printer, Search, TrendingUp, DollarSign, 
   CreditCard, CreditCard as DebtIcon, ChevronDown, ChevronUp, Clock, CheckCircle, AlertCircle, FileDown
 } from 'lucide-react';
-import { printHtmlContent, exportStructuredPdf } from '../utils/printService';
+import { printHtmlContent, exportStructuredPdf, A4_PRINT_THEMES } from '../utils/printService';
 
 interface CustomerLedgerProps {
   customer: Customer;
@@ -133,6 +133,17 @@ export default function CustomerLedger({ customer, invoices, logs, onClose, lang
     return sum + (match ? parseFloat(match[0]) : 0);
   }, 0);
 
+  // Profit earned from this customer's invoices (Total - Purchase Cost)
+  const totalCustomerProfit = activeInvoicesForStats.reduce((sum, inv) => {
+    const invoiceProfit = (inv.items || []).reduce((iSum, it) => {
+      const buyPrice = Number(it.purchasePrice || 0);
+      const sellTotal = Number(it.total || 0);
+      const costTotal = buyPrice * Number(it.quantity || 1);
+      return iSum + (sellTotal - costTotal);
+    }, 0);
+    return sum + invoiceProfit;
+  }, 0);
+
   const toggleInvoiceExpand = (invoiceId: string) => {
     setExpandedInvoiceIds(prev => ({
       ...prev,
@@ -143,6 +154,10 @@ export default function CustomerLedger({ customer, invoices, logs, onClose, lang
   const triggerPrintLedger = () => {
     const printContent = document.getElementById('printable-ledger-area')?.innerHTML;
     if (!printContent) return;
+
+    const activeA4 = A4_PRINT_THEMES[config.a4Theme || 'slate'] || A4_PRINT_THEMES.slate;
+    const themePrimary = config.printPrimaryColor || activeA4.primary;
+    const themeHeaderBg = config.printPrimaryColor || activeA4.headerBg;
 
     const styleAndBodyHtml = `
       <style>
@@ -157,18 +172,18 @@ export default function CustomerLedger({ customer, invoices, logs, onClose, lang
           display: flex; 
           justify-content: space-between; 
           align-items: center; 
-          border-bottom: 3px double #cbd5e1; 
+          border-bottom: 2.5px solid ${themePrimary}; 
           padding-bottom: 20px; 
           margin-bottom: 24px; 
         }
-        .title-box h1 { margin: 0; font-size: 22px; color: #0f172a; font-weight: 800; }
+        .title-box h1 { margin: 0; font-size: 22px; color: ${themePrimary}; font-weight: 800; }
         .title-box p { margin: 5px 0 0 0; font-size: 13px; color: #64748b; font-weight: 500; }
         .client-info-grid { 
           display: grid; 
           grid-template-columns: 1fr 1fr; 
           gap: 12px; 
           background: #f8fafc; 
-          border: 1px solid #e2e8f0; 
+          border: 1px solid ${activeA4.border}; 
           border-radius: 12px; 
           padding: 16px; 
           margin-bottom: 24px; 
@@ -177,30 +192,31 @@ export default function CustomerLedger({ customer, invoices, logs, onClose, lang
         .client-info-grid div strong { color: #0f172a; font-size: 13px; }
         .metrics-grid { 
           display: grid; 
-          grid-template-columns: repeat(4, 1fr); 
-          gap: 12px; 
+          grid-template-columns: repeat(5, 1fr); 
+          gap: 10px; 
           margin-bottom: 28px; 
         }
         .metric-card { 
-          border: 1px solid #e2e8f0; 
+          border: 1px solid ${activeA4.border}; 
           border-radius: 10px; 
-          padding: 12px; 
+          padding: 10px; 
           text-align: center; 
           background: #ffffff;
         }
         .metric-card span { font-size: 10px; font-weight: bold; text-transform: uppercase; color: #64748b; display: block; }
-        .metric-card h2 { margin: 5px 0 0 0; font-size: 17px; font-weight: 900; }
+        .metric-card h2 { margin: 5px 0 0 0; font-size: 16px; font-weight: 900; }
         .red { color: #e11d48; }
         .green { color: #059669; }
-        .blue { color: #2563eb; }
+        .emerald { color: #047857; }
+        .blue { color: ${themePrimary}; }
         .ledger-table { width: 100%; border-collapse: collapse; margin-top: 16px; }
         .ledger-table th, .ledger-table td { 
           padding: 10px 12px; 
-          border-bottom: 1px solid #e2e8f0; 
+          border-bottom: 1px solid ${activeA4.border}; 
           text-align: ${isRTL ? 'right' : 'left'}; 
           font-size: 12px;
         }
-        .ledger-table th { background-color: #f1f5f9; font-weight: bold; color: #334155; }
+        .ledger-table th { background-color: ${themeHeaderBg}; font-weight: bold; color: #ffffff; border-color: ${themeHeaderBg}; }
         .itemized-list { 
           font-size: 11px; 
           color: #64748b; 
@@ -245,11 +261,18 @@ export default function CustomerLedger({ customer, invoices, logs, onClose, lang
     currency: config.currency,
     mode: 'a4' as const,
     isRTL,
+    a4Theme: config.a4Theme || 'slate',
+    themeColor: config.printPrimaryColor,
     summaryCards: [
       {
         label: isRTL ? 'إجمالي المشتريات والفوترة' : 'Total Invoiced',
         value: `${totalInvoicedSum.toFixed(2)} ${config.currency}`,
         color: '#0f172a'
+      },
+      {
+        label: isRTL ? 'صافي الربح مع الزبون' : 'Bénéfice Client',
+        value: `${totalCustomerProfit.toFixed(2)} ${config.currency}`,
+        color: '#047857'
       },
       {
         label: isRTL ? 'إجمالي المدفوعات والتحصيلات' : 'Total Paid',
@@ -289,6 +312,7 @@ export default function CustomerLedger({ customer, invoices, logs, onClose, lang
         paymentsOnly: 'المدفوعات والتحصيلات',
         registeredOn: 'تاريخ التسجيل:',
         totalPurchased: 'إجمالي المشتريات والفوترة',
+        totalProfit: 'أرباحنا مع الزبون',
         totalPaidOnInvoices: 'المدفوع المباشر بفواتير',
         totalSubRepayments: 'دفعات الحساب والديون اللاحقة',
         netOutstandingDebt: 'الديون المتبقية والذمم المالية',
@@ -316,6 +340,7 @@ export default function CustomerLedger({ customer, invoices, logs, onClose, lang
         paymentsOnly: 'Règlements & Dépôts',
         registeredOn: 'Enregistré le:',
         totalPurchased: 'Total Facturé',
+        totalProfit: 'Bénéfice Réalisé',
         totalPaidOnInvoices: 'Payé Directement',
         totalSubRepayments: 'Règlements Ultérieurs',
         netOutstandingDebt: 'Reste à Payer (Créance)',
@@ -343,6 +368,7 @@ export default function CustomerLedger({ customer, invoices, logs, onClose, lang
         paymentsOnly: 'Settlements & Cash Payments',
         registeredOn: 'Registered On:',
         totalPurchased: 'Total Invoiced Value',
+        totalProfit: 'Customer Profit Earned',
         totalPaidOnInvoices: 'Paid On Invoices',
         totalSubRepayments: 'Subsequent Settle Repayments',
         netOutstandingDebt: 'Net Outstanding Balance',
@@ -413,21 +439,40 @@ export default function CustomerLedger({ customer, invoices, logs, onClose, lang
         </div>
       </div>
 
-      {/* 4-Column Financial Statement Bento Grid */}
-      <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
+      {/* 5-Column Financial Statement Bento Grid */}
+      <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-5 gap-3.5">
         {/* Total Purchased / Invoiced */}
-        <div className="bg-white p-4.5 rounded-2xl border border-slate-100 shadow-xs text-start">
+        <div className="bg-white p-4 rounded-2xl border border-slate-100 shadow-xs text-start">
           <span className="text-[10px] text-slate-400 font-extrabold uppercase tracking-widest block">
             {labels.totalPurchased}
           </span>
           <div className="flex items-baseline gap-1 mt-1.5">
-            <span className="text-2xl font-black text-slate-800 font-mono">
+            <span className="text-xl sm:text-2xl font-black text-slate-800 font-mono">
               {totalInvoicedSum.toLocaleString(undefined, { minimumFractionDigits: 2 })}
             </span>
             <span className="text-xs font-semibold text-slate-500">{config.currency}</span>
           </div>
           <span className="text-[10px] font-bold text-indigo-600 block mt-1.5 bg-indigo-50/50 py-1 px-2.5 rounded-lg w-max">
             {activeInvoicesForStats.length} {isRTL ? 'فواتير مشتريات' : 'Sales bills'}
+          </span>
+        </div>
+
+        {/* Customer Profit (أرباحنا مع الزبون) */}
+        <div className="bg-white p-4 rounded-2xl border border-emerald-100 shadow-xs text-start bg-gradient-to-b from-emerald-50/40 to-white">
+          <div className="flex items-center justify-between">
+            <span className="text-[10px] text-emerald-700 font-extrabold uppercase tracking-widest block">
+              {labels.totalProfit}
+            </span>
+            <TrendingUp className="w-3.5 h-3.5 text-emerald-600" />
+          </div>
+          <div className="flex items-baseline gap-1 mt-1.5">
+            <span className="text-xl sm:text-2xl font-black text-emerald-700 font-mono">
+              {totalCustomerProfit.toLocaleString(undefined, { minimumFractionDigits: 2 })}
+            </span>
+            <span className="text-xs font-semibold text-emerald-600">{config.currency}</span>
+          </div>
+          <span className="text-[10px] font-bold text-emerald-700 block mt-1.5 bg-emerald-100/60 py-1 px-2.5 rounded-lg w-max">
+            {selectedMonth ? (isRTL ? `شهر ${selectedMonth}` : `Mois: ${selectedMonth}`) : (isRTL ? 'صافي الأرباح' : 'Gain net')}
           </span>
         </div>
 
@@ -725,19 +770,15 @@ export default function CustomerLedger({ customer, invoices, logs, onClose, lang
                         <table className="w-full text-start">
                           <thead>
                             <tr className="text-slate-400 font-extrabold border-b border-slate-50 text-[10px]">
-                              <th className="pb-1.5 font-medium text-start">{isRTL ? 'اسم المنتج' : 'Product name'}</th>
-                              <th className="pb-1.5 font-medium text-center">{isRTL ? 'الكمية' : 'Qty'}</th>
-                              <th className="pb-1.5 font-medium text-right">{isRTL ? 'سعر البيع' : 'Selling Unit Price'}</th>
-                              <th className="pb-1.5 font-medium text-right">{isRTL ? 'المجموع' : 'Subtotal'}</th>
+                              <th className="pb-1.5 font-medium text-start">{isRTL ? 'اسم المنتج / الصنف' : 'Product name'}</th>
+                              <th className="pb-1.5 font-medium text-end">{isRTL ? 'المجموع' : 'Subtotal'}</th>
                             </tr>
                           </thead>
                           <tbody className="divide-y divide-slate-50/50">
                             {invRaw.items.map((it, idx) => (
                               <tr key={idx} className="text-slate-700 font-medium">
                                 <td className="py-2 text-start font-semibold text-slate-800">{it.productName}</td>
-                                <td className="py-2 text-center font-mono font-bold text-slate-600">{it.quantity}</td>
-                                <td className="py-2 text-right font-mono">{it.sellingPrice.toFixed(2)} {config.currency}</td>
-                                <td className="py-2 text-right font-mono font-bold">{it.total.toFixed(2)} {config.currency}</td>
+                                <td className="py-2 text-end font-mono font-bold">{it.total.toFixed(2)} {config.currency}</td>
                               </tr>
                             ))}
                           </tbody>
@@ -788,6 +829,10 @@ export default function CustomerLedger({ customer, invoices, logs, onClose, lang
           <div className="metric-card">
             <span>{labels.totalPurchased}</span>
             <h2 className="blue">{totalInvoicedSum.toFixed(2)} {config.currency}</h2>
+          </div>
+          <div className="metric-card">
+            <span>{labels.totalProfit}</span>
+            <h2 className="emerald">{totalCustomerProfit.toFixed(2)} {config.currency}</h2>
           </div>
           <div className="metric-card">
             <span>{labels.totalPaidOnInvoices}</span>

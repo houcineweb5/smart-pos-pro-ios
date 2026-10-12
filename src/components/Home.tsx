@@ -323,13 +323,17 @@ export default function Home({
         </div>
 
         {/* Card 3: Pending Debt */}
-        <div className="bg-white border border-slate-100 p-4 rounded-xl shadow-xs flex items-center gap-3 transition hover:shadow-sm">
-          <div className="p-2 bg-rose-50 text-rose-600 rounded-xl">
+        <div 
+          onClick={() => onNavigate('customers')}
+          className="bg-white border border-slate-100 p-4 rounded-xl shadow-xs flex items-center gap-3 transition hover:shadow-sm cursor-pointer hover:border-rose-200 group"
+          title={lang === 'ar' ? 'انقر لعرض سجل الزبناء والديون' : 'Click to view Customers & Debts Ledger'}
+        >
+          <div className="p-2 bg-rose-50 text-rose-600 rounded-xl group-hover:scale-105 transition">
             <Users className="w-4.5 h-4.5" />
           </div>
           <div className="text-start">
             <span className="text-[10px] text-slate-500 font-bold uppercase tracking-wider block">
-              {lang === 'ar' ? 'ديون العملاء المعلقة' : 'Outstanding Debts'}
+              {lang === 'ar' ? 'سجل الزبناء والديون' : 'Customers & Debts'}
             </span>
             <span className="text-base sm:text-lg font-bold text-rose-600 font-mono">
               {totalDebt.toFixed(2)} <span className="text-[11px] text-slate-500 font-sans font-bold uppercase">{config.currency}</span>
@@ -359,7 +363,7 @@ export default function Home({
           {lang === 'ar' ? 'روابط سريعة لأهم العمليات' : 'Quick Operations Shortcuts'}
         </h2>
         
-        <div className="grid grid-cols-2 md:grid-cols-4 gap-3.5" id="home-shortcuts-grid">
+        <div className="grid grid-cols-2 md:grid-cols-5 gap-3.5" id="home-shortcuts-grid">
           {/* Action 1: New Sale */}
           <button
             id="shortcut-new-sale"
@@ -378,7 +382,25 @@ export default function Home({
             </div>
           </button>
 
-          {/* Action 2: Add Product */}
+          {/* Action 2: Customers & Debts */}
+          <button
+            id="shortcut-customers-debts"
+            onClick={() => onNavigate('customers')}
+            className="group p-4 bg-white border border-slate-100 rounded-xl shadow-xs text-start transition duration-200 hover:border-rose-200 hover:shadow-sm cursor-pointer flex flex-col justify-between h-28"
+          >
+            <span className="p-2 bg-rose-50 text-rose-600 rounded-xl transition duration-300 group-hover:scale-105 shrink-0 self-start">
+              <Users className="w-4.5 h-4.5" />
+            </span>
+            <div className="flex justify-between items-end w-full">
+              <div>
+                <h3 className="font-bold text-slate-800 text-xs leading-snug">{lang === 'ar' ? 'الزبناء والديون' : 'Customers & Debts'}</h3>
+                <p className="text-[9px] text-slate-400 font-medium mt-0.5">{lang === 'ar' ? 'سجل الزبائن والكريدي' : 'Client accounts ledger'}</p>
+              </div>
+              <ArrowRight className="w-3.5 h-3.5 text-slate-400 transition duration-300 group-hover:translate-x-1 text-rose-600 rtl:rotate-180 rtl:group-hover:-translate-x-1" />
+            </div>
+          </button>
+
+          {/* Action 3: Add Product */}
           <button
             id="shortcut-add-product"
             onClick={() => onNavigate('inventory')}
@@ -396,7 +418,7 @@ export default function Home({
             </div>
           </button>
 
-          {/* Action 3: Sales Invoices Management */}
+          {/* Action 4: Sales Invoices Management */}
           <button
             id="shortcut-sales-invoices"
             onClick={() => onNavigate('invoices')}
@@ -414,7 +436,7 @@ export default function Home({
             </div>
           </button>
 
-          {/* Action 4: Settings */}
+          {/* Action 5: Settings */}
           <button
             id="shortcut-system-settings"
             onClick={() => onNavigate('settings')}

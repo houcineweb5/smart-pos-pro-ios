@@ -69,6 +69,7 @@ export interface Customer {
   name: string;
   phone: string;
   email: string;
+  ice?: string; // Tax Identifier / ICE
   debt: number; // Positive means they owe money
   notes?: string;
   createdAt: string;
