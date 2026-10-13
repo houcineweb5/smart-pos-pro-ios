@@ -161,6 +161,23 @@ export default function Settings({
         </div>
       )}
 
+      {/* Floating Save Toast - Always visible regardless of page scroll position */}
+      {successMsg && (
+        <div className="fixed bottom-6 start-6 z-50 bg-slate-900 text-white border border-emerald-500/40 px-5 py-3.5 rounded-2xl shadow-2xl flex items-center gap-3 animate-fade-in text-sm font-black">
+          <div className="w-7 h-7 rounded-full bg-emerald-500 text-slate-950 flex items-center justify-center shrink-0 shadow-xs">
+            <Check className="w-4 h-4 stroke-[3]" />
+          </div>
+          <span>{successMsg}</span>
+          <button
+            type="button"
+            onClick={() => setSuccessMsg('')}
+            className="ms-3 text-slate-400 hover:text-white text-base font-bold transition cursor-pointer"
+          >
+            ✕
+          </button>
+        </div>
+      )}
+
       {/* Main Settings Form */}
       <form onSubmit={handleSubmit} className="space-y-6">
         {/* Section 1: Store Profile & Identity */}
@@ -974,12 +991,18 @@ export default function Settings({
           </div>
         </div>
 
-        {/* Bottom Save Bar (The sole, prominent save button) */}
-        <div className="pt-3 flex justify-end">
+        {/* Bottom Save Bar (The sole, prominent save button with inline feedback) */}
+        <div className="pt-3 flex flex-wrap items-center justify-between gap-3">
+          {successMsg ? (
+            <div className="bg-emerald-50 border border-emerald-300 text-emerald-900 px-4 py-2.5 rounded-2xl text-xs sm:text-sm font-black flex items-center gap-2 animate-fade-in shadow-xs">
+              <Check className="w-4.5 h-4.5 text-emerald-600 shrink-0" />
+              <span>{successMsg}</span>
+            </div>
+          ) : <div />}
           <button
             id="sumbit-set-btn"
             type="submit"
-            className="flex items-center gap-2.5 px-8 py-3 bg-indigo-600 hover:bg-indigo-700 text-white font-bold rounded-2xl text-sm transition duration-150 shadow-md hover:shadow-lg cursor-pointer active:scale-95"
+            className="flex items-center gap-2.5 px-8 py-3 bg-indigo-600 hover:bg-indigo-700 text-white font-bold rounded-2xl text-sm transition duration-150 shadow-md hover:shadow-lg cursor-pointer active:scale-95 ms-auto"
           >
             <Save className="w-4.5 h-4.5" />
             <span>{t.settings.save}</span>

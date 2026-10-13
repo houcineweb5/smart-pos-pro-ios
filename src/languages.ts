@@ -27,6 +27,7 @@ export interface Translations {
     bonLivraison: string;
     commercialDocuments: string;
     backup: string;
+    mobileSync: string;
   };
   pos: {
     selectCustomer: string;
@@ -209,23 +210,24 @@ export const languages: Record<Language, Translations> = {
     nav: {
       home: 'الرئيسية',
       pos: 'نقطة البيع',
-      invoices: 'إدارة فواتير المبيعات',
-      purchaseEntry: 'فاتورة المشتريات',
-      inventory: 'إدارة المخزن',
+      invoices: 'ادارة فواتير المبيعات',
+      purchaseEntry: 'فاتورة مشتريات',
+      inventory: 'ادارة المخزن',
       customers: 'سجل الزبناء والديون',
-      reports: 'التقارير والإحصائيات',
-      settings: 'الإعدادات العامة',
-      suppliers: 'سجل الموردين والديون',
-      purchases: 'إدارة فواتير المشتريات والديون',
+      reports: 'التقارير والاحصائيات',
+      settings: 'الاعدادات العامة',
+      suppliers: 'سجل الموردين',
+      purchases: 'ادارة فواتير المشتريات والديون',
       users: 'المستخدمين والصلاحيات',
-      repairs: 'قسم الصيانة والإصلاحات',
-      logs: 'سجل العمليات والأنشطة',
-      expenses: 'إدارة المصاريف اليومية',
+      repairs: 'قسم الصيانة والاصلاحان',
+      logs: 'سجل العمليات والانشطة',
+      expenses: 'ادارة المصاريف اليومية',
       devis: 'عروض الأسعار (Devis)',
       bonCommande: 'Bon de commande',
       bonLivraison: 'Bon de livraison',
-      commercialDocuments: 'إدارة الوثائق التجارية',
-      backup: 'إدارة البيانات والنسخ الاحتياطي',
+      commercialDocuments: 'ادارة الوثائق التجارية',
+      backup: 'ادارة البيانات والنسخ الاحتياطية',
+      mobileSync: 'تطبيق الهاتف والمزامنة',
     },
     pos: {
       selectCustomer: 'اختر العميل',
@@ -423,6 +425,7 @@ export const languages: Record<Language, Translations> = {
       bonLivraison: 'Bons de Livraison',
       commercialDocuments: 'Documents Commerciaux',
       backup: 'Sauvegarde & Données',
+      mobileSync: 'Application & Sync Cloud',
     },
     pos: {
       selectCustomer: 'Sélectionner Client',
@@ -620,6 +623,7 @@ export const languages: Record<Language, Translations> = {
       bonLivraison: 'Delivery Notes',
       commercialDocuments: 'Commercial Documents',
       backup: 'Backup & Data Management',
+      mobileSync: 'Mobile App & Cloud Sync',
     },
     pos: {
       selectCustomer: 'Select Customer',

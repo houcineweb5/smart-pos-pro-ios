@@ -285,9 +285,14 @@ export default function CustomerLedger({ customer, invoices, logs, onClose, lang
         color: '#e11d48'
       }
     ],
+    hideQuantityAndUnitPrice: true,
+    customTableHeaders: {
+      name: isRTL ? 'البيان / الفاتورة' : 'Désignation',
+      total: isRTL ? 'الإجمالي' : 'Total',
+    },
     items: activeInvoicesForStats.map((inv) => ({
       name: `${inv.invoiceNumber} (${new Date(inv.date).toLocaleDateString('fr-FR')})`,
-      quantity: (inv.items || []).length || 1,
+      quantity: 1,
       unitPrice: inv.total,
       total: inv.total
     })),
@@ -889,19 +894,6 @@ export default function CustomerLedger({ customer, invoices, logs, onClose, lang
                       {isInv ? `${(invRaw.total - invRaw.amountPaid).toFixed(2)}` : '0.00'}
                     </td>
                   </tr>
-                  {isInv && invRaw.items.length > 0 && (
-                    <tr>
-                      <td colSpan={6} style={{ padding: '4px 15px 12px 15px' }}>
-                        <ul className="itemized-list">
-                          {invRaw.items.map((it, idx) => (
-                            <li key={idx}>
-                              📦 {it.productName} — <strong>{Number(it.total).toFixed(2)} {config.currency}</strong>
-                            </li>
-                          ))}
-                        </ul>
-                      </td>
-                    </tr>
-                  )}
                 </React.Fragment>
               );
             })}

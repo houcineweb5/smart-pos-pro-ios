@@ -1625,8 +1625,8 @@ export default function Purchases({
                 </div>
               )}
 
-              {/* Modal Action Footer with Explicit Back, PDF & Print Buttons */}
-              <div className="bg-slate-50 px-4 sm:px-6 py-3.5 border-t border-slate-200 flex flex-wrap items-center justify-between gap-2.5 shrink-0">
+              {/* Modal Action Footer with Clean Back Button */}
+              <div className="bg-slate-50 px-4 sm:px-6 py-3.5 border-t border-slate-200 flex items-center justify-between gap-2.5 shrink-0">
                 <button
                   type="button"
                   onClick={() => setViewingPurchase(null)}
@@ -1635,36 +1635,6 @@ export default function Purchases({
                   <ArrowRight className={`w-4 h-4 ${isRTL ? '' : 'rotate-180'}`} />
                   <span>{lang === 'ar' ? 'رجوع للقائمة' : 'Back'}</span>
                 </button>
-                <div className="flex flex-wrap items-center gap-2">
-                  <button
-                    type="button"
-                    onClick={() => {
-                      const po = viewingPurchase;
-                      setViewingPurchase(null);
-                      setReceiptPreviewPurchase(po);
-                    }}
-                    className="px-4 py-2 bg-emerald-600 hover:bg-emerald-700 text-white rounded-xl text-xs font-black flex items-center gap-1.5 cursor-pointer transition shadow-xs"
-                  >
-                    <Receipt className="w-4 h-4" />
-                    <span>{lang === 'ar' ? 'فاتورة صغيرة (80mm)' : 'Receipt (80mm)'}</span>
-                  </button>
-                  <button
-                    type="button"
-                    onClick={() => handleExportPurchasePdf(viewingPurchase)}
-                    className="px-4 py-2 bg-rose-600 hover:bg-rose-700 text-white rounded-xl text-xs font-black flex items-center gap-1.5 cursor-pointer transition shadow-xs"
-                  >
-                    <FileDown className="w-4 h-4" />
-                    <span>{lang === 'ar' ? 'حفظ PDF' : 'Save PDF'}</span>
-                  </button>
-                  <button
-                    type="button"
-                    onClick={() => triggerPrintLayout(viewingPurchase)}
-                    className="px-5 py-2 bg-indigo-600 hover:bg-indigo-700 text-white rounded-xl text-xs font-black flex items-center gap-1.5 cursor-pointer transition shadow-sm"
-                  >
-                    <Printer className="w-4 h-4" />
-                    <span>{lang === 'ar' ? 'طباعة الفاتورة' : 'Print Invoice'}</span>
-                  </button>
-                </div>
               </div>
 
             </div>

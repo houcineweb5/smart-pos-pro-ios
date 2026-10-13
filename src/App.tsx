@@ -1734,6 +1734,14 @@ export default function App() {
       if (!prev) return prev;
       return { ...prev, config: storeConfig };
     });
+    // Immediately push updated general settings to cloud so iPhone gets the update right away
+    const cloudCfg = getCloudSyncConfig();
+    if (cloudCfg.enabled) {
+      setTimeout(() => {
+        const currentData = getStoredData();
+        pushDataToCloud({ ...currentData, config: storeConfig }, cloudCfg, { skipPreMerge: false }).catch(() => {});
+      }, 60);
+    }
   };
 
   const handleImportBackup = (imported: typeof data) => {
@@ -1925,7 +1933,7 @@ export default function App() {
             {isRTL ? 'لوحة التحكم' : 'Main Console'}
           </div>
 
-          {/* Home Tab */}
+          {/* 1. Home Tab (الرئيسية) */}
           {currentUser.allowedTabs.includes('home') && (
             <button
               id="sidebar-tab-home"
@@ -1941,7 +1949,7 @@ export default function App() {
             </button>
           )}
 
-          {/* POS Tab */}
+          {/* 2. POS Tab (نقطة البيع) */}
           {currentUser.allowedTabs.includes('pos') && (
             <button
               id="sidebar-tab-pos"
@@ -1957,7 +1965,7 @@ export default function App() {
             </button>
           )}
 
-          {/* Invoices Tab */}
+          {/* 3. Invoices Tab (ادارة فواتير المبيعات) */}
           {currentUser.allowedTabs.includes('invoices') && (
             <button
               id="sidebar-tab-invoices"
@@ -1973,7 +1981,7 @@ export default function App() {
             </button>
           )}
 
-          {/* Commercial Documents Tab (إدارة الوثائق التجارية) */}
+          {/* 4. Commercial Documents Tab (ادارة الوثائق التجارية) */}
           {(currentUser.allowedTabs.includes('commercial-documents') || currentUser.allowedTabs.includes('devis') || currentUser.allowedTabs.includes('bon-commande') || currentUser.allowedTabs.includes('bon-livraison')) && (
             <button
               id="sidebar-tab-commercial-documents"
@@ -1989,55 +1997,7 @@ export default function App() {
             </button>
           )}
 
-          {/* Purchase Entry Tab (فاتورة المشتريات) */}
-          {currentUser.allowedTabs.includes('purchase-entry') && (
-            <button
-              id="sidebar-tab-purchase-entry"
-              onClick={() => selectTab('purchase-entry')}
-              className={`w-full flex items-center px-3 py-2 rounded-lg text-[13px] font-medium transition-all cursor-pointer text-start ${
-                activeTab === 'purchase-entry'
-                  ? 'text-white font-bold bg-white/[0.08] rounded-lg'
-                  : 'text-slate-300 hover:text-white hover:bg-white/[0.04] rounded-lg'
-              }`}
-            >
-              <ShoppingBag className="w-4.5 h-4.5 mr-2.5 rtl:mr-0 rtl:ml-2.5 shrink-0 opacity-90" />
-              <span className="truncate">{t.nav.purchaseEntry}</span>
-            </button>
-          )}
-
-          {/* Purchases Management Tab (إدارة فواتير المشتريات والديون) */}
-          {currentUser.allowedTabs.includes('purchases') && (
-            <button
-              id="sidebar-tab-purchases"
-              onClick={() => selectTab('purchases')}
-              className={`w-full flex items-center px-3 py-2 rounded-lg text-[13px] font-medium transition-all cursor-pointer text-start ${
-                activeTab === 'purchases'
-                  ? 'text-white font-bold bg-white/[0.08] rounded-lg'
-                  : 'text-slate-300 hover:text-white hover:bg-white/[0.04] rounded-lg'
-              }`}
-            >
-              <ClipboardList className="w-4.5 h-4.5 mr-2.5 rtl:mr-0 rtl:ml-2.5 shrink-0 opacity-90" />
-              <span className="truncate">{t.nav.purchases}</span>
-            </button>
-          )}
-
-          {/* Inventory Tab */}
-          {currentUser.allowedTabs.includes('inventory') && (
-            <button
-              id="sidebar-tab-inventory"
-              onClick={() => selectTab('inventory')}
-              className={`w-full flex items-center px-3 py-2 rounded-lg text-[13px] font-medium transition-all cursor-pointer text-start ${
-                activeTab === 'inventory'
-                  ? 'text-white font-bold bg-white/[0.08] rounded-lg'
-                  : 'text-slate-300 hover:text-white hover:bg-white/[0.04] rounded-lg'
-              }`}
-            >
-              <Package className="w-4.5 h-4.5 mr-2.5 rtl:mr-0 rtl:ml-2.5 shrink-0 opacity-90" />
-              <span className="truncate">{t.nav.inventory}</span>
-            </button>
-          )}
-
-          {/* Customers Tab */}
+          {/* 5. Customers Tab (سجل الزبناء والديون) */}
           {currentUser.allowedTabs.includes('customers') && (
             <button
               id="sidebar-tab-customers"
@@ -2053,7 +2013,55 @@ export default function App() {
             </button>
           )}
 
-          {/* Suppliers Tab */}
+          {/* 6. Inventory Tab (ادارة المخزن) */}
+          {currentUser.allowedTabs.includes('inventory') && (
+            <button
+              id="sidebar-tab-inventory"
+              onClick={() => selectTab('inventory')}
+              className={`w-full flex items-center px-3 py-2 rounded-lg text-[13px] font-medium transition-all cursor-pointer text-start ${
+                activeTab === 'inventory'
+                  ? 'text-white font-bold bg-white/[0.08] rounded-lg'
+                  : 'text-slate-300 hover:text-white hover:bg-white/[0.04] rounded-lg'
+              }`}
+            >
+              <Package className="w-4.5 h-4.5 mr-2.5 rtl:mr-0 rtl:ml-2.5 shrink-0 opacity-90" />
+              <span className="truncate">{t.nav.inventory}</span>
+            </button>
+          )}
+
+          {/* 7. Purchase Entry Tab (فاتورة مشتريات) */}
+          {currentUser.allowedTabs.includes('purchase-entry') && (
+            <button
+              id="sidebar-tab-purchase-entry"
+              onClick={() => selectTab('purchase-entry')}
+              className={`w-full flex items-center px-3 py-2 rounded-lg text-[13px] font-medium transition-all cursor-pointer text-start ${
+                activeTab === 'purchase-entry'
+                  ? 'text-white font-bold bg-white/[0.08] rounded-lg'
+                  : 'text-slate-300 hover:text-white hover:bg-white/[0.04] rounded-lg'
+              }`}
+            >
+              <ShoppingBag className="w-4.5 h-4.5 mr-2.5 rtl:mr-0 rtl:ml-2.5 shrink-0 opacity-90" />
+              <span className="truncate">{t.nav.purchaseEntry}</span>
+            </button>
+          )}
+
+          {/* 8. Purchases Management Tab (ادارة فواتير المشتريات والديون) */}
+          {currentUser.allowedTabs.includes('purchases') && (
+            <button
+              id="sidebar-tab-purchases"
+              onClick={() => selectTab('purchases')}
+              className={`w-full flex items-center px-3 py-2 rounded-lg text-[13px] font-medium transition-all cursor-pointer text-start ${
+                activeTab === 'purchases'
+                  ? 'text-white font-bold bg-white/[0.08] rounded-lg'
+                  : 'text-slate-300 hover:text-white hover:bg-white/[0.04] rounded-lg'
+              }`}
+            >
+              <ClipboardList className="w-4.5 h-4.5 mr-2.5 rtl:mr-0 rtl:ml-2.5 shrink-0 opacity-90" />
+              <span className="truncate">{t.nav.purchases}</span>
+            </button>
+          )}
+
+          {/* 9. Suppliers Tab (سجل الموردين) */}
           {currentUser.allowedTabs.includes('suppliers') && (
             <button
               id="sidebar-tab-suppliers"
@@ -2069,23 +2077,7 @@ export default function App() {
             </button>
           )}
 
-          {/* Expenses Tab */}
-          {currentUser.allowedTabs.includes('expenses') && (
-            <button
-              id="sidebar-tab-expenses"
-              onClick={() => selectTab('expenses')}
-              className={`w-full flex items-center px-3 py-2 rounded-lg text-[13px] font-medium transition-all cursor-pointer text-start ${
-                activeTab === 'expenses'
-                  ? 'text-white font-bold bg-white/[0.08] rounded-lg'
-                  : 'text-slate-300 hover:text-white hover:bg-white/[0.04] rounded-lg'
-              }`}
-            >
-              <ReceiptText className="w-4.5 h-4.5 mr-2.5 rtl:mr-0 rtl:ml-2.5 shrink-0 opacity-90" />
-              <span className="truncate">{t.nav.expenses}</span>
-            </button>
-          )}
-
-          {/* Reports Tab */}
+          {/* 10. Reports Tab (التقارير والاحصائيات) */}
           {currentUser.allowedTabs.includes('reports') && (
             <button
               id="sidebar-tab-reports"
@@ -2101,7 +2093,23 @@ export default function App() {
             </button>
           )}
 
-          {/* Settings Tab */}
+          {/* 11. Expenses Tab (ادارة المصاريف اليومية) */}
+          {currentUser.allowedTabs.includes('expenses') && (
+            <button
+              id="sidebar-tab-expenses"
+              onClick={() => selectTab('expenses')}
+              className={`w-full flex items-center px-3 py-2 rounded-lg text-[13px] font-medium transition-all cursor-pointer text-start ${
+                activeTab === 'expenses'
+                  ? 'text-white font-bold bg-white/[0.08] rounded-lg'
+                  : 'text-slate-300 hover:text-white hover:bg-white/[0.04] rounded-lg'
+              }`}
+            >
+              <ReceiptText className="w-4.5 h-4.5 mr-2.5 rtl:mr-0 rtl:ml-2.5 shrink-0 opacity-90" />
+              <span className="truncate">{t.nav.expenses}</span>
+            </button>
+          )}
+
+          {/* 12. Settings Tab (الاعدادات العامة) */}
           {currentUser.allowedTabs.includes('settings') && (
             <button
               id="sidebar-tab-settings"
@@ -2117,7 +2125,7 @@ export default function App() {
             </button>
           )}
 
-          {/* Team Management Tab */}
+          {/* 13. Users Tab (المستخدمين والصلاحيات) */}
           {currentUser.allowedTabs.includes('users') && (
             <button
               id="sidebar-tab-users"
@@ -2133,39 +2141,7 @@ export default function App() {
             </button>
           )}
 
-          {/* Repairs Tab */}
-          {currentUser.allowedTabs.includes('repairs') && (
-            <button
-              id="sidebar-tab-repairs"
-              onClick={() => selectTab('repairs')}
-              className={`w-full flex items-center px-3 py-2 rounded-lg text-[13px] font-medium transition-all cursor-pointer text-start ${
-                activeTab === 'repairs'
-                  ? 'text-white font-bold bg-white/[0.08] rounded-lg'
-                  : 'text-slate-300 hover:text-white hover:bg-white/[0.04] rounded-lg'
-              }`}
-            >
-              <PenTool className="w-4.5 h-4.5 mr-2.5 rtl:mr-0 rtl:ml-2.5 shrink-0 opacity-90" />
-              <span className="truncate">{t.nav.repairs}</span>
-            </button>
-          )}
-
-          {/* Logs Tab */}
-          {currentUser.allowedTabs.includes('logs') && (
-            <button
-              id="sidebar-tab-logs"
-              onClick={() => selectTab('logs')}
-              className={`w-full flex items-center px-3 py-2 rounded-lg text-[13px] font-medium transition-all cursor-pointer text-start ${
-                activeTab === 'logs'
-                  ? 'text-white font-bold bg-white/[0.08] rounded-lg'
-                  : 'text-slate-300 hover:text-white hover:bg-white/[0.04] rounded-lg'
-              }`}
-            >
-              <ClipboardList className="w-4.5 h-4.5 mr-2.5 rtl:mr-0 rtl:ml-2.5 shrink-0 opacity-90" />
-              <span className="truncate">{t.nav.logs}</span>
-            </button>
-          )}
-
-          {/* Backup & Data Management Tab (إدارة البيانات والنسخ الاحتياطي) */}
+          {/* 14. Backup & Data Management Tab (ادارة البيانات والنسخ الاحتياطية) */}
           {(currentUser.allowedTabs.includes('backup') || currentUser.allowedTabs.includes('settings')) && (
             <button
               id="sidebar-tab-backup"
@@ -2181,7 +2157,39 @@ export default function App() {
             </button>
           )}
 
-          {/* Mobile App & Cloud Sync Tab (تطبيق الهاتف والمزامنة السحابية) */}
+          {/* 15. System Logs Tab (سجل العمليات والانشطة) */}
+          {currentUser.allowedTabs.includes('logs') && (
+            <button
+              id="sidebar-tab-logs"
+              onClick={() => selectTab('logs')}
+              className={`w-full flex items-center px-3 py-2 rounded-lg text-[13px] font-medium transition-all cursor-pointer text-start ${
+                activeTab === 'logs'
+                  ? 'text-white font-bold bg-white/[0.08] rounded-lg'
+                  : 'text-slate-300 hover:text-white hover:bg-white/[0.04] rounded-lg'
+              }`}
+            >
+              <ClipboardList className="w-4.5 h-4.5 mr-2.5 rtl:mr-0 rtl:ml-2.5 shrink-0 opacity-90" />
+              <span className="truncate">{t.nav.logs}</span>
+            </button>
+          )}
+
+          {/* 16. Repairs Tab (قسم الصيانة والاصلاحان) */}
+          {currentUser.allowedTabs.includes('repairs') && (
+            <button
+              id="sidebar-tab-repairs"
+              onClick={() => selectTab('repairs')}
+              className={`w-full flex items-center px-3 py-2 rounded-lg text-[13px] font-medium transition-all cursor-pointer text-start ${
+                activeTab === 'repairs'
+                  ? 'text-white font-bold bg-white/[0.08] rounded-lg'
+                  : 'text-slate-300 hover:text-white hover:bg-white/[0.04] rounded-lg'
+              }`}
+            >
+              <PenTool className="w-4.5 h-4.5 mr-2.5 rtl:mr-0 rtl:ml-2.5 shrink-0 opacity-90" />
+              <span className="truncate">{t.nav.repairs}</span>
+            </button>
+          )}
+
+          {/* 17. Mobile App & Cloud Sync Tab (تطبيق الهاتف والمزامنة) */}
           <button
             id="sidebar-tab-mobile-sync"
             onClick={() => selectTab('mobile-sync')}
@@ -2192,7 +2200,7 @@ export default function App() {
             }`}
           >
             <Smartphone className="w-4.5 h-4.5 mr-2.5 rtl:mr-0 rtl:ml-2.5 shrink-0 opacity-90" />
-            <span className="truncate">{lang === 'ar' ? 'تطبيق الهاتف والمزامنة' : 'Mobile & Cloud Sync'}</span>
+            <span className="truncate">{t.nav.mobileSync}</span>
           </button>
         </nav>
 

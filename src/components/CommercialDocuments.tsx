@@ -10,10 +10,10 @@ import { languages } from '../languages';
 import { 
   FileText, Plus, Search, Eye, Printer, Trash2, ArrowRightLeft, CheckCircle2, 
   Calendar, User, AlertCircle, X, Check, RefreshCw, FileCheck, Truck, ClipboardList,
-  Edit, ArrowUpRight, Copy, Share2, Receipt, ShoppingCart, FileSpreadsheet, ArrowRight, FileDown
+  Edit, ArrowUpRight, Copy, Share2, Receipt, ShoppingCart, FileSpreadsheet, ArrowRight, FileDown, TrendingUp
 } from 'lucide-react';
 import { parseDecimal, sanitizeDecimalInput } from '../utils/numberInput';
-import { printHtmlContent, exportStructuredPdf, buildUnified80mmReceiptHtml } from '../utils/printService';
+import { printHtmlContent, exportStructuredPdf, buildUnified80mmReceiptHtml, buildStructuredA4Html } from '../utils/printService';
 
 interface CommercialDocumentsProps {
   initialType?: CommercialDocType;
@@ -52,6 +52,7 @@ export default function CommercialDocuments({
   }, [initialType]);
   const [search, setSearch] = useState('');
   const [statusFilter, setStatusFilter] = useState<string>('all');
+  const [selectedCustomerFilter, setSelectedCustomerFilter] = useState<string>('all');
   const [selectedMonth, setSelectedMonth] = useState<string>('');
   const [fromDate, setFromDate] = useState<string>('');
   const [toDate, setToDate] = useState<string>('');
@@ -152,11 +153,27 @@ export default function CommercialDocuments({
     return `${prefix}-${year}-${String(count).padStart(3, '0')}`;
   };
 
+  const getSafeDocItems = (doc?: CommercialDocument | null) => {
+    if (!doc || !Array.isArray(doc.items)) return [];
+    return doc.items.filter(Boolean).map((it) => ({
+      ...it,
+      productId: it.productId || '',
+      productName: it.productName || '',
+      sellingPrice: Number(it.sellingPrice || 0),
+      purchasePrice: Number(it.purchasePrice || 0),
+      quantity: Number(it.quantity || 1),
+      discount: Number(it.discount || 0),
+      tax: Number(it.tax || 0),
+      total: Number(it.total !== undefined ? it.total : (Number(it.sellingPrice || 0) * Number(it.quantity || 1))),
+    }));
+  };
+
   const calculateDocProfit = (doc: CommercialDocument): number => {
-    if (!doc || !Array.isArray(doc.items)) return 0;
+    const safeItems = getSafeDocItems(doc);
+    if (safeItems.length === 0) return 0;
     let itemsProfit = 0;
     let registeredCount = 0;
-    doc.items.forEach((it) => {
+    safeItems.forEach((it) => {
       const qty = Number(it.quantity) || 0;
       if (qty <= 0) return;
       const matchedProd = it.productId
@@ -180,9 +197,9 @@ export default function CommercialDocuments({
       itemsProfit += (netUnitSelling - unitCost) * qty;
     });
     if (registeredCount === 0) return 0;
-    const subtotalVal = Number(doc.subtotal) || 0;
-    const rawDiscount = Number(doc.discount) || 0;
-    const itemDiscountsSum = doc.items.reduce(
+    const subtotalVal = Number(doc?.subtotal) || 0;
+    const rawDiscount = Number(doc?.discount) || 0;
+    const itemDiscountsSum = safeItems.reduce(
       (s, it) => s + (Number(it.sellingPrice) || 0) * ((Number(it.discount) || 0) / 100) * (Number(it.quantity) || 0),
       0
     );
@@ -191,15 +208,20 @@ export default function CommercialDocuments({
   };
 
   // Filtered documents
-  const filteredDocs = documents.filter(d => {
+  const filteredDocs = (documents || []).filter(d => {
+    if (!d) return false;
     const matchesType = d.docType === activeType;
     const s = search.toLowerCase();
     const matchesSearch = 
-      d.docNumber.toLowerCase().includes(s) ||
-      d.customerName.toLowerCase().includes(s) ||
-      (d.customerPhone && d.customerPhone.includes(s)) ||
-      (d.notes && d.notes.toLowerCase().includes(s));
+      String(d.docNumber || '').toLowerCase().includes(s) ||
+      String(d.customerName || '').toLowerCase().includes(s) ||
+      (d.customerPhone && String(d.customerPhone).includes(s)) ||
+      (d.notes && String(d.notes).toLowerCase().includes(s));
     const matchesStatus = statusFilter === 'all' || d.status === statusFilter;
+    const matchesCustomer =
+      selectedCustomerFilter === 'all' ||
+      d.customerId === selectedCustomerFilter ||
+      d.customerName === selectedCustomerFilter;
 
     let matchesDate = true;
     if (selectedMonth || fromDate || toDate) {
@@ -223,8 +245,11 @@ export default function CommercialDocuments({
       }
     }
 
-    return matchesType && matchesSearch && matchesStatus && matchesDate;
+    return matchesType && matchesSearch && matchesStatus && matchesCustomer && matchesDate;
   });
+
+  const filteredTotalAmount = filteredDocs.reduce((acc, d) => acc + (Number(d.total) || 0), 0);
+  const filteredTotalProfit = filteredDocs.reduce((acc, d) => acc + (d.docType === 'facture' ? calculateDocProfit(d) : 0), 0);
 
   const getStatusBadge = (status: CommercialDocStatus) => {
     switch (status) {
@@ -713,19 +738,20 @@ export default function CommercialDocuments({
   };
 
   const buildDocPdfMeta = (doc: CommercialDocument, mode: 'a4' | '80mm' = 'a4') => {
-    const subtotalVal = Number(doc.subtotal || 0);
-    const discVal = Number(doc.discount || 0);
-    const taxVal = Number(doc.tax || 0);
-    const totalVal = Number(doc.total || 0);
-    const prevBalVal = Number(doc.previousBalance || 0);
-    const paidVal = doc.amountPaid !== undefined ? Number(doc.amountPaid) : totalVal;
-    const remDebt = doc.docType === 'facture' ? Math.max(0, totalVal - paidVal) : 0;
+    const safeItems = getSafeDocItems(doc);
+    const subtotalVal = Number(doc?.subtotal || 0);
+    const discVal = Number(doc?.discount || 0);
+    const taxVal = Number(doc?.tax || 0);
+    const totalVal = Number(doc?.total || 0);
+    const prevBalVal = Number(doc?.previousBalance || 0);
+    const paidVal = doc?.amountPaid !== undefined ? Number(doc.amountPaid) : totalVal;
+    const remDebt = doc?.docType === 'facture' ? Math.max(0, totalVal - paidVal) : 0;
     return {
-      title: getDocTypeLabel(doc.docType),
+      title: getDocTypeLabel(doc?.docType || 'facture'),
       docNumberLabel: lang === 'ar' ? 'رقم الوثيقة:' : 'N°:',
       partyLabel: lang === 'ar' ? 'الزبون :' : 'Client :',
-      docNumber: doc.docNumber,
-      date: doc.date ? new Date(doc.date).toLocaleString('fr-FR') : '',
+      docNumber: doc?.docNumber || '',
+      date: doc?.date ? new Date(doc.date).toLocaleString('fr-FR') : '',
       storeName: config.name || 'المتجر',
       storePhone: config.phone,
       storeEmail: config.email,
@@ -733,15 +759,15 @@ export default function CommercialDocuments({
       storeRegNumber: config.registrationNumber,
       customerLabel: lang === 'ar' ? 'الزبون' : 'Client',
       customerName: (() => {
-        const matchedCust = customers.find(c => c.id === doc.customerId || c.name === doc.customerName);
-        return matchedCust?.ice ? `${doc.customerName} (ICE: ${matchedCust.ice})` : doc.customerName;
+        const matchedCust = customers.find(c => c.id === doc?.customerId || c.name === doc?.customerName);
+        return matchedCust?.ice ? `${doc?.customerName || ''} (ICE: ${matchedCust.ice})` : (doc?.customerName || '');
       })(),
-      customerPhone: doc.customerPhone,
-      sellerName: doc.sellerName || 'admin',
+      customerPhone: doc?.customerPhone,
+      sellerName: doc?.sellerName || 'admin',
       currency: config.currency,
       mode,
       isRTL,
-      items: doc.items.map(it => ({
+      items: safeItems.map(it => ({
         name: it.productName,
         quantity: it.quantity,
         unitPrice: Number(it.sellingPrice || 0),
@@ -755,8 +781,8 @@ export default function CommercialDocuments({
       previousBalance: prevBalVal,
       amountPaid: paidVal,
       remainingDebt: remDebt,
-      notes: doc.notes,
-      footerText: t.invoice.thankYou,
+      notes: doc?.notes,
+      footerText: t.invoice?.thankYou || (lang === 'ar' ? 'شكراً لتعاملكم معنا ومرحباً بكم في أي وقت!' : 'Merci pour votre confiance!'),
       a4Theme: config.a4Theme || 'slate',
       receiptTheme: config.receiptTheme || 'classic',
       themeColor: config.printPrimaryColor
@@ -764,64 +790,97 @@ export default function CommercialDocuments({
   };
 
   const handleExportDocPdf = async (doc: CommercialDocument, mode: 'a4' | '80mm' = 'a4') => {
-    await exportStructuredPdf(buildDocPdfMeta(doc, mode));
+    try {
+      const meta = buildDocPdfMeta(doc, mode);
+      const prefix = mode === '80mm' ? 'RECEIPT' : getDocTypePrefix(doc.docType);
+      await exportStructuredPdf(meta, `${prefix}-${doc.docNumber}.pdf`);
+    } catch (err) {
+      console.error('PDF export error:', err);
+      showToast(lang === 'ar' ? 'تعذر تصدير ملف PDF، يرجى المحاولة مجدداً' : 'Erreur lors de l\'export PDF');
+    }
   };
 
   const triggerReceipt80mmPrint = (doc: CommercialDocument) => {
-    const receiptHtml = buildUnified80mmReceiptHtml(
-      {
-        invoiceNumber: doc.docNumber,
-        date: doc.date,
-        customerName: doc.customerName,
-        sellerName: doc.sellerName || 'admin',
-        docTitle: getDocTypeLabel(doc.docType),
-        docNumberLabel: lang === 'ar' ? 'رقم الوثيقة:' : 'N°:',
-        partyLabel: lang === 'ar' ? 'الزبون :' : 'Client :',
-        items: doc.items.map((it) => ({
-          productName: it.productName,
-          quantity: it.quantity,
-          sellingPrice: it.sellingPrice,
-          discount: it.discount,
-          total: it.total,
-        })),
-        subtotal: doc.subtotal,
-        discount: doc.discount,
-        tax: doc.tax,
-        total: doc.total,
-        amountPaid: doc.amountPaid !== undefined ? doc.amountPaid : doc.total,
-        previousBalance: doc.previousBalance,
-      },
-      config,
-      lang,
-      t.invoice.thankYou
-    );
-    printHtmlContent(
-      {
-        title: `Receipt ${doc.docNumber}`,
-        html: receiptHtml,
-        isRTL,
-        mode: '80mm',
-      },
-      buildDocPdfMeta(doc, '80mm')
-    );
+    try {
+      const safeItems = getSafeDocItems(doc);
+      const receiptHtml = buildUnified80mmReceiptHtml(
+        {
+          invoiceNumber: doc.docNumber,
+          date: doc.date,
+          customerName: doc.customerName,
+          sellerName: doc.sellerName || 'admin',
+          docTitle: getDocTypeLabel(doc.docType),
+          docNumberLabel: lang === 'ar' ? 'رقم الوثيقة:' : 'N°:',
+          partyLabel: lang === 'ar' ? 'الزبون :' : 'Client :',
+          items: safeItems.map((it) => ({
+            productName: it.productName,
+            quantity: it.quantity,
+            sellingPrice: it.sellingPrice,
+            discount: it.discount,
+            total: it.total,
+          })),
+          subtotal: Number(doc.subtotal || 0),
+          discount: Number(doc.discount || 0),
+          tax: Number(doc.tax || 0),
+          total: Number(doc.total || 0),
+          amountPaid: doc.amountPaid !== undefined ? Number(doc.amountPaid) : Number(doc.total || 0),
+          previousBalance: Number(doc.previousBalance || 0),
+        },
+        config,
+        lang,
+        t.invoice?.thankYou || (lang === 'ar' ? 'شكراً لتعاملكم معنا ومرحباً بكم في أي وقت!' : 'Merci pour votre confiance!')
+      );
+      printHtmlContent(
+        {
+          title: `Receipt ${doc.docNumber}`,
+          html: receiptHtml,
+          isRTL,
+          mode: '80mm',
+        },
+        buildDocPdfMeta(doc, '80mm')
+      );
+    } catch (e) {
+      console.error('Receipt print error:', e);
+      showToast(lang === 'ar' ? 'تعذر طباعة الإيصال، يرجى المحاولة مجدداً' : 'Erreur lors de l\'impression du ticket');
+    }
   };
 
   const triggerPrint = (targetDoc?: CommercialDocument) => {
-    const doc = targetDoc || viewingDoc;
-    if (!doc) return;
-    const printArea = document.getElementById('printable-commercial-doc');
-    const bodyHtml = printArea
-      ? `<div style="font-family: -apple-system, BlinkMacSystemFont, 'Cairo', 'Tajawal', sans-serif; color: #1e293b; font-size: 13px; direction: ${isRTL ? 'rtl' : 'ltr'};">${printArea.innerHTML}</div>`
-      : '';
-    printHtmlContent(
-      {
-        title: `${doc.docNumber} - ${config.name || 'Commercial Document'}`,
-        html: bodyHtml || `<h2>${doc.docNumber}</h2>`,
-        isRTL,
-        mode: 'a4'
-      },
-      buildDocPdfMeta(doc)
-    );
+    try {
+      const doc = targetDoc || viewingDoc;
+      if (!doc) return;
+      const meta = buildDocPdfMeta(doc, 'a4');
+      const printArea = document.getElementById('printable-commercial-doc');
+      const bodyHtml = printArea
+        ? `<div style="font-family: -apple-system, BlinkMacSystemFont, 'Cairo', 'Tajawal', sans-serif; color: #1e293b; font-size: 13px; direction: ${isRTL ? 'rtl' : 'ltr'};">${printArea.innerHTML}</div>`
+        : buildStructuredA4Html(meta);
+      printHtmlContent(
+        {
+          title: `${doc.docNumber} - ${config.name || 'Commercial Document'}`,
+          html: bodyHtml,
+          isRTL,
+          mode: 'a4'
+        },
+        meta
+      );
+    } catch (e) {
+      console.error('Print error:', e);
+      showToast(lang === 'ar' ? 'تعذر الطباعة، يرجى المحاولة مجدداً' : 'Erreur lors de l\'impression');
+    }
+  };
+
+  const handleOpenDocDetails = (doc: CommercialDocument) => {
+    const safeDoc: CommercialDocument = {
+      ...doc,
+      items: getSafeDocItems(doc),
+      subtotal: Number(doc.subtotal || 0),
+      discount: Number(doc.discount || 0),
+      tax: Number(doc.tax || 0),
+      total: Number(doc.total || 0),
+      amountPaid: doc.amountPaid !== undefined ? Number(doc.amountPaid) : Number(doc.total || 0),
+      previousBalance: Number(doc.previousBalance || 0),
+    };
+    setViewingDoc(safeDoc);
   };
 
   // Full-page Creation & Editing View (Identical to PurchaseEntry / Purchase Invoice)
@@ -1800,35 +1859,47 @@ export default function CommercialDocuments({
         document.body
       )}
 
-      {/* Top Header Card */}
-      <div className="bg-white p-6 rounded-3xl border border-slate-100 shadow-xs flex flex-col md:flex-row md:items-center justify-between gap-4">
+      {/* Header */}
+      <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-3 bg-white p-4 sm:p-5 rounded-2xl shadow-sm border border-slate-100">
         <div>
-          <h1 className="text-xl font-black text-slate-900 tracking-tight flex items-center gap-2.5">
-            <div className="p-2.5 bg-indigo-50 text-indigo-600 rounded-2xl">
-              <ClipboardList className="w-6 h-6" />
-            </div>
+          <h1 className="text-lg sm:text-2xl font-bold text-slate-800 flex items-center gap-2">
+            <ClipboardList className="w-5 h-5 sm:w-6 sm:h-6 text-indigo-600 shrink-0" />
             <span>{lang === 'ar' ? 'إدارة الوثائق التجارية (Facture / Devis / BC / BL)' : 'Commercial Documents Management'}</span>
           </h1>
-          <p className="text-xs text-slate-500 mt-1 font-medium">
+          <p className="text-xs sm:text-sm text-slate-500 mt-0.5">
             {lang === 'ar' 
-              ? 'إصدار الفواتير الرسمية، عروض الأسعار، سندات الطلب، وسندات التسليم مع إمكانية التحويل المباشر' 
-              : 'Create Official Invoices, Devis, Purchase Orders & Delivery Notes with 1-click conversion'}
+              ? 'إصدار الفواتير الرسمية، عروض الأسعار، سندات الطلب، وسندات التسليم مع المتابعة والطباعة المباشرة.' 
+              : 'Official Invoices, Devis, Purchase Orders & Delivery Notes with direct conversion & printing.'}
           </p>
         </div>
 
-        <button
-          type="button"
-          onClick={handleOpenCreate}
-          className="px-5 py-2.5 bg-indigo-600 hover:bg-indigo-700 text-white text-xs font-black rounded-xl transition cursor-pointer flex items-center gap-2 shadow-xs shrink-0 active:scale-95"
-        >
-          <Plus className="w-4 h-4" />
-          <span>
-            {activeType === 'facture' && (lang === 'ar' ? '+ إنشاء فاتورة جديدة (Facture)' : '+ Nouvelle Facture')}
-            {activeType === 'devis' && (lang === 'ar' ? '+ إنشاء عرض سعر جديد (Devis)' : '+ Nouveau Devis')}
-            {activeType === 'bon_commande' && (lang === 'ar' ? '+ إنشاء سند طلبية جديد (Bon de commande)' : '+ Nouveau Bon de commande')}
-            {activeType === 'bon_livraison' && (lang === 'ar' ? '+ إنشاء سند تسليم جديد (Bon de livraison)' : '+ Nouveau Bon de livraison')}
-          </span>
-        </button>
+        {/* Summary KPI Pills + Create Button */}
+        <div className="flex flex-wrap items-center gap-2 w-full sm:w-auto">
+          <button
+            type="button"
+            onClick={handleOpenCreate}
+            className="w-full sm:w-auto px-3.5 py-2 bg-indigo-600 hover:bg-indigo-700 text-white rounded-xl text-xs font-black flex items-center justify-center gap-1.5 transition cursor-pointer shadow-xs active:scale-95"
+          >
+            <Plus className="w-3.5 h-3.5 shrink-0" />
+            <span>
+              {activeType === 'facture' && (lang === 'ar' ? '+ إنشاء فاتورة جديدة' : '+ Nouvelle Facture')}
+              {activeType === 'devis' && (lang === 'ar' ? '+ إنشاء عرض أسعار' : '+ Nouveau Devis')}
+              {activeType === 'bon_commande' && (lang === 'ar' ? '+ إنشاء سند طلبية' : '+ Nouveau BC')}
+              {activeType === 'bon_livraison' && (lang === 'ar' ? '+ إنشاء سند تسليم' : '+ Nouveau BL')}
+            </span>
+          </button>
+          <div className="flex-1 sm:flex-initial bg-indigo-50/80 border border-indigo-200 px-3 py-1.5 rounded-xl text-xs font-black text-indigo-800 flex items-center justify-between sm:justify-start gap-1.5">
+            <span>{lang === 'ar' ? 'الإجمالي:' : 'Total:'}</span>
+            <span className="font-mono">{filteredTotalAmount.toFixed(2)} {config.currency}</span>
+          </div>
+          {activeType === 'facture' && (
+            <div className="flex-1 sm:flex-initial bg-emerald-50/80 border border-emerald-200 px-3 py-1.5 rounded-xl text-xs font-black text-emerald-800 flex items-center justify-between sm:justify-start gap-1.5">
+              <TrendingUp className="w-3.5 h-3.5 text-emerald-600 shrink-0" />
+              <span>{lang === 'ar' ? 'صافي الأرباح:' : 'Net Profit:'}</span>
+              <span className="font-mono">{filteredTotalProfit >= 0 ? `+${filteredTotalProfit.toFixed(2)}` : filteredTotalProfit.toFixed(2)} {config.currency}</span>
+            </div>
+          )}
+        </div>
       </div>
 
       {/* Document Type Selector Cards Bar - Official Invoice (facture) FIRST as requested */}
@@ -1937,27 +2008,29 @@ export default function CommercialDocuments({
         })}
       </div>
 
-      {/* Search & Status & Date Filters Bar */}
-      <div className="bg-white p-4 rounded-3xl border border-slate-100 shadow-xs space-y-3">
-        <div className="flex flex-col sm:flex-row gap-3 items-center justify-between">
-          <div className="relative flex-1 w-full">
+      {/* Query Filters - Responsive & Wrap-Friendly */}
+      <div className="bg-white p-3 sm:p-4 rounded-2xl border border-slate-200/80 shadow-xs space-y-3">
+        <div className="flex flex-col sm:flex-row gap-2.5">
+          {/* Search */}
+          <div className="relative flex-1 min-w-0">
             <span className={`absolute inset-y-0 ${isRTL ? 'right-3.5' : 'left-3.5'} flex items-center text-slate-400 pointer-events-none`}>
-              <Search className="w-4 h-4" />
+              <Search className="w-4 h-4 sm:w-5 sm:h-5" />
             </span>
             <input
               type="text"
-              placeholder={lang === 'ar' ? 'بحث برقم الوثيقة، اسم الزبون، رقم الهاتف...' : 'Search by doc number, client name, phone...'}
+              placeholder={lang === 'ar' ? 'بحث برقم الوثيقة، اسم الزبون، رقم الهاتف...' : 'Search by doc number, client, phone...'}
               value={search}
               onChange={(e) => setSearch(e.target.value)}
-              className={`w-full py-2.5 ${isRTL ? 'pr-10 pl-4' : 'pl-10 pr-4'} bg-slate-50 border border-slate-200 rounded-xl text-xs font-bold text-slate-800 placeholder-slate-400 focus:outline-none focus:ring-2 focus:ring-indigo-500 focus:bg-white transition`}
+              className={`w-full py-2 sm:py-2.5 ${isRTL ? 'pr-10 pl-4' : 'pl-10 pr-4'} bg-slate-50 border border-slate-200 rounded-xl text-xs sm:text-sm font-bold text-slate-800 placeholder-slate-400 focus:outline-none focus:ring-2 focus:ring-indigo-500 focus:bg-white transition`}
             />
           </div>
 
-          <div className="flex items-center gap-2 w-full sm:w-auto shrink-0">
+          {/* Status Filter */}
+          <div className="w-full sm:w-48 shrink-0">
             <select
               value={statusFilter}
               onChange={(e) => setStatusFilter(e.target.value)}
-              className="w-full sm:w-auto bg-slate-50 border border-slate-200 rounded-xl px-3 py-2 text-xs font-bold text-slate-700 focus:outline-none focus:ring-1 focus:ring-indigo-500 cursor-pointer"
+              className="w-full bg-slate-50 border border-slate-200 rounded-xl px-3 py-2 sm:py-2.5 text-xs sm:text-sm font-bold text-slate-700 focus:outline-none focus:ring-2 focus:ring-indigo-500 cursor-pointer"
             >
               <option value="all">{lang === 'ar' ? 'جميع الحالات' : 'Tous les états'}</option>
               <option value="draft">{lang === 'ar' ? 'مسودة' : 'Brouillon'}</option>
@@ -1966,12 +2039,32 @@ export default function CommercialDocuments({
               <option value="cancelled">{lang === 'ar' ? 'ملغى' : 'Annulé'}</option>
             </select>
           </div>
+
+          {/* Customer Filter */}
+          <div className="w-full sm:w-52 shrink-0">
+            <select
+              value={selectedCustomerFilter}
+              onChange={(e) => setSelectedCustomerFilter(e.target.value)}
+              className="w-full bg-slate-50 border border-slate-200 rounded-xl px-3 py-2 sm:py-2.5 text-xs sm:text-sm font-bold text-slate-700 focus:outline-none focus:ring-2 focus:ring-indigo-500 cursor-pointer"
+            >
+              <option value="all">{lang === 'ar' ? 'جميع الزبائن' : 'Tous les clients'}</option>
+              {customers.map((c) => (
+                <option key={c.id} value={c.id}>
+                  {c.name}
+                </option>
+              ))}
+            </select>
+          </div>
         </div>
 
-        <div className="flex flex-wrap items-center gap-2.5 pt-2 border-t border-slate-100 text-xs">
-          <div className="flex items-center gap-1.5 bg-slate-50 px-3 py-1.5 rounded-xl border border-slate-200">
-            <Calendar className="w-3.5 h-3.5 text-indigo-600 shrink-0" />
-            <span className="font-bold text-slate-600">{lang === 'ar' ? 'بحث بشهر معين:' : 'Mois:'}</span>
+        {/* Date Filter Row */}
+        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-2 pt-2 border-t border-slate-100 text-xs">
+          {/* Month picker */}
+          <div className="flex items-center justify-between gap-2 bg-slate-50 px-3 py-2 rounded-xl border border-slate-200">
+            <div className="flex items-center gap-1.5 shrink-0">
+              <Calendar className="w-3.5 h-3.5 text-indigo-600 shrink-0" />
+              <span className="font-bold text-slate-600">{lang === 'ar' ? 'الشهر:' : 'Mois:'}</span>
+            </div>
             <input
               type="month"
               value={selectedMonth}
@@ -1986,8 +2079,9 @@ export default function CommercialDocuments({
             />
           </div>
 
-          <div className="flex items-center gap-1.5 bg-slate-50 px-3 py-1.5 rounded-xl border border-slate-200">
-            <span className="font-bold text-slate-600">{lang === 'ar' ? 'من تاريخ:' : 'Du:'}</span>
+          {/* From date */}
+          <div className="flex items-center justify-between gap-2 bg-slate-50 px-3 py-2 rounded-xl border border-slate-200">
+            <span className="font-bold text-slate-600 shrink-0">{lang === 'ar' ? 'من تاريخ:' : 'Du:'}</span>
             <input
               type="date"
               value={fromDate}
@@ -1999,8 +2093,9 @@ export default function CommercialDocuments({
             />
           </div>
 
-          <div className="flex items-center gap-1.5 bg-slate-50 px-3 py-1.5 rounded-xl border border-slate-200">
-            <span className="font-bold text-slate-600">{lang === 'ar' ? 'إلى تاريخ:' : 'Au:'}</span>
+          {/* To date */}
+          <div className="flex items-center justify-between gap-2 bg-slate-50 px-3 py-2 rounded-xl border border-slate-200">
+            <span className="font-bold text-slate-600 shrink-0">{lang === 'ar' ? 'إلى تاريخ:' : 'Au:'}</span>
             <input
               type="date"
               value={toDate}
@@ -2012,18 +2107,21 @@ export default function CommercialDocuments({
             />
           </div>
 
-          {(selectedMonth || fromDate || toDate) && (
-            <button
-              type="button"
-              onClick={() => {
-                setSelectedMonth('');
-                setFromDate('');
-                setToDate('');
-              }}
-              className="px-3 py-1.5 bg-rose-50 hover:bg-rose-100 text-rose-700 border border-rose-200 rounded-xl font-bold transition cursor-pointer"
-            >
-              {lang === 'ar' ? 'إعادة تعيين التاريخ' : 'Réinitialiser'}
-            </button>
+          {(selectedMonth || fromDate || toDate || selectedCustomerFilter !== 'all') && (
+            <div className="flex justify-end items-center">
+              <button
+                type="button"
+                onClick={() => {
+                  setSelectedMonth('');
+                  setFromDate('');
+                  setToDate('');
+                  setSelectedCustomerFilter('all');
+                }}
+                className="w-full py-2 px-3 bg-rose-50 hover:bg-rose-100 text-rose-700 border border-rose-200 rounded-xl font-bold transition cursor-pointer text-center"
+              >
+                {lang === 'ar' ? 'إعادة تعيين الفلاتر' : 'Réinitialiser'}
+              </button>
+            </div>
           )}
         </div>
       </div>
@@ -2034,11 +2132,15 @@ export default function CommercialDocuments({
           filteredDocs.map((doc) => {
             const docProfit = doc.docType === 'facture' ? calculateDocProfit(doc) : null;
             const prevBal = Number(doc.previousBalance || 0);
+            const docTotal = Number(doc.total || 0);
+            const safeItems = getSafeDocItems(doc);
+
             return (
               <div
                 key={doc.id}
                 className="bg-white rounded-2xl border border-slate-200/90 p-3.5 shadow-2xs space-y-3"
               >
+                {/* Row 1: Document Number, Customer Name & Date */}
                 <div className="flex items-start justify-between gap-2 border-b border-slate-100 pb-2.5">
                   <div className="space-y-0.5 text-start">
                     <div className="flex items-center gap-1.5 flex-wrap">
@@ -2048,7 +2150,7 @@ export default function CommercialDocuments({
                       <span className="font-black text-slate-800 text-xs">{doc.customerName}</span>
                     </div>
                     <p className="text-[11px] text-slate-400 font-mono">
-                      {doc.date ? new Date(doc.date).toLocaleString('fr-FR') : ''} • {doc.items.length} {lang === 'ar' ? 'مواد' : 'art.'}
+                      {doc.date ? new Date(doc.date).toLocaleString('fr-FR') : ''}
                     </p>
                   </div>
 
@@ -2069,122 +2171,138 @@ export default function CommercialDocuments({
                   </div>
                 </div>
 
-                <div className="flex items-center justify-between bg-slate-50 px-3 py-2 rounded-xl border border-slate-100 text-xs">
+                {/* Row 2: Financial Figures Grid */}
+                <div className="grid grid-cols-3 gap-2 bg-slate-50 p-2.5 rounded-xl border border-slate-100 text-center text-xs">
                   <div>
-                    <span className="text-[10px] text-slate-400 font-bold block">{lang === 'ar' ? 'المبلغ الإجمالي' : 'Total'}</span>
-                    <span className="font-mono font-black text-indigo-700 text-sm">
-                      {Number(doc.total || 0).toFixed(2)} {config.currency}
+                    <span className="text-[10px] text-slate-400 font-bold block">{t.invoice.total}</span>
+                    <span className="font-mono font-black text-slate-900">
+                      {docTotal.toFixed(2)} <span className="text-[9px] font-normal">{config.currency}</span>
                     </span>
                     {prevBal > 0 && (
-                      <span className="block text-[10px] text-amber-600 font-bold font-mono">
-                        +{prevBal.toFixed(2)} {lang === 'ar' ? 'كريدي قديم' : 'ancien'}
+                      <span className="block text-[9px] font-bold text-amber-700 font-mono">
+                        +{prevBal.toFixed(2)} {lang === 'ar' ? 'كريدي' : 'Crédit'}
                       </span>
                     )}
                   </div>
-
-                  <div className="flex flex-wrap items-center justify-end gap-1">
-                    {doc.convertedTo ? (
-                      <span className="text-[10px] font-bold text-emerald-700 bg-emerald-50 border border-emerald-200 px-2 py-0.5 rounded-lg inline-flex items-center gap-1">
-                        <Check className="w-3 h-3 text-emerald-600" />
-                        <span>{doc.convertedTo.docNumber}</span>
-                      </span>
-                    ) : (
-                      <>
-                        {doc.docType === 'devis' && (
-                          <>
-                            <button
-                              type="button"
-                              onClick={() => handleConvertToBC(doc)}
-                              className="px-2 py-1 bg-blue-50 text-blue-700 border border-blue-200 rounded-lg text-[10px] font-black cursor-pointer"
-                            >
-                              → BC
-                            </button>
-                            <button
-                              type="button"
-                              onClick={() => handleConvertToBL(doc)}
-                              className="px-2 py-1 bg-indigo-50 text-indigo-700 border border-indigo-200 rounded-lg text-[10px] font-black cursor-pointer"
-                            >
-                              → BL
-                            </button>
-                            <button
-                              type="button"
-                              onClick={() => handleConvertToFacture(doc)}
-                              className="px-2 py-1 bg-emerald-600 text-white rounded-lg text-[10px] font-black cursor-pointer"
-                            >
-                              {lang === 'ar' ? '→ فاتورة' : '→ Facture'}
-                            </button>
-                          </>
-                        )}
-                        {doc.docType === 'bon_commande' && (
-                          <>
-                            <button
-                              type="button"
-                              onClick={() => handleConvertToBL(doc)}
-                              className="px-2 py-1 bg-indigo-50 text-indigo-700 border border-indigo-200 rounded-lg text-[10px] font-black cursor-pointer"
-                            >
-                              → BL
-                            </button>
-                            <button
-                              type="button"
-                              onClick={() => handleConvertToFacture(doc)}
-                              className="px-2 py-1 bg-emerald-600 text-white rounded-lg text-[10px] font-black cursor-pointer"
-                            >
-                              {lang === 'ar' ? '→ فاتورة' : '→ Facture'}
-                            </button>
-                          </>
-                        )}
-                        {doc.docType === 'bon_livraison' && (
-                          <button
-                            type="button"
-                            onClick={() => handleConvertToFacture(doc)}
-                            className="px-2.5 py-1 bg-emerald-600 text-white rounded-lg text-[10px] font-black cursor-pointer"
-                          >
-                            {lang === 'ar' ? '→ تحويل لفاتورة' : '→ Facture'}
-                          </button>
-                        )}
-                      </>
-                    )}
+                  <div>
+                    <span className="text-[10px] text-slate-400 font-bold block">{lang === 'ar' ? 'المواد' : 'Articles'}</span>
+                    <span className="font-mono font-bold text-slate-700">
+                      {safeItems.length}
+                    </span>
+                  </div>
+                  <div>
+                    <span className="text-[10px] text-slate-400 font-bold block">{lang === 'ar' ? 'النوع' : 'Type'}</span>
+                    <span className="font-bold text-indigo-700 text-[11px]">
+                      {getDocTypePrefix(doc.docType)}
+                    </span>
                   </div>
                 </div>
 
+                {/* Quick Convert Row if not converted */}
+                {!doc.convertedTo && doc.docType !== 'facture' && (
+                  <div className="flex items-center justify-between gap-1.5 p-2 bg-indigo-50/50 rounded-xl border border-indigo-100/70 text-xs">
+                    <span className="font-bold text-slate-600 text-[11px]">{lang === 'ar' ? 'التحويل المباشر:' : 'Conversion:'}</span>
+                    <div className="flex items-center gap-1">
+                      {doc.docType === 'devis' && (
+                        <>
+                          <button
+                            type="button"
+                            onClick={() => handleConvertToBC(doc)}
+                            className="px-2 py-1 bg-blue-50 text-blue-700 border border-blue-200 rounded-lg text-[10px] font-black cursor-pointer hover:bg-blue-100 transition"
+                          >
+                            → BC
+                          </button>
+                          <button
+                            type="button"
+                            onClick={() => handleConvertToBL(doc)}
+                            className="px-2 py-1 bg-indigo-50 text-indigo-700 border border-indigo-200 rounded-lg text-[10px] font-black cursor-pointer hover:bg-indigo-100 transition"
+                          >
+                            → BL
+                          </button>
+                          <button
+                            type="button"
+                            onClick={() => handleConvertToFacture(doc)}
+                            className="px-2 py-1 bg-emerald-600 text-white rounded-lg text-[10px] font-black cursor-pointer hover:bg-emerald-700 transition"
+                          >
+                            {lang === 'ar' ? '→ فاتورة' : '→ Facture'}
+                          </button>
+                        </>
+                      )}
+                      {doc.docType === 'bon_commande' && (
+                        <>
+                          <button
+                            type="button"
+                            onClick={() => handleConvertToBL(doc)}
+                            className="px-2 py-1 bg-indigo-50 text-indigo-700 border border-indigo-200 rounded-lg text-[10px] font-black cursor-pointer hover:bg-indigo-100 transition"
+                          >
+                            → BL
+                          </button>
+                          <button
+                            type="button"
+                            onClick={() => handleConvertToFacture(doc)}
+                            className="px-2 py-1 bg-emerald-600 text-white rounded-lg text-[10px] font-black cursor-pointer hover:bg-emerald-700 transition"
+                          >
+                            {lang === 'ar' ? '→ فاتورة' : '→ Facture'}
+                          </button>
+                        </>
+                      )}
+                      {doc.docType === 'bon_livraison' && (
+                        <button
+                          type="button"
+                          onClick={() => handleConvertToFacture(doc)}
+                          className="px-2.5 py-1 bg-emerald-600 text-white rounded-lg text-[10px] font-black cursor-pointer hover:bg-emerald-700 transition"
+                        >
+                          {lang === 'ar' ? '→ تحويل لفاتورة' : '→ Facture'}
+                        </button>
+                      )}
+                    </div>
+                  </div>
+                )}
+
+                {/* Row 3: Action Buttons Grid */}
                 <div className="flex flex-wrap items-center gap-1.5 pt-0.5">
                   <button
                     type="button"
-                    onClick={() => setViewingDoc(doc)}
-                    className="flex-1 py-2 px-2.5 bg-indigo-50 hover:bg-indigo-100 text-indigo-700 rounded-xl border border-indigo-200 text-xs font-black flex items-center justify-center gap-1.5 transition cursor-pointer"
+                    onClick={() => handleOpenDocDetails(doc)}
+                    className="flex-1 min-w-[90px] py-2 px-2.5 bg-indigo-50 hover:bg-indigo-100 text-indigo-700 rounded-xl border border-indigo-200 text-xs font-black flex items-center justify-center gap-1.5 transition cursor-pointer"
                   >
                     <Eye className="w-3.5 h-3.5 shrink-0" />
-                    <span>{lang === 'ar' ? 'معاينة وطباعة' : 'Aperçu'}</span>
+                    <span>{lang === 'ar' ? 'التفاصيل' : t.invoice.view}</span>
                   </button>
+
                   <button
                     type="button"
                     onClick={() => setReceiptPreviewDoc(doc)}
-                    className="py-2 px-2.5 bg-emerald-50 hover:bg-emerald-100 text-emerald-700 rounded-xl border border-emerald-200 text-xs font-black flex items-center justify-center gap-1 transition cursor-pointer"
-                    title={lang === 'ar' ? 'فاتورة صغيرة 80mm' : 'Ticket 80mm'}
+                    className="py-2 px-2.5 bg-slate-800 hover:bg-slate-900 text-white rounded-xl text-xs font-bold flex items-center justify-center gap-1 transition cursor-pointer"
+                    title={lang === 'ar' ? 'إيصال 80mm' : 'Ticket 80mm'}
                   >
-                    <Receipt className="w-3.5 h-3.5 shrink-0" />
+                    <Printer className="w-3.5 h-3.5 text-emerald-400 shrink-0" />
                     <span>{lang === 'ar' ? 'إيصال' : 'Ticket'}</span>
                   </button>
+
                   <button
                     type="button"
                     onClick={() => handleExportDocPdf(doc)}
-                    className="py-2 px-3 bg-rose-50 hover:bg-rose-100 text-rose-700 rounded-xl border border-rose-200 text-xs font-black flex items-center justify-center gap-1 transition cursor-pointer"
+                    className="py-2 px-2.5 bg-rose-50 hover:bg-rose-100 text-rose-700 rounded-xl border border-rose-200 text-xs font-bold flex items-center justify-center gap-1 transition cursor-pointer"
                   >
                     <FileDown className="w-3.5 h-3.5 shrink-0" />
                     <span>PDF</span>
                   </button>
+
                   <button
                     type="button"
                     onClick={() => handleOpenEdit(doc)}
-                    className="py-2 px-3 bg-blue-50 hover:bg-blue-100 text-blue-700 rounded-xl border border-blue-200 text-xs font-black flex items-center justify-center gap-1 transition cursor-pointer"
+                    className="py-2 px-2.5 bg-blue-50 hover:bg-blue-100 text-blue-700 rounded-xl border border-blue-200 text-xs font-bold flex items-center justify-center gap-1 transition cursor-pointer"
                   >
                     <Edit className="w-3.5 h-3.5 shrink-0" />
-                    <span>{lang === 'ar' ? 'تعديل' : 'Modifier'}</span>
+                    <span>{lang === 'ar' ? 'تعديل' : 'Edit'}</span>
                   </button>
+
                   <button
                     type="button"
                     onClick={() => setDeletingId(doc.id)}
                     className="p-2 text-rose-600 bg-rose-50/60 hover:bg-rose-100 rounded-xl border border-rose-200/70 transition cursor-pointer"
+                    title={lang === 'ar' ? 'حذف' : 'Delete'}
                   >
                     <Trash2 className="w-4 h-4" />
                   </button>
@@ -2194,61 +2312,62 @@ export default function CommercialDocuments({
           })
         ) : (
           <div className="bg-white rounded-2xl border border-slate-100 text-center py-12 text-slate-400">
-            <FileText className="w-10 h-10 stroke-[1.2] mx-auto text-slate-300 mb-2" />
-            <p className="text-xs font-bold">{lang === 'ar' ? `لا توجد وثائق مسجلة في قسم ${getDocTypeLabel(activeType)}` : `Aucun document trouvé dans ${getDocTypeLabel(activeType)}`}</p>
+            <Receipt className="w-10 h-10 stroke-[1.2] mx-auto text-slate-300 mb-2" />
+            <p className="text-xs font-bold">{lang === 'ar' ? `لا توجد وثائق مطابقة في قسم ${getDocTypeLabel(activeType)}` : 'Aucun document trouvé.'}</p>
           </div>
         )}
       </div>
 
       {/* DESKTOP DOCUMENTS TABLE (md+) */}
-      <div className="hidden md:block bg-white rounded-3xl border border-slate-100 shadow-xs overflow-hidden">
+      <div className="hidden md:block bg-white border border-slate-100 rounded-2xl shadow-xs overflow-hidden" id="commercial-docs-table-shell">
         <div className="overflow-x-auto">
-          <table className="w-full text-xs text-start">
-            <thead className="bg-slate-50 text-slate-500 font-black uppercase text-[10px] border-b border-slate-200">
-              <tr>
-                <th className="py-3.5 px-4 text-start">{lang === 'ar' ? 'رقم الوثيقة' : 'N° Document'}</th>
-                <th className="py-3.5 px-4 text-start">{lang === 'ar' ? 'التاريخ' : 'Date'}</th>
-                <th className="py-3.5 px-4 text-start">{lang === 'ar' ? 'الزبون' : 'Client'}</th>
-                <th className="py-3.5 px-4 text-center">{lang === 'ar' ? 'المواد' : 'Articles'}</th>
-                <th className="py-3.5 px-4 text-end">{lang === 'ar' ? 'المبلغ الإجمالي' : 'Total'}</th>
-                <th className="py-3.5 px-4 text-center">{lang === 'ar' ? 'الحالة والربح' : 'État & Profit'}</th>
-                <th className="py-3.5 px-4 text-center">{lang === 'ar' ? 'التحويل والمتابعة' : 'Conversion'}</th>
-                <th className="py-3.5 px-4 text-center">{lang === 'ar' ? 'إجراءات' : 'Actions'}</th>
+          <table className="w-full text-right sm:text-inherit">
+            <thead className="bg-slate-50 border-b border-slate-100">
+              <tr className="text-slate-500 text-xs font-bold uppercase text-center">
+                <th className="px-3.5 py-2.5 text-start">{lang === 'ar' ? 'رقم الوثيقة' : 'N° Document'}</th>
+                <th className="px-3.5 py-2.5 text-start">{lang === 'ar' ? 'التاريخ' : 'Date'}</th>
+                <th className="px-3.5 py-2.5 text-start">{lang === 'ar' ? 'الزبون' : 'Client'}</th>
+                <th className="px-3.5 py-2.5 text-center">{lang === 'ar' ? 'المواد' : 'Articles'}</th>
+                <th className="px-3.5 py-2.5 text-center">{lang === 'ar' ? 'المبلغ الإجمالي' : 'Total'}</th>
+                <th className="px-3.5 py-2.5 text-center">{lang === 'ar' ? 'الحالة والربح' : 'État & Profit'}</th>
+                <th className="px-3.5 py-2.5 text-center">{lang === 'ar' ? 'التحويل والمتابعة' : 'Conversion'}</th>
+                <th className="px-3.5 py-2.5 text-center">{lang === 'ar' ? 'إجراءات' : 'Actions'}</th>
               </tr>
             </thead>
-            <tbody className="divide-y divide-slate-100 bg-white font-semibold">
+            <tbody className="divide-y divide-slate-100 text-xs font-semibold">
               {filteredDocs.length > 0 ? (
                 filteredDocs.map((doc) => {
                   const docProfit = doc.docType === 'facture' ? calculateDocProfit(doc) : null;
                   const prevBal = Number(doc.previousBalance || 0);
+                  const safeItems = getSafeDocItems(doc);
                   return (
-                    <tr key={doc.id} className="hover:bg-slate-50/70 transition">
-                      <td className="py-3.5 px-4 font-mono font-black text-slate-900">
+                    <tr key={doc.id} className="hover:bg-slate-50/50 transition">
+                      <td className="px-3.5 py-2.5 font-mono font-bold text-slate-800 text-start">
                         {doc.docNumber}
                       </td>
-                      <td className="py-3.5 px-4 text-slate-500 font-mono text-xs">
+                      <td className="px-3.5 py-2.5 text-slate-500 text-start">
                         {doc.date ? new Date(doc.date).toLocaleString('fr-FR') : ''}
                       </td>
-                      <td className="py-3.5 px-4 text-slate-900 font-bold">
-                        {doc.customerName}
+                      <td className="px-3.5 py-2.5 text-slate-800 text-start font-bold">
+                        <div>{doc.customerName}</div>
                         {doc.customerPhone && (
-                          <span className="block text-[10px] text-slate-400 font-mono">{doc.customerPhone}</span>
+                          <div className="text-[10px] text-slate-400 font-mono font-normal">{doc.customerPhone}</div>
                         )}
                       </td>
-                      <td className="py-3.5 px-4 text-center font-mono">
+                      <td className="px-3.5 py-2.5 text-center font-mono">
                         <span className="px-2 py-0.5 rounded-full bg-slate-100 text-slate-700 text-[10px] font-bold">
-                          {doc.items.length} {lang === 'ar' ? 'مواد' : 'art.'}
+                          {safeItems.length} {lang === 'ar' ? 'مواد' : 'art.'}
                         </span>
                       </td>
-                      <td className="py-3.5 px-4 text-end font-mono font-black text-indigo-700 text-xs">
-                        {Number(doc.total || 0).toFixed(2)} {config.currency}
+                      <td className="px-3.5 py-2.5 text-slate-900 font-black text-center font-mono">
+                        <div>{Number(doc.total || 0).toFixed(2)} {config.currency}</div>
                         {prevBal > 0 && (
-                          <span className="block text-[10px] text-amber-600 font-bold">
-                            +{prevBal.toFixed(2)} {lang === 'ar' ? 'قديم' : 'ancien'}
-                          </span>
+                          <div className="text-[10px] font-bold text-amber-700 font-mono">
+                            +{prevBal.toFixed(2)} ({lang === 'ar' ? 'كريدي قديم' : 'Ancien crédit'})
+                          </div>
                         )}
                       </td>
-                      <td className="py-3.5 px-4 text-center">
+                      <td className="px-3.5 py-2.5 text-center">
                         <div className="flex flex-col items-center justify-center gap-1">
                           {getStatusBadge(doc.status)}
                           {docProfit !== null && (
@@ -2265,14 +2384,14 @@ export default function CommercialDocuments({
                           )}
                         </div>
                       </td>
-                      <td className="py-3.5 px-4 text-center">
+                      <td className="px-3.5 py-2.5 text-center">
                         {doc.convertedTo ? (
                           <span className="text-[10px] font-bold text-emerald-700 bg-emerald-50 border border-emerald-200 px-2 py-0.5 rounded-lg inline-flex items-center gap-1">
                             <Check className="w-3 h-3 text-emerald-600" />
                             <span>{doc.convertedTo.docNumber}</span>
                           </span>
                         ) : (
-                          <div className="flex items-center justify-center gap-1">
+                          <div className="flex items-center justify-center gap-1 flex-wrap">
                             {/* Quick Convert Buttons */}
                             {doc.docType === 'devis' && (
                               <>
@@ -2340,46 +2459,53 @@ export default function CommercialDocuments({
                           </div>
                         )}
                       </td>
-                      <td className="py-3.5 px-4 text-center">
-                        <div className="flex items-center justify-center gap-1.5">
+                      <td className="px-3.5 py-2.5 text-center">
+                        <div className="flex items-center justify-center gap-1.5 flex-wrap">
                           <button
+                            id={`view-doc-btn-${doc.id}`}
                             type="button"
-                            onClick={() => setViewingDoc(doc)}
-                            className="p-1.5 bg-slate-100 hover:bg-slate-200 text-slate-700 rounded-lg transition cursor-pointer"
+                            onClick={() => handleOpenDocDetails(doc)}
+                            className="px-2.5 py-1.5 bg-slate-50 hover:bg-slate-100 text-slate-700 rounded-lg border border-slate-200 text-xs font-bold flex items-center gap-1 transition cursor-pointer"
                             title={lang === 'ar' ? 'معاينة وطباعة A4' : 'Aperçu & Imprimer A4'}
                           >
                             <Eye className="w-3.5 h-3.5" />
+                            <span>{lang === 'ar' ? 'معاينة' : 'Aperçu'}</span>
                           </button>
                           <button
-                            type="button"
-                            onClick={() => setReceiptPreviewDoc(doc)}
-                            className="px-2 py-1 bg-emerald-50 hover:bg-emerald-100 text-emerald-700 border border-emerald-200 rounded-lg text-[10px] font-black flex items-center gap-1 transition cursor-pointer"
-                            title={lang === 'ar' ? 'فاتورة صغيرة 80mm' : 'Ticket 80mm'}
-                          >
-                            <Receipt className="w-3 h-3" />
-                            <span>{lang === 'ar' ? 'إيصال' : 'Ticket'}</span>
-                          </button>
-                          <button
-                            type="button"
-                            onClick={() => handleExportDocPdf(doc)}
-                            className="px-2 py-1 bg-rose-50 hover:bg-rose-100 text-rose-700 border border-rose-200 rounded-lg text-[10px] font-black flex items-center gap-1 transition cursor-pointer"
-                            title={lang === 'ar' ? 'حفظ / مشاركة PDF' : 'Save / Share PDF'}
-                          >
-                            <FileDown className="w-3 h-3" />
-                            <span>PDF</span>
-                          </button>
-                          <button
+                            id={`edit-doc-btn-${doc.id}`}
                             type="button"
                             onClick={() => handleOpenEdit(doc)}
-                            className="p-1.5 bg-slate-100 hover:bg-slate-200 text-slate-700 rounded-lg transition cursor-pointer"
+                            className="px-2.5 py-1.5 bg-blue-50 hover:bg-blue-100 text-blue-700 rounded-lg border border-blue-200 text-xs font-bold flex items-center gap-1 transition cursor-pointer"
                             title={lang === 'ar' ? 'تعديل' : 'Modifier'}
                           >
                             <Edit className="w-3.5 h-3.5" />
+                            <span>{lang === 'ar' ? 'تعديل' : 'Modifier'}</span>
                           </button>
                           <button
+                            id={`receipt-doc-btn-${doc.id}`}
+                            type="button"
+                            onClick={() => setReceiptPreviewDoc(doc)}
+                            className="px-2.5 py-1.5 bg-slate-800 hover:bg-slate-900 text-white rounded-lg text-xs font-bold flex items-center gap-1 transition cursor-pointer"
+                            title={lang === 'ar' ? 'معاينة وطباعة إيصال (80mm)' : 'Ticket (80mm)'}
+                          >
+                            <Printer className="w-3.5 h-3.5 text-emerald-400" />
+                            <span>{lang === 'ar' ? 'إيصال' : 'Ticket'}</span>
+                          </button>
+                          <button
+                            id={`pdf-doc-btn-${doc.id}`}
+                            type="button"
+                            onClick={() => handleExportDocPdf(doc)}
+                            className="px-2.5 py-1.5 bg-rose-50 hover:bg-rose-100 text-rose-700 rounded-lg border border-rose-200 text-xs font-bold flex items-center gap-1 transition cursor-pointer"
+                            title={lang === 'ar' ? 'حفظ / مشاركة PDF' : 'Save / Share PDF'}
+                          >
+                            <FileDown className="w-3.5 h-3.5" />
+                            <span>PDF</span>
+                          </button>
+                          <button
+                            id={`delete-doc-btn-${doc.id}`}
                             type="button"
                             onClick={() => setDeletingId(doc.id)}
-                            className="p-1.5 text-rose-600 hover:bg-rose-50 rounded-lg transition cursor-pointer"
+                            className="p-1.5 text-rose-600 bg-rose-50/60 hover:bg-rose-100 rounded-lg border border-rose-200/70 transition cursor-pointer"
                             title={lang === 'ar' ? 'حذف' : 'Supprimer'}
                           >
                             <Trash2 className="w-3.5 h-3.5" />
@@ -2738,8 +2864,8 @@ export default function CommercialDocuments({
               </div>
             </div>
 
-            {/* Bottom Modal Actions */}
-            <div className="bg-slate-50 px-4 sm:px-6 py-3.5 border-t border-slate-200 flex flex-wrap items-center justify-between gap-2.5 shrink-0">
+            {/* Bottom Modal Actions with Clean Back Button */}
+            <div className="bg-slate-50 px-4 sm:px-6 py-3.5 border-t border-slate-200 flex items-center justify-between gap-2.5 shrink-0">
               <button
                 type="button"
                 onClick={() => setViewingDoc(null)}
@@ -2748,37 +2874,6 @@ export default function CommercialDocuments({
                 <ArrowRight className={`w-4 h-4 ${isRTL ? '' : 'rotate-180'}`} />
                 <span>{lang === 'ar' ? 'رجوع للقائمة' : 'Retour'}</span>
               </button>
-
-              <div className="flex flex-wrap items-center gap-2">
-                <button
-                  type="button"
-                  onClick={() => {
-                    const doc = viewingDoc;
-                    setViewingDoc(null);
-                    setReceiptPreviewDoc(doc);
-                  }}
-                  className="px-4 py-2 bg-emerald-600 hover:bg-emerald-700 text-white rounded-xl text-xs font-black flex items-center gap-1.5 cursor-pointer transition shadow-xs"
-                >
-                  <Receipt className="w-4 h-4" />
-                  <span>{lang === 'ar' ? 'فاتورة صغيرة (80mm)' : 'Ticket (80mm)'}</span>
-                </button>
-                <button
-                  type="button"
-                  onClick={() => handleExportDocPdf(viewingDoc)}
-                  className="px-4 py-2 bg-rose-600 hover:bg-rose-700 text-white rounded-xl text-xs font-black flex items-center gap-1.5 cursor-pointer transition shadow-xs"
-                >
-                  <FileDown className="w-4 h-4" />
-                  <span>{lang === 'ar' ? 'حفظ PDF' : 'Enregistrer PDF'}</span>
-                </button>
-                <button
-                  type="button"
-                  onClick={() => triggerPrint(viewingDoc)}
-                  className="px-5 py-2 bg-indigo-600 hover:bg-indigo-700 text-white rounded-xl text-xs font-black flex items-center gap-1.5 cursor-pointer transition shadow-xs"
-                >
-                  <Printer className="w-4 h-4" />
-                  <span>{lang === 'ar' ? 'طباعة الوثيقة' : 'Imprimer'}</span>
-                </button>
-              </div>
             </div>
           </div>
         </div>,
@@ -2824,7 +2919,7 @@ export default function CommercialDocuments({
                       docTitle: getDocTypeLabel(receiptPreviewDoc.docType),
                       docNumberLabel: lang === 'ar' ? 'رقم الوثيقة:' : 'N°:',
                       partyLabel: lang === 'ar' ? 'الزبون :' : 'Client :',
-                      items: receiptPreviewDoc.items.map((it) => ({
+                      items: getSafeDocItems(receiptPreviewDoc).map((it) => ({
                         productName: it.productName,
                         quantity: it.quantity,
                         sellingPrice: it.sellingPrice,

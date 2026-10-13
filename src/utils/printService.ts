@@ -69,6 +69,7 @@ export interface PdfDocumentMeta {
   a4Theme?: 'slate' | 'indigo' | 'emerald' | 'burgundy' | 'amber';
   isReport?: boolean;
   showBarcode?: boolean;
+  hideQuantityAndUnitPrice?: boolean;
 }
 
 const CODE39_MAP: Record<string, string> = {
@@ -311,7 +312,7 @@ export function buildUnified80mmReceiptHtml(
         <h2 style="margin: 0; font-size: 15px; font-weight: 900; color: ${activeReceiptStyle.accent}; font-family: ${receiptFont};">${config.name || 'Smart POS'}</h2>
         ${config.address ? `<div style="font-size: 10px; font-weight: 700; margin-top: 2px; color: #334155;">${config.address}</div>` : ''}
         ${config.phone ? `<div style="font-size: 10px; font-weight: 700; color: #334155;">${lang === 'ar' ? 'الهاتف:' : 'Tél:'} ${config.phone}</div>` : ''}
-        ${inv.docTitle ? `<div style="font-size: 11.5px; font-weight: 800; margin-top: 4px; color: ${activeReceiptStyle.headerColor}; background: ${activeReceiptStyle.headerBg}; display: inline-block; padding: 2px 10px; border-radius: 4px;">${inv.docTitle}</div>` : ''}
+        ${inv.docTitle ? `<div style="font-size: 12px; font-weight: 900; margin-top: 5px; color: #000000 !important; background: #ffffff !important; border: 1.5px solid #000000 !important; display: inline-block; padding: 2.5px 12px; border-radius: 4px; text-transform: uppercase; font-family: ${receiptFont};">${inv.docTitle}</div>` : ''}
       </div>
 
       <div style="border-top: 1.5px solid ${activeReceiptStyle.border}; border-bottom: 1.5px solid ${activeReceiptStyle.border}; padding: 6px 0; margin-bottom: 8px; font-size: 10px; font-weight: 700; color: #000000;">
@@ -569,17 +570,18 @@ export function buildStructuredA4Html(meta: PdfDocumentMeta): string {
     `;
   }
 
+  const hideQtyPrice = Boolean(meta.hideQuantityAndUnitPrice);
   const itemsTableHtml =
     meta.items && meta.items.length > 0
       ? `
       <table style="width: 100%; border-collapse: collapse; margin-bottom: 18px; font-size: 12px;">
         <thead>
           <tr style="background: ${headerBgColor}; color: #ffffff;">
-            <th style="padding: 9px 10px; text-align: ${alignStart}; font-weight: 800; width: 7%; border: 1px solid ${activeA4.border};">#</th>
-            <th style="padding: 9px 10px; text-align: ${alignStart}; font-weight: 800; width: 43%; border: 1px solid ${activeA4.border};">${meta.customTableHeaders?.name || (isRTL ? 'البيان / الصنف' : 'Désignation')}</th>
-            <th style="padding: 9px 10px; text-align: center; font-weight: 800; width: 14%; border: 1px solid ${activeA4.border};">${meta.customTableHeaders?.qty || (isRTL ? 'الكمية' : 'Qté')}</th>
-            <th style="padding: 9px 10px; text-align: center; font-weight: 800; width: 18%; border: 1px solid ${activeA4.border};">${meta.customTableHeaders?.price || (isRTL ? 'سعر الوحدة' : 'Prix Unitaire')}</th>
-            <th style="padding: 9px 10px; text-align: ${alignEnd}; font-weight: 800; width: 18%; border: 1px solid ${activeA4.border};">${meta.customTableHeaders?.total || (isRTL ? 'المجموع' : 'Total')}</th>
+            <th style="padding: 9px 10px; text-align: ${alignStart}; font-weight: 800; width: 8%; border: 1px solid ${activeA4.border};">#</th>
+            <th style="padding: 9px 10px; text-align: ${alignStart}; font-weight: 800; width: ${hideQtyPrice ? '67%' : '43%'}; border: 1px solid ${activeA4.border};">${meta.customTableHeaders?.name || (isRTL ? 'البيان / المنتج' : 'Désignation')}</th>
+            ${!hideQtyPrice ? `<th style="padding: 9px 10px; text-align: center; font-weight: 800; width: 14%; border: 1px solid ${activeA4.border};">${meta.customTableHeaders?.qty || (isRTL ? 'الكمية' : 'Qté')}</th>` : ''}
+            ${!hideQtyPrice ? `<th style="padding: 9px 10px; text-align: center; font-weight: 800; width: 18%; border: 1px solid ${activeA4.border};">${meta.customTableHeaders?.price || (isRTL ? 'سعر الوحدة' : 'Prix Unitaire')}</th>` : ''}
+            <th style="padding: 9px 10px; text-align: ${alignEnd}; font-weight: 800; width: ${hideQtyPrice ? '25%' : '18%'}; border: 1px solid ${activeA4.border};">${meta.customTableHeaders?.total || (isRTL ? 'الإجمالي' : 'Total')}</th>
           </tr>
         </thead>
         <tbody>
@@ -594,8 +596,8 @@ export function buildStructuredA4Html(meta: PdfDocumentMeta): string {
               <tr style="background: ${bg}; border-bottom: 1px solid #cbd5e1;">
                 <td style="padding: 8px 10px; text-align: ${alignStart}; color: #475569; font-weight: 700; border: 1px solid #e2e8f0; font-family: Tahoma, Arial, sans-serif;">${idx + 1}</td>
                 <td style="padding: 8px 10px; text-align: ${alignStart}; color: #0f172a; font-weight: 800; border: 1px solid #e2e8f0;">${label || ''}</td>
-                <td style="padding: 8px 10px; text-align: center; color: #0f172a; font-weight: 800; border: 1px solid #e2e8f0; font-family: Tahoma, Arial, sans-serif;">${it.quantity}</td>
-                <td style="padding: 8px 10px; text-align: center; color: #1e293b; font-weight: 700; border: 1px solid #e2e8f0; font-family: Tahoma, Arial, sans-serif;" dir="ltr">${priceCellText}</td>
+                ${!hideQtyPrice ? `<td style="padding: 8px 10px; text-align: center; color: #0f172a; font-weight: 800; border: 1px solid #e2e8f0; font-family: Tahoma, Arial, sans-serif;">${it.quantity}</td>` : ''}
+                ${!hideQtyPrice ? `<td style="padding: 8px 10px; text-align: center; color: #1e293b; font-weight: 700; border: 1px solid #e2e8f0; font-family: Tahoma, Arial, sans-serif;" dir="ltr">${priceCellText}</td>` : ''}
                 <td style="padding: 8px 10px; text-align: ${alignEnd}; color: #0f172a; font-weight: 800; border: 1px solid #e2e8f0; font-family: Tahoma, Arial, sans-serif;" dir="ltr">${Number(it.total || 0).toFixed(2)} ${meta.currency}</td>
               </tr>
             `;
@@ -1447,6 +1449,7 @@ function paintDocumentContentOnContext(
       ctx.fillStyle = headerBgColor;
       ctx.fillRect(pad, y, contentWidth, 34);
 
+      const hideQtyPrice = Boolean(meta.hideQuantityAndUnitPrice);
       const cIdx = isRTL ? startX - 14 : startX + 14;
       const cName = isRTL ? startX - 50 : startX + 50;
       const cQty = isRTL ? logicalWidth - pad - contentWidth * 0.54 : pad + contentWidth * 0.54;
@@ -1460,18 +1463,20 @@ function paintDocumentContentOnContext(
         y + 9,
         { size: 12, weight: '900', color: '#ffffff', align: startAlign }
       );
-      drawText(meta.customTableHeaders?.qty || (isRTL ? 'الكمية' : 'Qty'), cQty, y + 9, {
-        size: 12,
-        weight: '900',
-        color: '#ffffff',
-        align: 'center',
-      });
-      drawText(
-        meta.customTableHeaders?.price || (isRTL ? 'سعر الوحدة' : 'Unit Price'),
-        cPrice,
-        y + 9,
-        { size: 12, weight: '900', color: '#ffffff', align: 'center' }
-      );
+      if (!hideQtyPrice) {
+        drawText(meta.customTableHeaders?.qty || (isRTL ? 'الكمية' : 'Qty'), cQty, y + 9, {
+          size: 12,
+          weight: '900',
+          color: '#ffffff',
+          align: 'center',
+        });
+        drawText(
+          meta.customTableHeaders?.price || (isRTL ? 'سعر الوحدة' : 'Unit Price'),
+          cPrice,
+          y + 9,
+          { size: 12, weight: '900', color: '#ffffff', align: 'center' }
+        );
+      }
       drawText(meta.customTableHeaders?.total || (isRTL ? 'الإجمالي' : 'Total'), cTotal, y + 9, {
         size: 12,
         weight: '900',
@@ -1499,28 +1504,30 @@ function paintDocumentContentOnContext(
           weight: '800',
           color: '#0f172a',
           align: startAlign,
-          maxWidth: contentWidth * 0.42,
+          maxWidth: hideQtyPrice ? contentWidth * 0.68 : contentWidth * 0.42,
         });
-        drawText(String(item.quantity), cQty, y + 8, {
-          size: 12.5,
-          weight: '800',
-          color: '#1e293b',
-          align: 'center',
-          isNumeric: true,
-        });
-        const priceCanvasText = meta.isPriceCount
-          ? String(Math.round(Number(item.unitPrice || 0)))
-          : `${Number(item.unitPrice || 0).toFixed(2)} ${meta.currency}`;
-        drawText(priceCanvasText, cPrice, y + 8, {
-          size: 12,
-          weight: '700',
-          color: '#334155',
-          align: 'center',
-          isNumeric: true,
-        });
+        if (!hideQtyPrice) {
+          drawText(String(item.quantity), cQty, y + 8, {
+            size: 12.5,
+            weight: '800',
+            color: '#1e293b',
+            align: 'center',
+            isNumeric: true,
+          });
+          const priceCanvasText = meta.isPriceCount
+            ? String(Math.round(Number(item.unitPrice || 0)))
+            : `${Number(item.unitPrice || 0).toFixed(2)} ${meta.currency}`;
+          drawText(priceCanvasText, cPrice, y + 8, {
+            size: 12,
+            weight: '700',
+            color: '#334155',
+            align: 'center',
+            isNumeric: true,
+          });
+        }
         drawText(`${Number(item.total || 0).toFixed(2)} ${meta.currency}`, cTotal, y + 8, {
           size: 12.5,
-          weight: '800',
+          weight: '900',
           color: '#0f172a',
           align: endAlign,
           isNumeric: true,

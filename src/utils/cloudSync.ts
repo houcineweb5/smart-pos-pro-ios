@@ -976,15 +976,23 @@ export function mergeStoreDatasets(
   }
   const mergedEmployees = Array.from(localEmpMap.values());
 
-  // 10. Store Config
+  // 10. Store Config (Synchronize settings smoothly between Windows and mobile/iPhone)
   let mergedConfig = { ...(localData.config || {}) };
-  if (cloudData.config && cloudData.config.name) {
-    if (
-      (!mergedConfig.name || mergedConfig.name === 'Smart Pos') &&
-      cloudData.config.name !== mergedConfig.name
-    ) {
-      mergedConfig = { ...mergedConfig, ...cloudData.config };
-      hasNewFromCloud = true;
+  if (cloudData.config && typeof cloudData.config === 'object' && Object.keys(cloudData.config).length > 0) {
+    if (preferRemoteEdits) {
+      const nextConfig = { ...mergedConfig, ...cloudData.config };
+      // Keep local logo only if remote has empty logo
+      if (!nextConfig.logoUrl && mergedConfig.logoUrl) {
+        nextConfig.logoUrl = mergedConfig.logoUrl;
+      }
+      if (JSON.stringify(mergedConfig) !== JSON.stringify(nextConfig)) {
+        mergedConfig = nextConfig;
+        hasNewFromCloud = true;
+      }
+    } else {
+      if (JSON.stringify(mergedConfig) !== JSON.stringify(cloudData.config)) {
+        hasLocalChangesForCloud = true;
+      }
     }
   }
 
