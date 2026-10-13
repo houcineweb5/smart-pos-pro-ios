@@ -154,27 +154,22 @@ export default function Settings({
         </div>
       </div>
 
+      {/* Floating Center Toast - perfectly centered at top of viewport so it's instantly visible without scrolling and doesn't distort the page layout */}
       {successMsg && (
-        <div id="settings-success" className="bg-emerald-50 border border-emerald-200 text-emerald-900 px-5 py-3.5 rounded-2xl text-sm font-bold flex items-center gap-3 animate-fade-in shadow-xs">
-          <Check className="w-5 h-5 text-emerald-600 shrink-0" />
-          <span>{successMsg}</span>
-        </div>
-      )}
-
-      {/* Floating Save Toast - Always visible regardless of page scroll position */}
-      {successMsg && (
-        <div className="fixed bottom-6 start-6 z-50 bg-slate-900 text-white border border-emerald-500/40 px-5 py-3.5 rounded-2xl shadow-2xl flex items-center gap-3 animate-fade-in text-sm font-black">
-          <div className="w-7 h-7 rounded-full bg-emerald-500 text-slate-950 flex items-center justify-center shrink-0 shadow-xs">
-            <Check className="w-4 h-4 stroke-[3]" />
+        <div className="fixed top-8 inset-x-0 z-[200] flex justify-center pointer-events-none px-4 animate-fade-in">
+          <div className="pointer-events-auto bg-emerald-600 text-white px-6 py-3.5 rounded-2xl shadow-2xl flex items-center gap-3 text-sm font-black border border-emerald-400 max-w-lg text-center">
+            <div className="w-6 h-6 rounded-full bg-white/20 flex items-center justify-center shrink-0">
+              <Check className="w-4 h-4 text-white stroke-[3]" />
+            </div>
+            <span>{successMsg}</span>
+            <button
+              type="button"
+              onClick={() => setSuccessMsg('')}
+              className="ms-3 text-white/70 hover:text-white text-sm font-bold transition cursor-pointer"
+            >
+              ✕
+            </button>
           </div>
-          <span>{successMsg}</span>
-          <button
-            type="button"
-            onClick={() => setSuccessMsg('')}
-            className="ms-3 text-slate-400 hover:text-white text-base font-bold transition cursor-pointer"
-          >
-            ✕
-          </button>
         </div>
       )}
 
@@ -991,21 +986,28 @@ export default function Settings({
           </div>
         </div>
 
-        {/* Bottom Save Bar (The sole, prominent save button with inline feedback) */}
-        <div className="pt-3 flex flex-wrap items-center justify-between gap-3">
-          {successMsg ? (
-            <div className="bg-emerald-50 border border-emerald-300 text-emerald-900 px-4 py-2.5 rounded-2xl text-xs sm:text-sm font-black flex items-center gap-2 animate-fade-in shadow-xs">
-              <Check className="w-4.5 h-4.5 text-emerald-600 shrink-0" />
-              <span>{successMsg}</span>
-            </div>
-          ) : <div />}
+        {/* Bottom Save Bar (The sole, prominent save button with clean success state) */}
+        <div className="pt-4 flex justify-end items-center">
           <button
             id="sumbit-set-btn"
             type="submit"
-            className="flex items-center gap-2.5 px-8 py-3 bg-indigo-600 hover:bg-indigo-700 text-white font-bold rounded-2xl text-sm transition duration-150 shadow-md hover:shadow-lg cursor-pointer active:scale-95 ms-auto"
+            className={`flex items-center gap-2.5 px-8 py-3.5 font-black rounded-2xl text-sm transition-all duration-200 shadow-md hover:shadow-lg cursor-pointer active:scale-95 ${
+              successMsg
+                ? 'bg-emerald-600 hover:bg-emerald-700 text-white ring-4 ring-emerald-500/20'
+                : 'bg-indigo-600 hover:bg-indigo-700 text-white'
+            }`}
           >
-            <Save className="w-4.5 h-4.5" />
-            <span>{t.settings.save}</span>
+            {successMsg ? (
+              <>
+                <Check className="w-5 h-5 stroke-[3] text-white" />
+                <span>{lang === 'ar' ? 'تم حفظ التعديلات العامة بنجاح ✓' : (lang === 'fr' ? 'Modifications enregistrées ✓' : 'Settings Saved ✓')}</span>
+              </>
+            ) : (
+              <>
+                <Save className="w-4.5 h-4.5" />
+                <span>{t.settings.save}</span>
+              </>
+            )}
           </button>
         </div>
       </form>

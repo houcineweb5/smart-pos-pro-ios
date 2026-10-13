@@ -594,16 +594,68 @@
     let mobileCart = [];
     let html5QrScanner = null;
 
-    // Audio Beep
+    // Web Audio Synthesizer for Mechanical Keyboard Keypress
+    function playKeyboardClick() {
+      try {
+        const AudioContextClass = window.AudioContext || window.webkitAudioContext;
+        if (!AudioContextClass) return;
+        const ctx = new AudioContextClass();
+        const now = ctx.currentTime;
+
+        const bufferSize = Math.max(1, Math.floor(ctx.sampleRate * 0.012));
+        const noiseBuffer = ctx.createBuffer(1, bufferSize, ctx.sampleRate);
+        const output = noiseBuffer.getChannelData(0);
+        for (let i = 0; i < bufferSize; i++) {
+          output[i] = (Math.random() * 2 - 1) * Math.exp(-i / (bufferSize * 0.35));
+        }
+        const whiteNoise = ctx.createBufferSource();
+        whiteNoise.buffer = noiseBuffer;
+
+        const filter = ctx.createBiquadFilter();
+        filter.type = 'bandpass';
+        filter.frequency.setValueAtTime(2400, now);
+        filter.Q.setValueAtTime(3.0, now);
+
+        const noiseGain = ctx.createGain();
+        noiseGain.gain.setValueAtTime(0.4, now);
+        noiseGain.gain.exponentialRampToValueAtTime(0.001, now + 0.014);
+
+        whiteNoise.connect(filter);
+        filter.connect(noiseGain);
+        noiseGain.connect(ctx.destination);
+        whiteNoise.start(now);
+        whiteNoise.stop(now + 0.015);
+
+        const osc = ctx.createOscillator();
+        const oscGain = ctx.createGain();
+        osc.type = 'triangle';
+        osc.frequency.setValueAtTime(340, now);
+        osc.frequency.exponentialRampToValueAtTime(120, now + 0.022);
+
+        oscGain.gain.setValueAtTime(0.25, now);
+        oscGain.gain.exponentialRampToValueAtTime(0.001, now + 0.022);
+
+        osc.connect(oscGain);
+        oscGain.connect(ctx.destination);
+        osc.start(now);
+        osc.stop(now + 0.022);
+      } catch (e) {}
+    }
+
+    // Audio Beep / Feedback
     function playBeep(ok = true) {
+      if (ok) {
+        playKeyboardClick();
+        return;
+      }
       try {
         const ctx = new (window.AudioContext || window.webkitAudioContext)();
         const osc = ctx.createOscillator();
         const gain = ctx.createGain();
         osc.connect(gain);
         gain.connect(ctx.destination);
-        osc.type = ok ? 'sine' : 'sawtooth';
-        osc.frequency.setValueAtTime(ok ? 950 : 260, ctx.currentTime);
+        osc.type = 'sawtooth';
+        osc.frequency.setValueAtTime(260, ctx.currentTime);
         gain.gain.setValueAtTime(0.2, ctx.currentTime);
         gain.gain.exponentialRampToValueAtTime(0.01, ctx.currentTime + 0.15);
         osc.start(ctx.currentTime);
@@ -674,7 +726,7 @@
       return {
         ...remote,
         ...local,
-        config: (remote.config && remote.config.name) ? remote.config : (local.config || {}),
+        config: remote.config ? { ...(local.config || {}), ...remote.config } : (local.config || {}),
         products: Array.from(prodMap.values()),
         customers: Array.from(custMap.values()),
         invoices: Array.from(invMap.values()).sort((a, b) => new Date(b.date || 0) - new Date(a.date || 0)),
