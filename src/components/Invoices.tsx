@@ -1545,19 +1545,17 @@ export default function Invoices({ invoices, products = [], customers = [], conf
                   </div>
                 </div>
 
-                {/* Arrêtée la présente facture clause */}
-                <div className="p-3 bg-slate-50 rounded-xl border border-slate-200 text-xs text-slate-700 font-bold text-start">
-                  <span className="text-slate-500 font-normal">
-                    {lang === 'ar' ? 'حررت هذه الفاتورة بمبلغ إجمالي قدره:' : lang === 'fr' ? 'Arrêtée la présente facture à la somme de :' : 'Certified this invoice to the amount of:'}
-                  </span>{' '}
-                  <span className="font-black text-slate-900 font-mono">
-                    {(Number(invTotal || 0) + Number(prevBal || 0)).toFixed(2)} {config.currency}
-                  </span>
-                  {lang !== 'fr' && (
-                    <span className="text-[11px] text-slate-500 block mt-0.5 italic font-sans font-medium">
-                      (Arrêtée la présente facture à la somme de {(Number(invTotal || 0) + Number(prevBal || 0)).toFixed(2)} {config.currency})
+                {/* Arrêtée la présente facture clause (Centered) */}
+                <div className="p-3.5 bg-slate-50/80 rounded-2xl border border-slate-200 text-xs text-slate-800 font-bold text-center space-y-1">
+                  <div>
+                    <span>{lang === 'ar' ? 'حررت هذه الفاتورة بمبلغ إجمالي قدره :' : 'Certifié la présente facture au montant de :'} </span>
+                    <span className="font-black text-slate-950 font-mono text-sm">
+                      {(Number(invTotal || 0) + Number(prevBal || 0)).toFixed(2)} {config.currency}
                     </span>
-                  )}
+                  </div>
+                  <div className="text-[11px] text-slate-600 font-semibold italic">
+                    Arrêtée la présente facture à la somme de {(Number(invTotal || 0) + Number(prevBal || 0)).toFixed(2)} {config.currency}
+                  </div>
                 </div>
 
                 {config.showBarcodeOnInvoice !== false && (
@@ -1579,13 +1577,14 @@ export default function Invoices({ invoices, products = [], customers = [], conf
                   </div>
                 )}
 
-                {/* Company Info Footer Strip (Address, Phone, ICE) */}
-                <div className="pt-3 border-t border-slate-200 text-center text-[11px] text-slate-500 font-medium space-y-0.5">
-                  <div className="font-bold text-slate-700">{config.name}</div>
-                  <div className="flex flex-wrap items-center justify-center gap-x-4 gap-y-1 text-slate-600">
+                {/* Company Info Footer Strip (Address, Phone, Email, ICE) */}
+                <div className="pt-4 border-t border-slate-200 text-center text-[11px] text-slate-600 font-semibold space-y-1">
+                  <div className="font-bold text-slate-800 text-xs">{config.name}</div>
+                  <div className="flex flex-wrap items-center justify-center gap-x-4 gap-y-1">
                     {config.address && <span>{config.address}</span>}
-                    {config.phone && <span dir="ltr">📞 {config.phone}</span>}
-                    {config.registrationNumber && <span>ICE: <b>{config.registrationNumber}</b></span>}
+                    {config.phone && <span>{lang === 'ar' ? 'الهاتف:' : 'Tél:'} <b className="font-mono text-slate-800" dir="ltr">{config.phone}</b></span>}
+                    {config.email && <span>{lang === 'ar' ? 'البريد:' : 'Email:'} <b className="font-mono text-slate-800">{config.email}</b></span>}
+                    {config.registrationNumber && <span>ICE: <b className="font-mono text-slate-800">{config.registrationNumber}</b></span>}
                   </div>
                 </div>
               </div>

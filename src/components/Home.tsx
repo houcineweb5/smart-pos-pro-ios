@@ -411,8 +411,8 @@ export default function Home({
             </span>
             <div className="flex justify-between items-end w-full">
               <div>
-                <h3 className="font-bold text-slate-800 text-xs leading-snug">{lang === 'ar' ? 'إضافة سلعة للمستودع' : 'Add Stock Item'}</h3>
-                <p className="text-[9px] text-slate-400 font-medium mt-0.5">{lang === 'ar' ? 'تسجيل منتج أو تعديل مخزون' : 'Add inventory product'}</p>
+                <h3 className="font-bold text-slate-800 text-xs leading-snug">{lang === 'ar' ? 'إدارة المخزن' : lang === 'fr' ? 'Gestion du Stock' : 'Inventory Management'}</h3>
+                <p className="text-[9px] text-slate-400 font-medium mt-0.5">{lang === 'ar' ? 'تسجيل منتج، فحص وتعديل المخزون' : lang === 'fr' ? 'Gérer les produits et le stock' : 'Manage stock and products'}</p>
               </div>
               <ArrowRight className="w-3.5 h-3.5 text-slate-400 transition duration-300 group-hover:translate-x-1 text-emerald-600 rtl:rotate-180 rtl:group-hover:-translate-x-1" />
             </div>

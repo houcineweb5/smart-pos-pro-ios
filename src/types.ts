@@ -20,6 +20,8 @@ export interface Product {
 export type PaymentMethod = 'cash' | 'card' | 'debt';
 export type PaymentStatus = 'paid' | 'unpaid' | 'partial' | 'refunded';
 
+export type SaleItem = InvoiceItem;
+
 export interface InvoiceItem {
   productId: string;
   productName: string;

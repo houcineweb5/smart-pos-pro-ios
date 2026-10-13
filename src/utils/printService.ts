@@ -39,6 +39,7 @@ export interface PdfDocumentMeta {
   summaryCards?: {
     label: string;
     value: string;
+    subValue?: string;
     color?: string;
   }[];
   items: {
@@ -506,12 +507,18 @@ export function buildStructuredA4Html(meta: PdfDocumentMeta): string {
       <div style="display: grid; grid-template-columns: repeat(${Math.min(3, meta.summaryCards.length)}, 1fr); gap: 10px; margin-bottom: 16px;">
         ${meta.summaryCards
           .map(
-            (c) => `
+            (c) => {
+              const [valMain, valSub] = (c.value || '').split('\n');
+              const displayMain = c.subValue ? c.value : valMain;
+              const displaySub = c.subValue || valSub;
+              return `
           <div style="border: 1px solid ${activeA4.border}; border-radius: 8px; padding: 10px 12px; background: #f8fafc;">
             <div style="font-size: 11px; font-weight: 700; color: #64748b;">${c.label}</div>
-            <div style="font-size: 15px; font-weight: 800; color: ${c.color || primaryBrandColor}; margin-top: 4px; font-family: Tahoma, Arial, sans-serif;">${c.value}</div>
+            <div style="font-size: 16px; font-weight: 900; color: ${c.color || primaryBrandColor}; margin-top: 4px; font-family: Tahoma, Arial, monospace;" dir="ltr">${displayMain}</div>
+            ${displaySub ? `<div style="font-size: 11px; font-weight: 700; color: #4338ca; margin-top: 4px;" dir="${isRTL ? 'rtl' : 'ltr'}">${displaySub}</div>` : ''}
           </div>
-        `
+        `;
+            }
           )
           .join('')}
       </div>
@@ -773,9 +780,33 @@ export function buildStructuredA4Html(meta: PdfDocumentMeta): string {
         </div>
       </div>
 
-      <!-- Footer -->
-      <div style="margin-top: 28px; padding-top: 10px; border-top: 1px solid #cbd5e1; text-align: center; font-size: 11.5px; font-weight: 800; color: #475569;">
+      <!-- Arrêtée la présente facture clause (Centered) -->
+      <div style="margin-top: 14px; padding: 10px 14px; background: #f8fafc; border: 1px solid #cbd5e1; border-radius: 8px; text-align: center; font-size: 11.5px; font-weight: 700; color: #1e293b; page-break-inside: avoid;">
+        <div>
+          <span>${isRTL ? 'حررت هذه الفاتورة بمبلغ إجمالي قدره :' : 'Certifié la présente facture au montant de :'} </span>
+          <span style="font-weight: 900; color: #0f172a; font-family: Tahoma, Arial, sans-serif;" dir="ltr">
+            ${(Number(meta.total || 0) + prevBal).toFixed(2)} ${meta.currency}
+          </span>
+        </div>
+        <div style="font-size: 10.5px; color: #475569; font-style: italic; margin-top: 3px;">
+          Arrêtée la présente facture à la somme de ${(Number(meta.total || 0) + prevBal).toFixed(2)} ${meta.currency}
+        </div>
+      </div>
+
+      <!-- Thank You Message -->
+      <div style="margin-top: 20px; padding-top: 10px; border-top: 1px solid #cbd5e1; text-align: center; font-size: 11.5px; font-weight: 800; color: #475569;">
         ${meta.footerText || (isRTL ? 'شكراً لتعاملكم معنا ومرحباً بكم في أي وقت!' : 'Thank you for your business!')}
+      </div>
+
+      <!-- Footer: Company Info (Address, Phone, Email, ICE) -->
+      <div style="margin-top: 8px; padding-top: 8px; border-top: 1px solid #e2e8f0; text-align: center; font-size: 11px; font-weight: 600; color: #475569; page-break-inside: avoid;">
+        <div style="font-weight: 800; color: #0f172a; margin-bottom: 2px;">${meta.storeName || 'Smart POS'}</div>
+        <div style="display: flex; flex-wrap: wrap; justify-content: center; gap: 4px 14px; color: #475569;">
+          ${meta.storeAddress ? `<span>${meta.storeAddress}</span>` : ''}
+          ${meta.storePhone ? `<span>${isRTL ? 'الهاتف:' : 'Tél:'} <b style="font-family: Tahoma, Arial, sans-serif; color: #0f172a;" dir="ltr">${meta.storePhone}</b></span>` : ''}
+          ${meta.storeEmail ? `<span>${isRTL ? 'البريد:' : 'Email:'} <b style="font-family: Tahoma, Arial, sans-serif; color: #0f172a;">${meta.storeEmail}</b></span>` : ''}
+          ${meta.storeRegNumber ? `<span>ICE: <b style="font-family: Tahoma, Arial, sans-serif; color: #0f172a;">${meta.storeRegNumber}</b></span>` : ''}
+        </div>
       </div>
     </div>
   `;
@@ -1358,7 +1389,7 @@ function paintDocumentContentOnContext(
       const cols = Math.min(3, meta.summaryCards.length);
       const gap = 12;
       const cardW = (contentWidth - gap * (cols - 1)) / cols;
-      const cardH = 62;
+      const cardH = 74;
 
       meta.summaryCards.forEach((card, idx) => {
         const rowIdx = Math.floor(idx / cols);
@@ -1375,20 +1406,36 @@ function paintDocumentContentOnContext(
         ctx.strokeRect(cardX, cardY, cardW, cardH);
 
         const textX = isRTL ? cardX + cardW - 12 : cardX + 12;
-        drawText(card.label, textX, cardY + 10, {
+        drawText(card.label, textX, cardY + 9, {
           size: 11,
           weight: '800',
           color: '#64748b',
           align: startAlign,
           maxWidth: cardW - 24,
         });
-        drawText(card.value, textX, cardY + 32, {
-          size: 14.5,
+
+        const [valMain, valSub] = (card.value || '').split('\n');
+        const displayMain = card.subValue ? card.value : valMain;
+        const displaySub = card.subValue || valSub;
+
+        drawText(displayMain, textX, cardY + 28, {
+          size: 15,
           weight: '900',
           color: card.color || primaryColor,
           align: startAlign,
           maxWidth: cardW - 24,
+          isNumeric: true,
         });
+
+        if (displaySub) {
+          drawText(displaySub, textX, cardY + 49, {
+            size: 11,
+            weight: '800',
+            color: '#4338ca',
+            align: startAlign,
+            maxWidth: cardW - 24,
+          });
+        }
       });
 
       const totalRows = Math.ceil(meta.summaryCards.length / cols);
@@ -1651,16 +1698,69 @@ function paintDocumentContentOnContext(
         y += 26;
       }
 
-      y += 18;
+      // Arrêtée la présente facture clause (Centered)
+      y += 10;
+      const totalAmountWithPrev = (Number(meta.total || 0) + prevBalA4).toFixed(2);
+      ctx.fillStyle = '#f8fafc';
+      ctx.fillRect(pad, y, contentWidth, 42);
+      ctx.strokeStyle = '#cbd5e1';
+      ctx.lineWidth = 1;
+      ctx.strokeRect(pad, y, contentWidth, 42);
+
+      const arCertText = isRTL
+        ? `حررت هذه الفاتورة بمبلغ إجمالي قدره : ${totalAmountWithPrev} ${meta.currency}`
+        : `Certifié la présente facture au montant de : ${totalAmountWithPrev} ${meta.currency}`;
+      drawText(arCertText, logicalWidth / 2, y + 8, {
+        size: 11.5,
+        weight: '800',
+        color: '#0f172a',
+        align: 'center',
+      });
+      drawText(`Arrêtée la présente facture à la somme de ${totalAmountWithPrev} ${meta.currency}`, logicalWidth / 2, y + 25, {
+        size: 10,
+        weight: '700',
+        color: '#475569',
+        align: 'center',
+      });
+      y += 52;
+
+      // Thank you message
       drawLine(y, false, '#cbd5e1');
-      y += 12;
+      y += 10;
       drawText(
         meta.footerText || (isRTL ? 'شكراً لتعاملكم معنا ومرحباً بكم في أي وقت!' : 'Thank you for your business!'),
         logicalWidth / 2,
         y,
-        { size: 12, weight: '800', color: '#475569', align: 'center' }
+        { size: 11.5, weight: '800', color: '#475569', align: 'center' }
       );
-      y += 28;
+      y += 24;
+
+      // Footer: Company Info (Address, Phone, Email, ICE)
+      drawLine(y, false, '#e2e8f0');
+      y += 8;
+      drawText(meta.storeName || 'Smart POS', logicalWidth / 2, y, {
+        size: 12,
+        weight: '900',
+        color: '#0f172a',
+        align: 'center',
+      });
+      y += 18;
+      const storeFooterParts = [
+        meta.storeAddress,
+        meta.storePhone ? `${isRTL ? 'الهاتف:' : 'Tél:'} ${meta.storePhone}` : '',
+        meta.storeEmail ? `${isRTL ? 'البريد:' : 'Email:'} ${meta.storeEmail}` : '',
+        meta.storeRegNumber ? `ICE: ${meta.storeRegNumber}` : '',
+      ].filter(Boolean).join('   |   ');
+      if (storeFooterParts) {
+        drawText(storeFooterParts, logicalWidth / 2, y, {
+          size: 10.5,
+          weight: '700',
+          color: '#475569',
+          align: 'center',
+          maxWidth: contentWidth,
+        });
+        y += 20;
+      }
     }
   }
 

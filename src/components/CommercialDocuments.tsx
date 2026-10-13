@@ -308,7 +308,7 @@ export default function CommercialDocuments({
     setFormCustomerAddress(doc.customerAddress || '');
     setFormDocDate(doc.date ? doc.date.split('T')[0] : new Date().toISOString().split('T')[0]);
     setFormValidUntil(doc.validUntil ? doc.validUntil.split('T')[0] : '');
-    setFormItems(doc.items && doc.items.length > 0 ? [...doc.items] : [{
+    setFormItems(doc.items && doc.items.length > 0 ? [...doc.items].reverse() : [{
       productId: '',
       productName: '',
       sellingPrice: 0,
@@ -334,7 +334,7 @@ export default function CommercialDocuments({
     }
   };
 
-  // Add Item to form (Always placed at the TOP of the list so the user can edit it immediately)
+  // Add Item to form (Always placed at the TOP of the list so the latest added item is first)
   const handleAddProductToForm = (prod: Product) => {
     const modePrice = getProductPriceByMode(prod, formPricingMode);
     const existingIndex = formItems.findIndex(i => i.productId === prod.id);
@@ -348,9 +348,9 @@ export default function CommercialDocuments({
         quantity: Number.isInteger(nextQty) ? nextQty : Number(nextQty.toFixed(3)),
         total: (unit - (unit * disc / 100)) * nextQty
       };
-      const copy = [...formItems];
-      copy[existingIndex] = updatedItem;
-      setFormItems(copy);
+      // Move to top as the last interacted product
+      const copy = formItems.filter((_, idx) => idx !== existingIndex);
+      setFormItems([updatedItem, ...copy]);
       setProductSearch('');
       setShowProductDropdown(false);
       return;
@@ -367,18 +367,17 @@ export default function CommercialDocuments({
       total: modePrice
     };
 
-    // Remove any completely blank placeholder row when adding a real product, and preserve first-added order
+    // Remove any completely blank placeholder row when adding a real product, and place latest product at TOP
     const nonEmptyRows = formItems.filter(
       i => Boolean(i.productId || i.productName.trim() || parseDecimal(i.sellingPrice, 0) > 0)
     );
-    setFormItems([...nonEmptyRows, newItemRow]);
+    setFormItems([newItemRow, ...nonEmptyRows]);
     setProductSearch('');
     setShowProductDropdown(false);
   };
 
   const handleAddCustomItem = () => {
     setFormItems(prev => [
-      ...prev,
       {
         productId: '',
         productName: '',
@@ -388,7 +387,8 @@ export default function CommercialDocuments({
         discount: 0,
         tax: 0,
         total: 0
-      }
+      },
+      ...prev
     ]);
   };
 
@@ -566,7 +566,7 @@ export default function CommercialDocuments({
       customerName: formCustomerName,
       customerPhone: formCustomerPhone,
       customerAddress: formCustomerAddress,
-      items: validItems,
+      items: [...validItems].reverse(),
       subtotal,
       discount: totalDiscount,
       tax: totalTax,
@@ -891,7 +891,7 @@ export default function CommercialDocuments({
     const selectedCust = customers.find(c => c.id === formCustomerId);
 
     return (
-      <div dir={isRTL ? 'rtl' : 'ltr'} className="space-y-6 text-start max-w-7xl mx-auto animate-fade-in">
+      <div dir={isRTL ? 'rtl' : 'ltr'} className="space-y-4 sm:space-y-6 text-start w-full animate-fade-in">
         {/* Toast Notification via Portal so it is never shifted or clipped */}
         {toastMessage && createPortal(
           <div dir={isRTL ? 'rtl' : 'ltr'} className="fixed inset-x-0 top-16 z-[250] flex justify-center px-4 pointer-events-none">
@@ -1780,7 +1780,7 @@ export default function CommercialDocuments({
   }
 
   return (
-    <div className="space-y-6 text-start max-w-7xl mx-auto animate-fade-in" dir={isRTL ? 'rtl' : 'ltr'}>
+    <div className="space-y-4 sm:space-y-6 text-start w-full animate-fade-in" dir={isRTL ? 'rtl' : 'ltr'}>
       {/* Toast Notification via Portal */}
       {toastMessage && createPortal(
         <div dir={isRTL ? 'rtl' : 'ltr'} className="fixed inset-x-0 top-16 z-[250] flex justify-center px-4 pointer-events-none">
@@ -2694,19 +2694,17 @@ export default function CommercialDocuments({
                 </div>
               </div>
 
-              {/* Arrêtée la présente facture clause */}
-              <div className="p-3 bg-slate-50 rounded-xl border border-slate-200 text-xs text-slate-700 font-bold text-start">
-                <span className="text-slate-500 font-normal">
-                  {lang === 'ar' ? 'حررت هذه الفاتورة بمبلغ إجمالي قدره:' : lang === 'fr' ? 'Arrêtée la présente facture à la somme de :' : 'Certified this invoice to the amount of:'}
-                </span>{' '}
-                <span className="font-black text-slate-900 font-mono">
-                  {(Number(viewingDoc.total || 0) + Number(viewingDoc.previousBalance || 0)).toFixed(2)} {config.currency}
-                </span>
-                {lang !== 'fr' && (
-                  <span className="text-[11px] text-slate-500 block mt-0.5 italic font-sans font-medium">
-                    (Arrêtée la présente facture à la somme de {(Number(viewingDoc.total || 0) + Number(viewingDoc.previousBalance || 0)).toFixed(2)} {config.currency})
+              {/* Arrêtée la présente facture clause (Centered) */}
+              <div className="p-3.5 bg-slate-50/80 rounded-2xl border border-slate-200 text-xs text-slate-800 font-bold text-center space-y-1">
+                <div>
+                  <span>{lang === 'ar' ? 'حررت هذه الفاتورة بمبلغ إجمالي قدره :' : 'Certifié la présente facture au montant de :'} </span>
+                  <span className="font-black text-slate-950 font-mono text-sm">
+                    {(Number(viewingDoc.total || 0) + Number(viewingDoc.previousBalance || 0)).toFixed(2)} {config.currency}
                   </span>
-                )}
+                </div>
+                <div className="text-[11px] text-slate-600 font-semibold italic">
+                  Arrêtée la présente facture à la somme de {(Number(viewingDoc.total || 0) + Number(viewingDoc.previousBalance || 0)).toFixed(2)} {config.currency}
+                </div>
               </div>
 
               {/* Official Signatures & Stamp Blocks */}
@@ -2728,13 +2726,13 @@ export default function CommercialDocuments({
                 </div>
               </div>
 
-              {/* Company Info Footer Strip (Address, Phone, ICE) */}
-              <div className="pt-3 border-t border-slate-200 text-center text-[11px] text-slate-500 font-medium space-y-0.5">
-                <div className="font-bold text-slate-700">{config.name}</div>
-                <div className="flex flex-wrap items-center justify-center gap-x-4 gap-y-1 text-slate-600">
+              {/* Company Info Footer Strip (Address, Phone, Email, ICE) */}
+              <div className="pt-4 border-t border-slate-200 text-center text-[11px] text-slate-600 font-semibold space-y-1">
+                <div className="font-bold text-slate-800 text-xs">{config.name}</div>
+                <div className="flex flex-wrap items-center justify-center gap-x-4 gap-y-1">
                   {config.address && <span>{config.address}</span>}
-                  {config.phone && <span>{lang === 'ar' ? 'الهاتف:' : 'Tél:'} <b className="font-mono text-slate-800">{config.phone}</b></span>}
-                  {config.email && <span>{config.email}</span>}
+                  {config.phone && <span>{lang === 'ar' ? 'الهاتف:' : 'Tél:'} <b className="font-mono text-slate-800" dir="ltr">{config.phone}</b></span>}
+                  {config.email && <span>{lang === 'ar' ? 'البريد:' : 'Email:'} <b className="font-mono text-slate-800">{config.email}</b></span>}
                   {config.registrationNumber && <span>ICE: <b className="font-mono text-slate-800">{config.registrationNumber}</b></span>}
                 </div>
               </div>
