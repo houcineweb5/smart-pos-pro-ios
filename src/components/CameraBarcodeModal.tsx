@@ -110,14 +110,22 @@ export default function CameraBarcodeModal({
     }
 
     try {
-      const html5QrCode = new Html5QrcodeClass(containerId);
+      const html5QrCode = new Html5QrcodeClass(containerId, {
+        experimentalFeatures: { useBarCodeDetectorIfSupported: true },
+      });
       scannerRef.current = html5QrCode;
+
+      const qrboxFn = (viewfinderWidth: number, viewfinderHeight: number) => {
+        const w = Math.floor(Math.min(viewfinderWidth * 0.92, 380));
+        const h = Math.floor(Math.min(viewfinderHeight * 0.58, 200));
+        return { width: Math.max(w, 240), height: Math.max(h, 120) };
+      };
 
       await html5QrCode.start(
         { facingMode },
         {
-          fps: 12,
-          qrbox: { width: 250, height: 150 },
+          fps: 15,
+          qrbox: qrboxFn,
           aspectRatio: 1.333,
         },
         (decodedText: string) => {

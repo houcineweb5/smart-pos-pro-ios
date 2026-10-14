@@ -3,7 +3,7 @@
  * SPDX-License-Identifier: Apache-2.0
  */
 
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
 import { createPortal } from 'react-dom';
 import { ActiveTab, Customer, Invoice, Language, Product, SaleItem, StoreConfig } from '../types';
 import { languages } from '../languages';
@@ -11,6 +11,8 @@ import { Receipt, Search, Eye, Printer, X, DollarSign, Calendar, CheckSquare, Al
 import { generateBarcodeSvg } from '../utils/barcode';
 import { parseDecimal, sanitizeDecimalInput } from '../utils/numberInput';
 import { printHtmlContent, exportStructuredPdf, PdfDocumentMeta, buildUnified80mmReceiptHtml, A4_PRINT_THEMES } from '../utils/printService';
+import { amountToWordsAr, amountToWordsFr } from '../utils/numberToWords';
+import { pullCloudBarcodeScan } from '../utils/cloudSync';
 import CameraBarcodeModal from './CameraBarcodeModal';
 
 interface InvoicesProps {
@@ -69,26 +71,72 @@ export default function Invoices({ invoices, products = [], customers = [], conf
   const [showBarcodeScannerModal, setShowBarcodeScannerModal] = useState(false);
   const [barcodeScanToast, setBarcodeScanToast] = useState<string | null>(null);
 
-  const handleScanInvoiceBarcode = (code: string) => {
-    const cleanCode = String(code || '').trim();
-    if (!cleanCode) return;
-    setSearch(cleanCode);
+  const playInvoiceScanBeep = () => {
+    try {
+      const AudioCtx = window.AudioContext || (window as any).webkitAudioContext;
+      if (!AudioCtx) return;
+      const ctx = new AudioCtx();
+      const osc = ctx.createOscillator();
+      const gain = ctx.createGain();
+      osc.connect(gain);
+      gain.connect(ctx.destination);
+      osc.type = 'sine';
+      osc.frequency.setValueAtTime(1046, ctx.currentTime);
+      osc.frequency.exponentialRampToValueAtTime(1318, ctx.currentTime + 0.1);
+      gain.gain.setValueAtTime(0.2, ctx.currentTime);
+      gain.gain.exponentialRampToValueAtTime(0.01, ctx.currentTime + 0.15);
+      osc.start(ctx.currentTime);
+      osc.stop(ctx.currentTime + 0.15);
+    } catch {}
+  };
 
-    const cleanAlpha = cleanCode.replace(/[^0-9A-Za-z]/g, '').toLowerCase();
+  const handleScanInvoiceBarcode = (code: string) => {
+    let cleanCode = String(code || '').trim();
+    if (!cleanCode) return;
+
+    // Strip Code 39 leading and trailing asterisks (e.g. *INV-1234* -> INV-1234)
+    cleanCode = cleanCode.replace(/^\*+|\*+$/g, '').trim();
+
+    // Strip URL wrapper if scanned from QR code
+    if (cleanCode.includes('/invoice/') || cleanCode.includes('inv=')) {
+      const match = cleanCode.match(/(?:invoice\/|inv=)([A-Za-z0-9\-_]+)/i);
+      if (match && match[1]) {
+        cleanCode = match[1];
+      }
+    }
+
+    const cleanLower = cleanCode.toLowerCase();
+    const cleanAlpha = cleanLower.replace(/[^0-9a-z]/g, '');
 
     const found = invoices.find((inv) => {
       const invNum = String(inv.invoiceNumber || '').trim().toLowerCase();
       const invId = String(inv.id || '').trim().toLowerCase();
-      const invNumAlpha = invNum.replace(/[^0-9A-Za-z]/g, '');
+      const invNumAlpha = invNum.replace(/[^0-9a-z]/g, '');
+      const invIdAlpha = invId.replace(/[^0-9a-z]/g, '');
+
       return (
-        invNum === cleanCode.toLowerCase() ||
-        invId === cleanCode.toLowerCase() ||
-        invNum.includes(cleanCode.toLowerCase()) ||
-        (cleanAlpha.length >= 3 && invNumAlpha.includes(cleanAlpha))
+        invNum === cleanLower ||
+        invId === cleanLower ||
+        invNumAlpha === cleanAlpha ||
+        invIdAlpha === cleanAlpha ||
+        invNum.includes(cleanLower) ||
+        (cleanAlpha.length >= 3 && invNumAlpha.includes(cleanAlpha)) ||
+        (cleanAlpha.length >= 3 && invIdAlpha.includes(cleanAlpha))
       );
     });
 
     if (found) {
+      playInvoiceScanBeep();
+      setSearch(found.invoiceNumber);
+
+      // Reset restrictive date/status filters so the scanned invoice is guaranteed visible in the list
+      setSelectedMonth('');
+      setFromDate('');
+      setToDate('');
+      setSelectedStatus('all');
+      setSelectedCustomerFilter('all');
+
+      // Instantly open the invoice details & print modal!
       setViewInvoice(found);
       setBarcodeScanToast(
         lang === 'ar'
@@ -97,6 +145,7 @@ export default function Invoices({ invoices, products = [], customers = [], conf
       );
       setTimeout(() => setBarcodeScanToast(null), 4500);
     } else {
+      setSearch(cleanCode);
       setBarcodeScanToast(
         lang === 'ar'
           ? `⚠️ لا توجد فاتورة تطابق هذا الباركود: ${cleanCode}`
@@ -106,34 +155,73 @@ export default function Invoices({ invoices, products = [], customers = [], conf
     }
   };
 
+  const handleScanInvoiceBarcodeRef = useRef(handleScanInvoiceBarcode);
+  handleScanInvoiceBarcodeRef.current = handleScanInvoiceBarcode;
+
+  // Listen for Wireless Smartphone Barcode Scans (Local Wi-Fi & Cloud)
+  useEffect(() => {
+    let tickCount = 0;
+    const interval = setInterval(async () => {
+      // 1. Check local PC Wi-Fi endpoint
+      try {
+        const res = await fetch('/api/remote-barcode');
+        if (res.ok) {
+          const data = await res.json();
+          if (data && data.code) {
+            handleScanInvoiceBarcodeRef.current(String(data.code));
+          }
+        }
+      } catch {}
+
+      // 2. Check Firebase cloud barcode node every ~6s (every 4th tick)
+      tickCount++;
+      if (tickCount % 4 === 0) {
+        try {
+          const cloudCode = await pullCloudBarcodeScan();
+          if (cloudCode) {
+            handleScanInvoiceBarcodeRef.current(cloudCode);
+          }
+        } catch {}
+      }
+    }, 1500);
+
+    return () => clearInterval(interval);
+  }, []);
+
   // Hardware Barcode Scanner Listener (USB / Bluetooth Barcode Gun)
   useEffect(() => {
     let buffer = '';
     let lastKeyTime = Date.now();
 
     const handleKeyDown = (e: KeyboardEvent) => {
+      const activeEl = document.activeElement as HTMLElement | null;
+      const isSearchInput = activeEl?.id === 'inv-search-id';
       const tag = (e.target as HTMLElement)?.tagName?.toLowerCase();
-      if (tag === 'input' || tag === 'textarea' || tag === 'select') return;
+
+      // If user is focused on a text input other than invoice search, don't hijack
+      if (tag === 'textarea' || tag === 'select' || (tag === 'input' && !isSearchInput)) return;
 
       const now = Date.now();
-      if (now - lastKeyTime > 140) {
+      if (now - lastKeyTime > 160) {
         buffer = '';
       }
       lastKeyTime = now;
 
       if (e.key === 'Enter') {
-        if (buffer.length >= 3) {
-          handleScanInvoiceBarcode(buffer);
+        const candidate = isSearchInput ? (search || buffer) : buffer;
+        if (candidate.trim().length >= 2) {
+          e.preventDefault();
+          handleScanInvoiceBarcode(candidate.trim());
           buffer = '';
         }
-      } else if (e.key.length === 1) {
+      } else if (e.key.length === 1 && !isSearchInput) {
         buffer += e.key;
       }
     };
 
     window.addEventListener('keydown', handleKeyDown);
     return () => window.removeEventListener('keydown', handleKeyDown);
-  }, [invoices, lang]);
+  }, [invoices, lang, search]);
 
   const getSafeItems = (inv: Invoice | null | undefined) => {
     if (!inv) return [];
@@ -756,6 +844,12 @@ export default function Invoices({ invoices, products = [], customers = [], conf
               className={`w-full py-2.5 ${isRTL ? 'pr-10 pl-3' : 'pl-10 pr-3'} bg-slate-50 border border-slate-200 rounded-xl text-xs sm:text-sm focus:outline-none focus:ring-2 focus:ring-indigo-500 focus:bg-white transition`}
               value={search}
               onChange={(e) => setSearch(e.target.value)}
+              onKeyDown={(e) => {
+                if (e.key === 'Enter') {
+                  e.preventDefault();
+                  handleScanInvoiceBarcode(search);
+                }
+              }}
             />
           </div>
 
@@ -1545,18 +1639,26 @@ export default function Invoices({ invoices, products = [], customers = [], conf
                   </div>
                 </div>
 
-                {/* Arrêtée la présente facture clause (Centered) */}
-                <div className="p-3.5 bg-slate-50/80 rounded-2xl border border-slate-200 text-xs text-slate-800 font-bold text-center space-y-1">
-                  <div>
-                    <span>{lang === 'ar' ? 'حررت هذه الفاتورة بمبلغ إجمالي قدره :' : 'Certifié la présente facture au montant de :'} </span>
-                    <span className="font-black text-slate-950 font-mono text-sm">
-                      {(Number(invTotal || 0) + Number(prevBal || 0)).toFixed(2)} {config.currency}
-                    </span>
-                  </div>
-                  <div className="text-[11px] text-slate-600 font-semibold italic">
-                    Arrêtée la présente facture à la somme de {(Number(invTotal || 0) + Number(prevBal || 0)).toFixed(2)} {config.currency}
-                  </div>
-                </div>
+                {/* Arrêtée la présente facture clause (Centered) with full written words */}
+                {(() => {
+                  const totalWithPrev = Number(invTotal || 0) + Number(prevBal || 0);
+                  const arWords = amountToWordsAr(totalWithPrev, config.currency);
+                  const frWords = amountToWordsFr(totalWithPrev, config.currency);
+                  return (
+                    <div className="p-3.5 bg-slate-50/80 rounded-2xl border border-slate-200 text-xs text-slate-800 font-bold text-center space-y-1.5 shadow-xs">
+                      <div className="text-slate-900 font-extrabold text-[12px] leading-relaxed">
+                        <span>أوقفت هذه الفاتورة عند مبلغ : </span>
+                        <span className="text-indigo-700 font-black">{arWords}</span>
+                        <span className="font-mono font-black text-slate-600 text-xs" dir="ltr"> ({totalWithPrev.toFixed(2)} {config.currency})</span>
+                      </div>
+                      <div className="text-[11px] text-slate-600 font-semibold italic leading-relaxed pt-0.5 border-t border-slate-200/60">
+                        <span>Arrêtée la présente facture à la somme de : </span>
+                        <span className="text-indigo-700 font-bold not-italic">{frWords}</span>
+                        <span className="font-mono font-bold text-slate-500 text-[10.5px]" dir="ltr"> ({totalWithPrev.toFixed(2)} {config.currency})</span>
+                      </div>
+                    </div>
+                  );
+                })()}
 
                 {config.showBarcodeOnInvoice !== false && (
                   <div className="flex flex-col items-center justify-center pt-4">

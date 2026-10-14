@@ -3,6 +3,8 @@
  * SPDX-License-Identifier: Apache-2.0
  */
 
+import { amountToWordsAr, amountToWordsFr } from './numberToWords';
+
 export interface PrintOptions {
   html: string;
   title?: string;
@@ -73,87 +75,61 @@ export interface PdfDocumentMeta {
 }
 
 const CODE39_MAP: Record<string, string> = {
-  '0': 'nnnwwnwnn',
-  '1': 'wnnwnnnnw',
-  '2': 'nnwwnnnnw',
-  '3': 'wnwwnnnnn',
-  '4': 'nnnwwnnnw',
-  '5': 'wnnwwnnnn',
-  '6': 'nnwwwNNNN'.toLowerCase(),
-  '7': 'nnnwnnwnw',
-  '8': 'wnnwnnwnn',
-  '9': 'nnwwnnwnn',
-  A: 'wnnnnwnnw',
-  B: 'nnwnnwnnw',
-  C: 'wnwnnwnnn',
-  D: 'nnnnwwnnw',
-  E: 'wnnnwwnnn',
-  F: 'nnwnwwnnn',
-  G: 'nnnnnwwnw',
-  H: 'wnnnnwwnn',
-  I: 'nnwnnwwnn',
-  J: 'nnnnwwwnn',
-  K: 'wnnnnnnww',
-  L: 'nnwnnnnww',
-  M: 'wnwnnnnwn',
-  N: 'nnnnwnnww',
-  O: 'wnnnwnnwn',
-  P: 'nnwnwnnwn',
-  Q: 'nnnnnnwww',
-  R: 'wnnnnnwwn',
-  S: 'nnwnnnwwn',
-  T: 'nnnnwnwwn',
-  U: 'wwnnnnnnw',
-  V: 'nwwnnnnnw',
-  W: 'wwwnnnnnn',
-  X: 'nwnnwnnnw',
-  Y: 'wwnnwnnnn',
-  Z: 'nwwnwnnnn',
-  '-': 'nwnnnnwnw',
-  '.': 'wwnnnnwnn',
-  ' ': 'nwwnnnwnn',
-  $: 'nwnwnwnnn',
-  '/': 'nwnwnnnwn',
-  '+': 'nwnnnwnwn',
-  '%': 'nnnwnwnwn',
-  '*': 'nwnnwnwnn',
+  '0': 'NNNWWNWNN', '1': 'WNNWNNNNW', '2': 'NNWWNNNNW', '3': 'WNWWNNNNN',
+  '4': 'NNNWWNNNW', '5': 'WNNWWNNNN', '6': 'NNWWWNNNN', '7': 'NNNWNNWNW',
+  '8': 'WNNWNNWNN', '9': 'NNWWNNWNN', 'A': 'WNNNNWNNW', 'B': 'NNWNNWNNW',
+  'C': 'WNWNNWNNN', 'D': 'NNNNWWNNW', 'E': 'WNNNWWNNN', 'F': 'NNWNWWNNN',
+  'G': 'NNNNNWWNW', 'H': 'WNNNNWWNN', 'I': 'NNWNNWWNN', 'J': 'NNNNWWWNN',
+  'K': 'WNNNNNNWW', 'L': 'NNWNNNNWW', 'M': 'WNWNNNNWN', 'N': 'NNNNWNNWW',
+  'O': 'WNNNWNNWN', 'P': 'NNWNWNNWN', 'Q': 'NNNNNNWWW', 'R': 'WNNNNNWWN',
+  'S': 'NNWNNNWWN', 'T': 'NNNNWNWWN', 'U': 'WWNNNNNNW', 'V': 'NWWNNNNNW',
+  'W': 'WWWNNNNNN', 'X': 'NWNNWNNNW', 'Y': 'WWNNWNNNN', 'Z': 'NWWNWNNNN',
+  '-': 'NWNNNNWNW', '.': 'WWNNNNWNN', ' ': 'NWWNNNWNN', '$': 'NWNWNWNNN',
+  '/': 'NWNWNNNWN', '+': 'NWNNNWNWN', '%': 'NNNWNWNWN', '*': 'NWNNWNWNN'
 };
 
 /**
  * Generates an inline Code-39 SVG Barcode that prints 100% reliably on 80mm thermal printers.
+ * Includes standard optical quiet zones and crisp contrast for barcode scanner guns.
  */
-export function generateCode39BarcodeSvg(value: string, height = 36): string {
+export function generateCode39BarcodeSvg(value: string, height = 38): string {
   const cleanInput =
     (value || 'INV')
       .toUpperCase()
       .replace(/[^0-9A-Z\-. $/+%]/g, '') || 'INV001';
   const fullText = `*${cleanInput}*`;
 
-  const narrow = 1.5;
-  const wide = 3.5;
+  const narrow = 1.4;
+  const wide = 3.2;
   const gap = 1.5;
+  const quietZone = 16;
 
-  let x = 0;
+  let x = quietZone;
   let rects = '';
 
   for (let i = 0; i < fullText.length; i++) {
     const ch = fullText[i];
-    const pattern = CODE39_MAP[ch] || CODE39_MAP['0'];
+    const pattern = CODE39_MAP[ch] || CODE39_MAP['-'];
     for (let j = 0; j < 9; j++) {
       const isBar = j % 2 === 0;
-      const w = pattern[j] === 'w' ? wide : narrow;
+      const isWide = pattern[j] === 'W';
+      const w = isWide ? wide : narrow;
       if (isBar) {
-        rects += `<rect x="${x}" y="0" width="${w}" height="${height}" fill="#000000" />`;
+        rects += `<rect x="${x.toFixed(1)}" y="2" width="${w.toFixed(1)}" height="${height}" fill="#000000" />`;
       }
       x += w;
     }
     x += gap;
   }
 
+  const totalW = Math.ceil(x + quietZone - gap);
+  const totalH = height + 18;
+
   return `
-    <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 ${x} ${height + 14}" width="100%" height="${height + 14}" style="max-width: 210px; display: block; margin: 0 auto;">
+    <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 ${totalW} ${totalH}" width="100%" height="${totalH}" style="max-width: 250px; display: block; margin: 0 auto; background: #ffffff;">
+      <rect width="${totalW}" height="${totalH}" fill="#ffffff" />
       ${rects}
-      <text x="${x / 2}" y="${height + 11}" text-anchor="middle" font-family="'Tahoma', 'Arial', monospace" font-size="10" font-weight="bold" fill="#000000" letter-spacing="1.5">${fullText}</text>
+      <text x="${(totalW / 2).toFixed(1)}" y="${totalH - 3}" text-anchor="middle" font-family="'Tahoma', Arial, monospace" font-size="10.5" font-weight="bold" fill="#000000" letter-spacing="1.5">${fullText}</text>
     </svg>
   `;
 }
@@ -782,16 +758,17 @@ export function buildStructuredA4Html(meta: PdfDocumentMeta): string {
         </div>
       </div>
 
-      <!-- Arrêtée la présente facture clause (Centered) -->
-      <div style="margin-top: 14px; padding: 10px 14px; background: #f8fafc; border: 1px solid #cbd5e1; border-radius: 8px; text-align: center; font-size: 11.5px; font-weight: 700; color: #1e293b; page-break-inside: avoid;">
-        <div>
-          <span>${isRTL ? 'حررت هذه الفاتورة بمبلغ إجمالي قدره :' : 'Certifié la présente facture au montant de :'} </span>
-          <span style="font-weight: 900; color: #0f172a; font-family: Tahoma, Arial, sans-serif;" dir="ltr">
-            ${(Number(meta.total || 0) + prevBal).toFixed(2)} ${meta.currency}
-          </span>
+      <!-- Arrêtée la présente facture clause (Centered) with full written words in Arabic and French -->
+      <div style="margin-top: 14px; padding: 10px 14px; background: #f8fafc; border: 1px solid #cbd5e1; border-radius: 8px; text-align: center; font-size: 11px; font-weight: 700; color: #1e293b; page-break-inside: avoid; line-height: 1.6;">
+        <div style="color: #0f172a; font-size: 11.5px; font-weight: 800;">
+          <span>أوقفت هذه الفاتورة عند مبلغ : </span>
+          <span style="color: #1e3a8a; font-weight: 900;">${amountToWordsAr(Number(meta.total || 0) + prevBal, meta.currency)}</span>
+          <span style="font-family: Tahoma, Arial, sans-serif; font-weight: 800; color: #475569;" dir="ltr"> (${(Number(meta.total || 0) + prevBal).toFixed(2)} ${meta.currency})</span>
         </div>
-        <div style="font-size: 10.5px; color: #475569; font-style: italic; margin-top: 3px;">
-          Arrêtée la présente facture à la somme de ${(Number(meta.total || 0) + prevBal).toFixed(2)} ${meta.currency}
+        <div style="font-size: 10.5px; color: #334155; font-style: italic; margin-top: 4px; font-weight: 700;">
+          <span>Arrêtée la présente facture à la somme de : </span>
+          <span style="color: #1e3a8a; font-weight: 800;">${amountToWordsFr(Number(meta.total || 0) + prevBal, meta.currency)}</span>
+          <span style="font-family: Tahoma, Arial, sans-serif; font-weight: 800; color: #475569;" dir="ltr"> (${(Number(meta.total || 0) + prevBal).toFixed(2)} ${meta.currency})</span>
         </div>
       </div>
 
@@ -1705,31 +1682,38 @@ function paintDocumentContentOnContext(
         y += 26;
       }
 
-      // Arrêtée la présente facture clause (Centered)
+      // Arrêtée la présente facture clause (Centered) with full written words
       y += 10;
-      const totalAmountWithPrev = (Number(meta.total || 0) + prevBalA4).toFixed(2);
+      const totalAmountWithPrev = Number(meta.total || 0) + prevBalA4;
+      const grandTotalFormatted = totalAmountWithPrev.toFixed(2);
+      const boxHeight = 50;
       ctx.fillStyle = '#f8fafc';
-      ctx.fillRect(pad, y, contentWidth, 42);
+      ctx.fillRect(pad, y, contentWidth, boxHeight);
       ctx.strokeStyle = '#cbd5e1';
       ctx.lineWidth = 1;
-      ctx.strokeRect(pad, y, contentWidth, 42);
+      ctx.strokeRect(pad, y, contentWidth, boxHeight);
 
-      const arCertText = isRTL
-        ? `حررت هذه الفاتورة بمبلغ إجمالي قدره : ${totalAmountWithPrev} ${meta.currency}`
-        : `Certifié la présente facture au montant de : ${totalAmountWithPrev} ${meta.currency}`;
-      drawText(arCertText, logicalWidth / 2, y + 8, {
-        size: 11.5,
+      const arWords = amountToWordsAr(totalAmountWithPrev, meta.currency);
+      const frWords = amountToWordsFr(totalAmountWithPrev, meta.currency);
+
+      const arLine = `أوقفت هذه الفاتورة عند مبلغ : ${arWords} (${grandTotalFormatted} ${meta.currency})`;
+      drawText(arLine, logicalWidth / 2, y + 8, {
+        size: 11,
         weight: '800',
         color: '#0f172a',
         align: 'center',
+        maxWidth: contentWidth - 16,
       });
-      drawText(`Arrêtée la présente facture à la somme de ${totalAmountWithPrev} ${meta.currency}`, logicalWidth / 2, y + 25, {
-        size: 10,
+
+      const frLine = `Arrêtée la présente facture à la somme de : ${frWords} (${grandTotalFormatted} ${meta.currency})`;
+      drawText(frLine, logicalWidth / 2, y + 28, {
+        size: 9.5,
         weight: '700',
-        color: '#475569',
+        color: '#334155',
         align: 'center',
+        maxWidth: contentWidth - 16,
       });
-      y += 52;
+      y += boxHeight + 10;
 
       // Thank you message
       drawLine(y, false, '#cbd5e1');
