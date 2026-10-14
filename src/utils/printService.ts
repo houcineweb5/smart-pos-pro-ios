@@ -29,6 +29,7 @@ export interface PdfDocumentMeta {
   currency: string;
   mode?: '80mm' | 'a4';
   isRTL?: boolean;
+  lang?: 'ar' | 'fr' | 'en';
   customTableHeaders?: {
     name?: string;
     qty?: string;
@@ -469,6 +470,16 @@ export const A4_PRINT_THEMES: Record<
  */
 export function buildStructuredA4Html(meta: PdfDocumentMeta): string {
   const isRTL = meta.isRTL !== false;
+  const isArabic = meta.lang === 'ar' || (meta.lang === undefined && isRTL);
+  const titleLower = (meta.title || '').toLowerCase();
+  const isDevis = titleLower.includes('devis') || titleLower.includes('عرض');
+  const isBonCommande = titleLower.includes('commande') || titleLower.includes('طلب');
+  const isBonLivraison = titleLower.includes('livraison') || titleLower.includes('تسليم');
+
+  const clausePrefix = isArabic
+    ? (isDevis ? 'أوقف هذا العرض عند مبلغ : ' : isBonCommande ? 'أوقف سند الطلب عند مبلغ : ' : isBonLivraison ? 'أوقف سند التسليم عند مبلغ : ' : 'أوقفت هذه الفاتورة عند مبلغ : ')
+    : (isDevis ? 'Arrêté le présent devis à la somme de : ' : isBonCommande ? 'Arrêté le présent bon de commande à la somme de : ' : isBonLivraison ? 'Arrêté le présent bon de livraison à la somme de : ' : 'Arrêtée la présente facture à la somme de : ');
+
   const alignStart = isRTL ? 'right' : 'left';
   const alignEnd = isRTL ? 'left' : 'right';
   const fontStack = `'Tajawal', 'Cairo', -apple-system, BlinkMacSystemFont, 'Segoe UI', Tahoma, Arial, sans-serif`;
@@ -758,18 +769,10 @@ export function buildStructuredA4Html(meta: PdfDocumentMeta): string {
         </div>
       </div>
 
-      <!-- Arrêtée la présente facture clause (Centered) with full written words in Arabic and French -->
-      <div style="margin-top: 14px; padding: 10px 14px; background: #f8fafc; border: 1px solid #cbd5e1; border-radius: 8px; text-align: center; font-size: 11px; font-weight: 700; color: #1e293b; page-break-inside: avoid; line-height: 1.6;">
-        <div style="color: #0f172a; font-size: 11.5px; font-weight: 800;">
-          <span>أوقفت هذه الفاتورة عند مبلغ : </span>
-          <span style="color: #1e3a8a; font-weight: 900;">${amountToWordsAr(Number(meta.total || 0) + prevBal, meta.currency)}</span>
-          <span style="font-family: Tahoma, Arial, sans-serif; font-weight: 800; color: #475569;" dir="ltr"> (${(Number(meta.total || 0) + prevBal).toFixed(2)} ${meta.currency})</span>
-        </div>
-        <div style="font-size: 10.5px; color: #334155; font-style: italic; margin-top: 4px; font-weight: 700;">
-          <span>Arrêtée la présente facture à la somme de : </span>
-          <span style="color: #1e3a8a; font-weight: 800;">${amountToWordsFr(Number(meta.total || 0) + prevBal, meta.currency)}</span>
-          <span style="font-family: Tahoma, Arial, sans-serif; font-weight: 800; color: #475569;" dir="ltr"> (${(Number(meta.total || 0) + prevBal).toFixed(2)} ${meta.currency})</span>
-        </div>
+      <!-- Arrêtée la présente facture clause (Centered) with full written words -->
+      <div style="margin-top: 14px; padding: 10px 14px; background: #f8fafc; border: 1px solid #cbd5e1; border-radius: 8px; text-align: center; font-size: 11.5px; font-weight: 800; color: #0f172a; page-break-inside: avoid; line-height: 1.6;">
+        <span>${clausePrefix}</span>
+        <span style="color: #1e3a8a; font-weight: 900;">${isArabic ? amountToWordsAr(Number(meta.total || 0) + prevBal, meta.currency) : amountToWordsFr(Number(meta.total || 0) + prevBal, meta.currency)}</span>
       </div>
 
       <!-- Thank You Message -->
@@ -918,6 +921,16 @@ function paintDocumentContentOnContext(
 ): number {
   const is80mm = meta.mode === '80mm';
   const isRTL = meta.isRTL !== false;
+  const isArabic = meta.lang === 'ar' || (meta.lang === undefined && isRTL);
+  const titleLower = (meta.title || '').toLowerCase();
+  const isDevis = titleLower.includes('devis') || titleLower.includes('عرض');
+  const isBonCommande = titleLower.includes('commande') || titleLower.includes('طلب');
+  const isBonLivraison = titleLower.includes('livraison') || titleLower.includes('تسليم');
+
+  const clausePrefix = isArabic
+    ? (isDevis ? 'أوقف هذا العرض عند مبلغ : ' : isBonCommande ? 'أوقف سند الطلب عند مبلغ : ' : isBonLivraison ? 'أوقف سند التسليم عند مبلغ : ' : 'أوقفت هذه الفاتورة عند مبلغ : ')
+    : (isDevis ? 'Arrêté le présent devis à la somme de : ' : isBonCommande ? 'Arrêté le présent bon de commande à la somme de : ' : isBonLivraison ? 'Arrêté le présent bon de livraison à la somme de : ' : 'Arrêtée la présente facture à la somme de : ');
+
   const contentWidth = logicalWidth - pad * 2;
   ctx.direction = isRTL ? 'rtl' : 'ltr';
 
@@ -1685,31 +1698,22 @@ function paintDocumentContentOnContext(
       // Arrêtée la présente facture clause (Centered) with full written words
       y += 10;
       const totalAmountWithPrev = Number(meta.total || 0) + prevBalA4;
-      const grandTotalFormatted = totalAmountWithPrev.toFixed(2);
-      const boxHeight = 50;
+      const boxHeight = 32;
       ctx.fillStyle = '#f8fafc';
       ctx.fillRect(pad, y, contentWidth, boxHeight);
       ctx.strokeStyle = '#cbd5e1';
       ctx.lineWidth = 1;
       ctx.strokeRect(pad, y, contentWidth, boxHeight);
 
-      const arWords = amountToWordsAr(totalAmountWithPrev, meta.currency);
-      const frWords = amountToWordsFr(totalAmountWithPrev, meta.currency);
+      const words = isArabic
+        ? amountToWordsAr(totalAmountWithPrev, meta.currency)
+        : amountToWordsFr(totalAmountWithPrev, meta.currency);
+      const clauseLine = `${clausePrefix}${words}`;
 
-      const arLine = `أوقفت هذه الفاتورة عند مبلغ : ${arWords} (${grandTotalFormatted} ${meta.currency})`;
-      drawText(arLine, logicalWidth / 2, y + 8, {
-        size: 11,
+      drawText(clauseLine, logicalWidth / 2, y + 9, {
+        size: isArabic ? 11 : 10,
         weight: '800',
         color: '#0f172a',
-        align: 'center',
-        maxWidth: contentWidth - 16,
-      });
-
-      const frLine = `Arrêtée la présente facture à la somme de : ${frWords} (${grandTotalFormatted} ${meta.currency})`;
-      drawText(frLine, logicalWidth / 2, y + 28, {
-        size: 9.5,
-        weight: '700',
-        color: '#334155',
         align: 'center',
         maxWidth: contentWidth - 16,
       });

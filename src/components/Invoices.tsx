@@ -711,6 +711,7 @@ export default function Invoices({ invoices, products = [], customers = [], conf
       currency: config.currency,
       mode,
       isRTL,
+      lang,
       items: safeItems.map((it) => ({
         name: it.productName || '',
         quantity: Number(it.quantity) || 0,
@@ -1642,19 +1643,15 @@ export default function Invoices({ invoices, products = [], customers = [], conf
                 {/* Arrêtée la présente facture clause (Centered) with full written words */}
                 {(() => {
                   const totalWithPrev = Number(invTotal || 0) + Number(prevBal || 0);
-                  const arWords = amountToWordsAr(totalWithPrev, config.currency);
-                  const frWords = amountToWordsFr(totalWithPrev, config.currency);
+                  const isArabic = lang === 'ar';
+                  const words = isArabic
+                    ? amountToWordsAr(totalWithPrev, config.currency)
+                    : amountToWordsFr(totalWithPrev, config.currency);
                   return (
-                    <div className="p-3.5 bg-slate-50/80 rounded-2xl border border-slate-200 text-xs text-slate-800 font-bold text-center space-y-1.5 shadow-xs">
+                    <div className="p-3.5 bg-slate-50/80 rounded-2xl border border-slate-200 text-xs text-slate-800 font-bold text-center shadow-xs">
                       <div className="text-slate-900 font-extrabold text-[12px] leading-relaxed">
-                        <span>أوقفت هذه الفاتورة عند مبلغ : </span>
-                        <span className="text-indigo-700 font-black">{arWords}</span>
-                        <span className="font-mono font-black text-slate-600 text-xs" dir="ltr"> ({totalWithPrev.toFixed(2)} {config.currency})</span>
-                      </div>
-                      <div className="text-[11px] text-slate-600 font-semibold italic leading-relaxed pt-0.5 border-t border-slate-200/60">
-                        <span>Arrêtée la présente facture à la somme de : </span>
-                        <span className="text-indigo-700 font-bold not-italic">{frWords}</span>
-                        <span className="font-mono font-bold text-slate-500 text-[10.5px]" dir="ltr"> ({totalWithPrev.toFixed(2)} {config.currency})</span>
+                        <span>{isArabic ? 'أوقفت هذه الفاتورة عند مبلغ : ' : 'Arrêtée la présente facture à la somme de : '}</span>
+                        <span className="text-indigo-700 font-black">{words}</span>
                       </div>
                     </div>
                   );
