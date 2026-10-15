@@ -43,11 +43,26 @@ namespace SmartPOS
             this.RightToLeftLayout = true;
             this.BackColor = Color.FromArgb(15, 23, 42);
             this.ForeColor = Color.White;
-            this.Font = new Font("Tahoma", 9.5f, FontStyle.Regular);
+            try
+            {
+                this.Font = new Font("Cairo", 9.5f, FontStyle.Regular);
+            }
+            catch
+            {
+                this.Font = new Font("Tahoma", 9.5f, FontStyle.Regular);
+            }
 
             try
             {
-                this.Icon = Icon.ExtractAssociatedIcon(Application.ExecutablePath);
+                string icoFile = Path.Combine(baseDir, "SmartPOS.ico");
+                if (File.Exists(icoFile))
+                {
+                    this.Icon = new Icon(icoFile);
+                }
+                else
+                {
+                    this.Icon = Icon.ExtractAssociatedIcon(Application.ExecutablePath);
+                }
             }
             catch { }
 

@@ -170,6 +170,8 @@ public class IconGenerator
         int[] sizes = new int[] { 256, 128, 64, 48, 32, 16 };
         SaveMultiSizeIcon(@"installer\SmartPOS.ico", sizes);
         SaveMultiSizeIcon(@"SmartPOS.ico", sizes);
+        SaveMultiSizeIcon(@"Final-Release\SmartPOS.ico", sizes);
+        SaveMultiSizeIcon(@"Final-Release\SmartPOS-Portable\SmartPOS.ico", sizes);
         SaveMultiSizeIcon(@"public\favicon.ico", sizes);
 
         using (Bitmap preview = RenderLuxuryBitmap(512, false))

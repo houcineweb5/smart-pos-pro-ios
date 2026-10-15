@@ -1832,8 +1832,24 @@ function renderDocumentToJpegPages(
 }
 
 /**
+ * Efficiently converts a Uint8Array into a Base64 string in chunks
+ * without hitting JavaScript call-stack size limits.
+ */
+export function uint8ArrayToBase64(bytes: Uint8Array): string {
+  let binary = '';
+  const len = bytes.byteLength;
+  const chunkSize = 8192;
+  for (let i = 0; i < len; i += chunkSize) {
+    const chunk = bytes.subarray(i, Math.min(i + chunkSize, len));
+    binary += String.fromCharCode.apply(null, chunk as any);
+  }
+  return btoa(binary);
+}
+
+/**
  * Generates a real PDF file from structured invoice/receipt metadata and triggers:
- * - On Mobile / iPhone (iOS / Android): Native Share Sheet (Save to Files / AirPrint / WhatsApp)
+ * - On Mobile / Android: Native Android Print & Share Sheet via AndroidNative bridge
+ * - On Mobile / iPhone (iOS): Native Share Sheet (Save to Files / AirPrint / WhatsApp)
  * - On Desktop (Windows / Mac): Instant direct file download (never blocked by Windows Share popup!)
  */
 export async function exportStructuredPdf(
@@ -1849,6 +1865,21 @@ export async function exportStructuredPdf(
       (filename || `${meta.docNumber || 'Document'}.pdf`).replace(/[^a-zA-Z0-9._-]/g, '_') ||
       'Document.pdf';
     const finalFilename = safeName.endsWith('.pdf') ? safeName : `${safeName}.pdf`;
+
+    // 1. Android Native Bridge Support (Instant native share sheet / save to device)
+    if (typeof window !== 'undefined' && (window as any).AndroidNative?.shareOrSavePdf) {
+      try {
+        const base64 = uint8ArrayToBase64(pdfBytes);
+        (window as any).AndroidNative.shareOrSavePdf(
+          base64,
+          finalFilename,
+          meta.title || meta.docNumber || 'SmartPOS Document'
+        );
+        return true;
+      } catch (nativeErr) {
+        console.error('AndroidNative shareOrSavePdf error:', nativeErr);
+      }
+    }
 
     const blob = new Blob([pdfBytes], { type: 'application/pdf' });
     const file = new File([blob], finalFilename, { type: 'application/pdf' });
@@ -2004,13 +2035,53 @@ export function printHtmlContent(
   const isIOS =
     /iPad|iPhone|iPod/.test(navigator.userAgent) ||
     (navigator.platform === 'MacIntel' && navigator.maxTouchPoints > 1);
+  const isAndroid = /Android/i.test(navigator.userAgent);
   const isCapacitorNative =
     typeof (window as any).Capacitor !== 'undefined' &&
     Boolean((window as any).Capacitor?.isNativePlatform?.() ?? (window as any).Capacitor?.isNative);
 
-  // In Capacitor iOS native app, window.print() is not hooked to AirPrint by default;
+  // 1. In Android Native app with AndroidNative bridge:
+  if (typeof window !== 'undefined' && (window as any).AndroidNative) {
+    const docTitle =
+      fallbackPdfMeta?.docNumber ||
+      fallbackPdfMeta?.title ||
+      normalizedOptions.title ||
+      'SmartPOS Document';
+
+    if (fallbackPdfMeta && (window as any).AndroidNative.printPdf) {
+      try {
+        const targetMode = fallbackPdfMeta.mode || mode;
+        const pages = renderDocumentToJpegPages({ ...fallbackPdfMeta, mode: targetMode });
+        const pdfBytes = createPdfFromJpegPages(pages, targetMode);
+        const base64 = uint8ArrayToBase64(pdfBytes);
+        (window as any).AndroidNative.printPdf(base64, docTitle);
+        return;
+      } catch (err) {
+        console.warn('AndroidNative.printPdf failed, fallback to printCurrentPage:', err);
+      }
+    }
+
+    if ((window as any).AndroidNative.printCurrentPage) {
+      setTimeout(() => {
+        try {
+          (window as any).AndroidNative.printCurrentPage(docTitle);
+        } catch (e) {
+          console.warn('AndroidNative.printCurrentPage error:', e);
+        }
+      }, 100);
+      return;
+    }
+  }
+
+  // 2. In Capacitor iOS native app, window.print() is not hooked to AirPrint by default;
   // immediately invoke exportStructuredPdf synchronously within the user's tap gesture!
   if (isIOS && isCapacitorNative && fallbackPdfMeta) {
+    exportStructuredPdf(fallbackPdfMeta);
+    return;
+  }
+
+  // 3. Fallback on Android Capacitor if bridge is not available:
+  if (isAndroid && isCapacitorNative && fallbackPdfMeta) {
     exportStructuredPdf(fallbackPdfMeta);
     return;
   }
@@ -2037,6 +2108,24 @@ export async function exportDatabaseBackupFile(
     const safeFilename = filename.endsWith('.json') ? filename : `${filename}.json`;
     const blob = new Blob([jsonString], { type: 'application/json;charset=utf-8' });
     const file = new File([blob], safeFilename, { type: 'application/json' });
+
+    // 1. Android Native Bridge Support
+    if (typeof window !== 'undefined' && (window as any).AndroidNative?.shareOrSaveFile) {
+      try {
+        const encoder = new TextEncoder();
+        const bytes = encoder.encode(jsonString);
+        const base64 = uint8ArrayToBase64(bytes);
+        (window as any).AndroidNative.shareOrSaveFile(
+          base64,
+          safeFilename,
+          'application/json',
+          'Smart POS Database Backup'
+        );
+        return 'shared';
+      } catch (nativeErr) {
+        console.error('AndroidNative shareOrSaveFile backup error:', nativeErr);
+      }
+    }
 
     const isMobileDevice =
       typeof navigator !== 'undefined' &&
@@ -2096,6 +2185,24 @@ export async function exportCsvFile(
     const fullText = csvContent.startsWith(bom) ? csvContent : bom + csvContent;
     const blob = new Blob([fullText], { type: 'text/csv;charset=utf-8;' });
     const file = new File([blob], safeFilename, { type: 'text/csv' });
+
+    // 1. Android Native Bridge Support
+    if (typeof window !== 'undefined' && (window as any).AndroidNative?.shareOrSaveFile) {
+      try {
+        const encoder = new TextEncoder();
+        const bytes = encoder.encode(fullText);
+        const base64 = uint8ArrayToBase64(bytes);
+        (window as any).AndroidNative.shareOrSaveFile(
+          base64,
+          safeFilename,
+          'text/csv',
+          safeFilename
+        );
+        return 'shared';
+      } catch (nativeErr) {
+        console.error('AndroidNative shareOrSaveFile csv error:', nativeErr);
+      }
+    }
 
     const isMobileDevice =
       typeof navigator !== 'undefined' &&

@@ -4,13 +4,29 @@ using System.Drawing;
 using System.IO;
 using System.IO.Compression;
 using System.Reflection;
+using System.Runtime.InteropServices;
 using System.Threading;
 using System.Windows.Forms;
+using Microsoft.Win32;
 
 namespace SmartPOSSetup
 {
     public class SetupForm : Form
     {
+        [DllImport("gdi32.dll", EntryPoint = "AddFontResourceW", SetLastError = true)]
+        public static extern int AddFontResource([In, MarshalAs(UnmanagedType.LPWStr)] string lpFileName);
+
+        [DllImport("user32.dll")]
+        public static extern int SendMessage(IntPtr hWnd, uint Msg, IntPtr wParam, IntPtr lParam);
+
+        [DllImport("shell32.dll")]
+        public static extern void SHChangeNotify(int wEventId, uint uFlags, IntPtr dwItem1, IntPtr dwItem2);
+
+        private const int SHCNE_ASSOCCHANGED = 0x08000000;
+        private const uint SHCNF_IDLIST = 0x0000;
+        private const uint SHCNF_FLUSH = 0x1000;
+        private const uint WM_FONTCHANGE = 0x001D;
+        private const int HWND_BROADCAST = 0xffff;
         private TextBox pathBox;
         private Button browseBtn;
         private Button installBtn;
@@ -29,14 +45,27 @@ namespace SmartPOSSetup
             this.RightToLeft = RightToLeft.Yes;
             this.RightToLeftLayout = true;
             this.BackColor = Color.FromArgb(15, 23, 42);
-            this.ForeColor = Color.White;
-            this.Font = new Font("Tahoma", 9.5f, FontStyle.Regular);
+            try
+            {
+                this.Font = new Font("Cairo", 9.5f, FontStyle.Regular);
+            }
+            catch
+            {
+                this.Font = new Font("Tahoma", 9.5f, FontStyle.Regular);
+            }
 
             try
             {
-                this.Icon = Icon.ExtractAssociatedIcon(Application.ExecutablePath);
+                using (Stream s = Assembly.GetExecutingAssembly().GetManifestResourceStream("SmartPOS.ico"))
+                {
+                    if (s != null) this.Icon = new Icon(s);
+                    else this.Icon = Icon.ExtractAssociatedIcon(Application.ExecutablePath);
+                }
             }
-            catch { }
+            catch
+            {
+                try { this.Icon = Icon.ExtractAssociatedIcon(Application.ExecutablePath); } catch { }
+            }
 
             Label headerLabel = new Label();
             headerLabel.Text = "📦 تثبيت برنامج Smart Pos";
@@ -204,24 +233,27 @@ namespace SmartPOSSetup
 
                 string exePath = Path.Combine(targetDir, "SmartPOS.exe");
 
+                // تثبيت خطوط البرنامج في نظام ويندوز (Cairo و Tajawal و JetBrains Mono)
+                UpdateProgress(85, "⏳ جاري تثبيت خطوط البرنامج (Cairo و Tajawal) في ويندوز...");
+                InstallFontsToWindows(targetDir);
+
                 if (desktopShortcutCheck.Checked)
                 {
-                    UpdateProgress(90, "⏳ جاري إنشاء اختصار Smart Pos على سطح المكتب وقائمة ابدأ...");
+                    UpdateProgress(92, "⏳ جاري إنشاء اختصار Smart Pos وتحديث أيقونة سطح المكتب...");
+                    CleanOldShortcuts();
+
                     string desktopDir = Environment.GetFolderPath(Environment.SpecialFolder.DesktopDirectory);
-                    string oldDesktopShortcut = Path.Combine(desktopDir, "نظام المبيعات والفوترة الذكي.lnk");
-                    if (File.Exists(oldDesktopShortcut))
-                    {
-                        try { File.Delete(oldDesktopShortcut); } catch { }
-                    }
                     CreateShortcut(Path.Combine(desktopDir, "Smart Pos.lnk"), exePath, targetDir);
 
                     string startMenuDir = Environment.GetFolderPath(Environment.SpecialFolder.Programs);
-                    string oldStartShortcut = Path.Combine(startMenuDir, "نظام المبيعات والفوترة الذكي.lnk");
-                    if (File.Exists(oldStartShortcut))
-                    {
-                        try { File.Delete(oldStartShortcut); } catch { }
-                    }
                     CreateShortcut(Path.Combine(startMenuDir, "Smart Pos.lnk"), exePath, targetDir);
+
+                    // تحديث كاش الأيقونات فوراً في Windows Explorer
+                    try
+                    {
+                        SHChangeNotify(SHCNE_ASSOCCHANGED, SHCNF_IDLIST | SHCNF_FLUSH, IntPtr.Zero, IntPtr.Zero);
+                    }
+                    catch { }
                 }
 
                 UpdateProgress(100, "✅ اكتمل التثبيت بنجاح!");
@@ -272,6 +304,10 @@ namespace SmartPOSSetup
                     try { File.Delete(shortcutPath); } catch { }
                 }
                 string icoFile = Path.Combine(workingDir, "SmartPOS.ico");
+                if (File.Exists(icoFile))
+                {
+                    try { File.SetLastWriteTime(icoFile, DateTime.Now); } catch { }
+                }
                 string iconLocation = File.Exists(icoFile) ? (icoFile + ",0") : (targetExe + ",0");
 
                 Type shellType = Type.GetTypeFromProgID("WScript.Shell");
@@ -283,6 +319,134 @@ namespace SmartPOSSetup
                 shortcutType.InvokeMember("IconLocation", BindingFlags.SetProperty, null, shortcut, new object[] { iconLocation });
                 shortcutType.InvokeMember("Description", BindingFlags.SetProperty, null, shortcut, new object[] { "Smart Pos" });
                 shortcutType.InvokeMember("Save", BindingFlags.InvokeMethod, null, shortcut, null);
+
+                if (File.Exists(shortcutPath))
+                {
+                    try { File.SetLastWriteTime(shortcutPath, DateTime.Now); } catch { }
+                }
+            }
+            catch { }
+        }
+
+        private static void CleanOldShortcuts()
+        {
+            string[] shortcutNames = new string[]
+            {
+                "Smart Pos.lnk",
+                "SmartPOS.lnk",
+                "Smart POS.lnk",
+                "Smart POS Pro.lnk",
+                "نظام المبيعات والفوترة الذكي.lnk",
+                "نظام المبيعات والفوترة.lnk"
+            };
+
+            Environment.SpecialFolder[] folders = new Environment.SpecialFolder[]
+            {
+                Environment.SpecialFolder.DesktopDirectory,
+                Environment.SpecialFolder.CommonDesktopDirectory,
+                Environment.SpecialFolder.Programs,
+                Environment.SpecialFolder.CommonPrograms
+            };
+
+            foreach (var folder in folders)
+            {
+                try
+                {
+                    string folderPath = Environment.GetFolderPath(folder);
+                    if (string.IsNullOrEmpty(folderPath) || !Directory.Exists(folderPath)) continue;
+
+                    foreach (var name in shortcutNames)
+                    {
+                        string p = Path.Combine(folderPath, name);
+                        if (File.Exists(p))
+                        {
+                            try { File.Delete(p); } catch { }
+                        }
+                    }
+                }
+                catch { }
+            }
+        }
+
+        private static string GetFontDisplayName(string fileName)
+        {
+            string name = Path.GetFileNameWithoutExtension(fileName);
+            if (name.IndexOf("Cairo", StringComparison.OrdinalIgnoreCase) >= 0) return "Cairo";
+            if (name.IndexOf("JetBrains", StringComparison.OrdinalIgnoreCase) >= 0) return "JetBrains Mono";
+            if (name.IndexOf("Tajawal-Regular", StringComparison.OrdinalIgnoreCase) >= 0) return "Tajawal Regular";
+            if (name.IndexOf("Tajawal-Medium", StringComparison.OrdinalIgnoreCase) >= 0) return "Tajawal Medium";
+            if (name.IndexOf("Tajawal-Bold", StringComparison.OrdinalIgnoreCase) >= 0) return "Tajawal Bold";
+            if (name.IndexOf("Tajawal-ExtraBold", StringComparison.OrdinalIgnoreCase) >= 0) return "Tajawal ExtraBold";
+            if (name.IndexOf("Tajawal-Black", StringComparison.OrdinalIgnoreCase) >= 0) return "Tajawal Black";
+            if (name.IndexOf("Tajawal", StringComparison.OrdinalIgnoreCase) >= 0) return "Tajawal";
+            return name;
+        }
+
+        private static void InstallFontsToWindows(string targetDir)
+        {
+            try
+            {
+                string fontsDir = Path.Combine(targetDir, @"dist\fonts");
+                if (!Directory.Exists(fontsDir))
+                {
+                    fontsDir = Path.Combine(targetDir, @"public\fonts");
+                }
+                if (!Directory.Exists(fontsDir)) return;
+
+                string winFontsDir = Environment.GetFolderPath(Environment.SpecialFolder.Fonts);
+                string userFontsDir = Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData), @"Microsoft\Windows\Fonts");
+
+                string[] fontFiles = Directory.GetFiles(fontsDir, "*.ttf");
+                bool anyInstalled = false;
+
+                foreach (string fontFile in fontFiles)
+                {
+                    string fileName = Path.GetFileName(fontFile);
+                    string fontTitle = GetFontDisplayName(fileName);
+                    bool systemSuccess = false;
+
+                    // 1. Try system-wide install (C:\Windows\Fonts)
+                    try
+                    {
+                        string sysDest = Path.Combine(winFontsDir, fileName);
+                        File.Copy(fontFile, sysDest, true);
+                        Registry.SetValue(@"HKEY_LOCAL_MACHINE\SOFTWARE\Microsoft\Windows NT\CurrentVersion\Fonts", fontTitle + " (TrueType)", fileName);
+                        AddFontResource(sysDest);
+                        systemSuccess = true;
+                        anyInstalled = true;
+                    }
+                    catch
+                    {
+                        systemSuccess = false;
+                    }
+
+                    // 2. If system-wide fails (e.g. non-admin rights), install per-user (Windows 10/11)
+                    if (!systemSuccess)
+                    {
+                        try
+                        {
+                            if (!Directory.Exists(userFontsDir))
+                            {
+                                Directory.CreateDirectory(userFontsDir);
+                            }
+                            string userDest = Path.Combine(userFontsDir, fileName);
+                            File.Copy(fontFile, userDest, true);
+                            Registry.SetValue(@"HKEY_CURRENT_USER\Software\Microsoft\Windows NT\CurrentVersion\Fonts", fontTitle + " (TrueType)", userDest);
+                            AddFontResource(userDest);
+                            anyInstalled = true;
+                        }
+                        catch { }
+                    }
+                }
+
+                if (anyInstalled)
+                {
+                    try
+                    {
+                        SendMessage((IntPtr)HWND_BROADCAST, WM_FONTCHANGE, IntPtr.Zero, IntPtr.Zero);
+                    }
+                    catch { }
+                }
             }
             catch { }
         }
