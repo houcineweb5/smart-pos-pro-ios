@@ -140,9 +140,10 @@ async function startServer() {
 
   // Vite middleware for development vs static serve for production
   const distPath = path.join(process.cwd(), 'dist');
-  const isProd = process.env.NODE_ENV === 'production' || fs.existsSync(path.join(distPath, 'index.html'));
+  const isRunningBuiltServer = (process.argv[1] || '').includes('server.cjs');
+  const isProd = process.env.NODE_ENV === 'production' || isRunningBuiltServer;
 
-  if (!isProd && process.env.NODE_ENV !== 'production') {
+  if (!isProd) {
     const { createServer: createViteServer } = await import('vite');
     const vite = await createViteServer({
       server: { middlewareMode: true },

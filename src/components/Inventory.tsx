@@ -251,8 +251,8 @@ export default function Inventory({ products, config, onSaveProduct, onDeletePro
       `"${(p.unit || 'pcs').replace(/"/g, '""')}"`
     ]);
 
-    // Use semicolon separator so Microsoft Excel in European/Arab regional settings opens columns automatically
-    const csvContent = [headers.join(';'), ...rows.map(r => r.join(';'))].join('\r\n');
+    // sep=;\r\n informs Microsoft Excel directly to use semicolon separator so each column is in its own cell!
+    const csvContent = 'sep=;\r\n' + [headers.join(';'), ...rows.map(r => r.join(';'))].join('\r\n');
     const filename = `inventory_${new Date().toISOString().slice(0, 10)}.csv`;
     await exportCsvFile(csvContent, filename);
   };

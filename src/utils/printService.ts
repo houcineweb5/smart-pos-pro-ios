@@ -294,16 +294,16 @@ export function buildUnified80mmReceiptHtml(
       const disc = Number(item.discount) || 0;
       return `
       <tr>
-        <td style="text-align: ${isRTL ? 'right' : 'left'}; padding: 2.5px 2px; vertical-align: middle; font-size: 11.5px; font-weight: 800; color: #000; font-family: ${productFont};">
+        <td style="text-align: ${isRTL ? 'right' : 'left'}; padding: 3px 2px; vertical-align: middle; font-size: 11.5px; font-weight: 800; color: #000000 !important; font-family: ${productFont};">
           ${item.productName || ''} ${disc > 0 ? `<span style="font-size: 9px; font-weight: 700;">(-${disc}%)</span>` : ''}
         </td>
-        <td style="text-align: center; padding: 2.5px 2px; vertical-align: middle; font-size: 11.5px; font-weight: 800; color: #000; font-family: ${productFont}; white-space: nowrap;">
+        <td style="text-align: center; padding: 3px 2px; vertical-align: middle; font-size: 11.5px; font-weight: 800; color: #000000 !important; font-family: ${productFont}; white-space: nowrap;">
           ${qty}
         </td>
-        <td style="text-align: ${isRTL ? 'left' : 'right'}; padding: 2.5px 2px; vertical-align: middle; font-size: 11.5px; font-weight: 800; color: #000; font-family: ${productFont}; white-space: nowrap;">
+        <td style="text-align: ${isRTL ? 'left' : 'right'}; padding: 3px 2px; vertical-align: middle; font-size: 11.5px; font-weight: 800; color: #000000 !important; font-family: ${productFont}; white-space: nowrap;">
           ${sellingPrice.toFixed(2)}
         </td>
-        <td style="text-align: ${isRTL ? 'left' : 'right'}; padding: 2.5px 2px; vertical-align: middle; font-size: 11.5px; font-weight: 900; color: #000; font-family: ${productFont}; white-space: nowrap;">
+        <td style="text-align: ${isRTL ? 'left' : 'right'}; padding: 3px 2px; vertical-align: middle; font-size: 11.5px; font-weight: 900; color: #000000 !important; font-family: ${productFont}; white-space: nowrap;">
           ${lineTotal.toFixed(2)}
         </td>
       </tr>
@@ -312,24 +312,24 @@ export function buildUnified80mmReceiptHtml(
     .join('');
 
   return `
-    <div style="font-family: ${receiptFont}; font-size: 11px; font-weight: 700; color: #000000; background: #ffffff; direction: ${isRTL ? 'rtl' : 'ltr'}; line-height: 1.45;">
+    <div style="font-family: ${receiptFont}; font-size: 11px; font-weight: 700; color: #000000 !important; background: #ffffff !important; direction: ${isRTL ? 'rtl' : 'ltr'}; line-height: 1.45;">
       <div style="text-align: center; margin-bottom: 8px;">
         ${config.showLogoOnInvoice !== false && config.logoUrl ? `<img src="${config.logoUrl}" style="max-height: 44px; max-width: 140px; object-fit: contain; margin: 0 auto 4px auto; display: block;" />` : ''}
-        <h2 style="margin: 0; font-size: 15px; font-weight: 900; color: ${activeReceiptStyle.accent}; font-family: ${receiptFont};">${config.name || 'Smart POS'}</h2>
-        ${config.showAddressOnInvoice !== false && config.address ? `<div style="font-size: 10px; font-weight: 700; margin-top: 2px; color: #334155;">${config.address}</div>` : ''}
-        ${config.showPhoneOnInvoice !== false && config.phone ? `<div style="font-size: 10px; font-weight: 700; color: #334155;">${lang === 'ar' ? 'الهاتف:' : 'Tél:'} ${config.phone}</div>` : ''}
+        <h2 style="margin: 0; font-size: 15px; font-weight: 900; color: #000000 !important; font-family: ${receiptFont};">${config.name || 'Smart POS'}</h2>
+        ${config.showAddressOnInvoice !== false && config.address ? `<div style="font-size: 10px; font-weight: 700; margin-top: 2px; color: #000000 !important;">${config.address}</div>` : ''}
+        ${config.showPhoneOnInvoice !== false && config.phone ? `<div style="font-size: 10px; font-weight: 700; color: #000000 !important;">${lang === 'ar' ? 'الهاتف:' : 'Tél:'} ${config.phone}</div>` : ''}
         ${config.showTaxNumberOnInvoice !== false && (config.registrationNumber || config.taxNumber) ? `
-          <div style="font-size: 9.5px; font-weight: 700; color: #475569; font-family: ${numFont}; margin-top: 1px;">
+          <div style="font-size: 9.5px; font-weight: 700; color: #000000 !important; font-family: ${numFont}; margin-top: 1px;">
             ${[config.registrationNumber ? `ICE: ${config.registrationNumber}` : '', config.taxNumber ? `RC/IF: ${config.taxNumber}` : ''].filter(Boolean).join('  |  ')}
           </div>
         ` : ''}
         ${inv.docTitle ? `<div style="font-size: 12px; font-weight: 900; margin-top: 5px; color: #000000 !important; background: #ffffff !important; border: 1.5px solid #000000 !important; display: inline-block; padding: 2.5px 12px; border-radius: 4px; text-transform: uppercase; font-family: ${receiptFont};">${inv.docTitle}</div>` : ''}
       </div>
 
-      <div style="border-top: 1.5px solid ${activeReceiptStyle.border}; border-bottom: 1.5px solid ${activeReceiptStyle.border}; padding: 6px 0; margin-bottom: 8px; font-size: 10px; font-weight: 700; color: #000000;">
+      <div style="border-top: 1.5px solid #000000 !important; border-bottom: 1.5px solid #000000 !important; padding: 6px 0; margin-bottom: 8px; font-size: 10px; font-weight: 700; color: #000000 !important;">
         <div style="display: flex; justify-content: space-between; align-items: center; gap: 4px;">
-          <span>${inv.docNumberLabel || (lang === 'ar' ? 'رقم الفاتورة:' : 'N°:')} <b style="font-family: ${numFont}; color: ${activeReceiptStyle.accent};">${inv.invoiceNumber || ''}</b></span>
-          <span style="font-family: ${numFont};" dir="ltr">${dateStr}</span>
+          <span>${inv.docNumberLabel || (lang === 'ar' ? 'رقم الفاتورة:' : 'N°:')} <b style="font-family: ${numFont}; color: #000000 !important;">${inv.invoiceNumber || ''}</b></span>
+          <span style="font-family: ${numFont}; color: #000000 !important;" dir="ltr">${dateStr}</span>
         </div>
         <div style="display: flex; justify-content: space-between; align-items: center; gap: 4px; margin-top: 3px;">
           <span>${inv.partyLabel || (lang === 'ar' ? 'الزبون :' : 'Client :')} <b>${formatCustomerDisplayName(inv.customerName) || (lang === 'ar' ? 'زبون عابر' : 'Walk-in')}</b></span>
@@ -339,11 +339,11 @@ export function buildUnified80mmReceiptHtml(
 
       <table style="width: 100%; border-collapse: collapse; margin-bottom: 8px; font-size: 11px;">
         <thead>
-          <tr style="border-bottom: 2px solid ${activeReceiptStyle.border}; font-size: 10.5px;">
-            <th style="text-align: ${isRTL ? 'right' : 'left'}; padding: 4px 2px; font-weight: 800; color: ${activeReceiptStyle.accent}; width: 42%; font-family: ${receiptFont};">${lang === 'ar' ? 'المنتج' : 'Article'}</th>
-            <th style="text-align: center; padding: 4px 2px; font-weight: 800; color: ${activeReceiptStyle.accent}; width: 16%; font-family: ${receiptFont};">${lang === 'ar' ? 'العدد' : 'Qté'}</th>
-            <th style="text-align: ${isRTL ? 'left' : 'right'}; padding: 4px 2px; font-weight: 800; color: ${activeReceiptStyle.accent}; width: 21%; font-family: ${receiptFont};">${lang === 'ar' ? 'السعر' : 'Prix'}</th>
-            <th style="text-align: ${isRTL ? 'left' : 'right'}; padding: 4px 2px; font-weight: 800; color: ${activeReceiptStyle.accent}; width: 21%; font-family: ${receiptFont};">${lang === 'ar' ? 'المجموع' : 'Total'}</th>
+          <tr style="border-bottom: 2px solid #000000 !important; font-size: 10.5px;">
+            <th style="text-align: ${isRTL ? 'right' : 'left'}; padding: 4px 2px; font-weight: 800; color: #000000 !important; width: 42%; font-family: ${receiptFont}; border-bottom: 2px solid #000000 !important;">${lang === 'ar' ? 'المنتج' : 'Article'}</th>
+            <th style="text-align: center; padding: 4px 2px; font-weight: 800; color: #000000 !important; width: 16%; font-family: ${receiptFont}; border-bottom: 2px solid #000000 !important;">${lang === 'ar' ? 'العدد' : 'Qté'}</th>
+            <th style="text-align: ${isRTL ? 'left' : 'right'}; padding: 4px 2px; font-weight: 800; color: #000000 !important; width: 21%; font-family: ${receiptFont}; border-bottom: 2px solid #000000 !important;">${lang === 'ar' ? 'السعر' : 'Prix'}</th>
+            <th style="text-align: ${isRTL ? 'left' : 'right'}; padding: 4px 2px; font-weight: 800; color: #000000 !important; width: 21%; font-family: ${receiptFont}; border-bottom: 2px solid #000000 !important;">${lang === 'ar' ? 'المجموع' : 'Total'}</th>
           </tr>
         </thead>
         <tbody>
@@ -351,7 +351,7 @@ export function buildUnified80mmReceiptHtml(
         </tbody>
       </table>
 
-      <div style="border-top: 1.5px solid ${activeReceiptStyle.border}; padding-top: 6px; font-size: 11px; font-weight: 700; color: #000000;">
+      <div style="border-top: 1.5px solid #000000 !important; padding-top: 6px; font-size: 11px; font-weight: 700; color: #000000 !important;">
         <div style="display: flex; justify-content: space-between; margin-bottom: 3px;">
           <span>${lang === 'ar' ? 'المجموع:' : 'Sous-total:'}</span>
           <span style="font-family: ${numFont}; font-weight: 700;" dir="ltr">${invSubtotal.toFixed(2)} ${currency}</span>
@@ -361,7 +361,7 @@ export function buildUnified80mmReceiptHtml(
             ? `
         <div style="display: flex; justify-content: space-between; margin-bottom: 3px;">
           <span>${lang === 'ar' ? 'الالخصم:' : 'Remise:'}</span>
-          <span style="font-family: ${numFont}; font-weight: 700; color: #dc2626;" dir="ltr">-${invDiscount.toFixed(2)} ${currency}</span>
+          <span style="font-family: ${numFont}; font-weight: 700; color: #000000 !important;" dir="ltr">-${invDiscount.toFixed(2)} ${currency}</span>
         </div>
         `
             : ''
@@ -385,13 +385,13 @@ export function buildUnified80mmReceiptHtml(
         </div>
         <div style="display: flex; justify-content: space-between; margin-bottom: 3px;">
           <span>${lang === 'ar' ? 'كريدي قديم / مبلغ سابق:' : 'Ancien Crédit:'}</span>
-          <span style="font-family: ${numFont}; font-weight: 700; color: #b45309;" dir="ltr">+${prevBal.toFixed(2)} ${currency}</span>
+          <span style="font-family: ${numFont}; font-weight: 700; color: #000000 !important;" dir="ltr">+${prevBal.toFixed(2)} ${currency}</span>
         </div>
         `
             : ''
         }
-        <div style="border: 2px solid ${activeReceiptStyle.border}; padding: 5px 8px; border-radius: 6px; margin: 6px 0; display: flex; justify-content: space-between; align-items: center; background: ${receiptTheme === 'classic' ? '#ffffff' : '#f8fafc'}; white-space: nowrap;">
-          <span style="font-weight: 800; font-size: 12px; color: ${activeReceiptStyle.accent}; font-family: ${receiptFont};">${
+        <div style="border: 2px solid #000000 !important; padding: 5px 8px; border-radius: 4px; margin: 6px 0; display: flex; justify-content: space-between; align-items: center; background: #ffffff !important; color: #000000 !important; white-space: nowrap;">
+          <span style="font-weight: 900; font-size: 12.5px; color: #000000 !important; font-family: ${receiptFont};">${
             config.showDebtOnInvoice !== false && prevBal > 0
               ? lang === 'ar'
                 ? 'المجموع الكلي:'
@@ -400,7 +400,7 @@ export function buildUnified80mmReceiptHtml(
               ? 'المجموع الإجمالي:'
               : 'TOTAL:'
           }</span>
-          <span style="font-weight: 900; font-size: 16px; font-family: ${numFont}; color: ${activeReceiptStyle.accent};" dir="ltr">${grandTotal.toFixed(2)} ${currency}</span>
+          <span style="font-weight: 900; font-size: 16px; font-family: ${numFont}; color: #000000 !important;" dir="ltr">${grandTotal.toFixed(2)} ${currency}</span>
         </div>
         <div style="display: flex; justify-content: center; align-items: center; gap: 6px; text-align: center; margin-bottom: 3px; font-weight: 800;">
           <span>${lang === 'ar' ? 'عدد المنتجات:' : 'Articles:'}</span>
@@ -428,7 +428,7 @@ export function buildUnified80mmReceiptHtml(
           : ''
       }
 
-      <div style="text-align: center; margin-top: 8px; padding-top: 6px; border-top: 1.5px solid #000000; font-size: 10.5px; font-weight: 700; color: #000000; font-family: ${receiptFont}; line-height: 1.5;">
+      <div style="text-align: center; margin-top: 8px; padding-top: 6px; border-top: 1.5px solid #000000 !important; font-size: 10.5px; font-weight: 700; color: #000000 !important; font-family: ${receiptFont}; line-height: 1.5;">
         ${thankYouText || (lang === 'ar' ? 'شكراً لتعاملكم معنا ومرحباً بكم في أي وقت!' : 'Thank you for your business!')}
       </div>
     </div>
@@ -2256,30 +2256,78 @@ export async function exportDatabaseBackupFile(
 }
 
 /**
+ * Sanitizes a filename for CSV / Excel exports to guarantee it works on all operating systems
+ * (Windows, Android, iOS, macOS) and prevents long filenames (>207 chars) or invalid characters.
+ */
+export function sanitizeDownloadFilename(raw: string | undefined, defaultBase = 'inventory'): string {
+  const dateStr = new Date().toISOString().slice(0, 10);
+  if (!raw || typeof raw !== 'string') {
+    return `${defaultBase}_${dateStr}.csv`;
+  }
+
+  // If raw contains newlines, delimiters (; or ,), or starts with sep=, it is definitely CSV content passed by mistake!
+  if (
+    raw.includes('\n') ||
+    raw.includes('\r') ||
+    raw.includes(';') ||
+    raw.includes(',') ||
+    raw.trim().toLowerCase().startsWith('sep=') ||
+    raw.length > 60
+  ) {
+    return `${defaultBase}_${dateStr}.csv`;
+  }
+
+  // Remove illegal filename characters across Windows, Android, Linux
+  let clean = raw.replace(/[\\/:*?"<>|\r\n\t;]/g, '_').trim();
+  if (!clean || clean.length > 50) {
+    return `${defaultBase}_${dateStr}.csv`;
+  }
+  if (!clean.toLowerCase().endsWith('.csv')) {
+    clean += '.csv';
+  }
+  return clean;
+}
+
+/**
  * Exports / Shares CSV file reliably on iPhone (iOS Share Sheet -> Save to Files / Excel / WhatsApp)
  * as well as Android and Desktop browsers.
+ * Safe against inverted argument calls, BOM issues, and long filename errors in Microsoft Excel.
  */
 export async function exportCsvFile(
   arg1: string,
   arg2?: string
 ): Promise<'shared' | 'downloaded' | 'error'> {
   try {
-    let csvContent = arg1 || '';
-    let filename = arg2 || `inventory_${new Date().toISOString().slice(0, 10)}.csv`;
+    let csvContent = '';
+    let filename = '';
 
-    // Robust argument order detection:
-    // If arg1 looks like a filename (e.g. ends with .csv or is a short single-line name)
-    // and arg2 looks like the CSV body (contains newlines or separators)
-    if (
-      (arg1.endsWith('.csv') || (!arg1.includes('\n') && arg1.length < 150)) &&
-      arg2 &&
-      (arg2.includes('\n') || arg2.includes(';') || arg2.includes(','))
-    ) {
-      filename = arg1;
+    // Smart detection: determine which parameter is the file body and which is the file name
+    const isArg1Body =
+      typeof arg1 === 'string' &&
+      (arg1.includes('\n') || arg1.includes('\r') || arg1.includes(';') || arg1.includes(',') || arg1.trim().toLowerCase().startsWith('sep='));
+
+    const isArg2Body =
+      typeof arg2 === 'string' &&
+      (arg2.includes('\n') || arg2.includes('\r') || arg2.includes(';') || arg2.includes(',') || arg2.trim().toLowerCase().startsWith('sep='));
+
+    if (isArg1Body) {
+      csvContent = arg1;
+      filename = sanitizeDownloadFilename(arg2, 'SmartPOS_Products');
+    } else if (isArg2Body) {
       csvContent = arg2;
+      filename = sanitizeDownloadFilename(arg1, 'SmartPOS_Products');
+    } else {
+      // Neither contains newlines (e.g. single product row or empty)
+      if (arg1 && arg1.endsWith('.csv') && !arg2?.endsWith('.csv')) {
+        filename = sanitizeDownloadFilename(arg1, 'SmartPOS_Products');
+        csvContent = arg2 || '';
+      } else {
+        csvContent = arg1 || '';
+        filename = sanitizeDownloadFilename(arg2, 'SmartPOS_Products');
+      }
     }
 
-    const safeFilename = filename.endsWith('.csv') ? filename : `${filename}.csv`;
+    const safeFilename = sanitizeDownloadFilename(filename, 'SmartPOS_Products');
     const bom = '\uFEFF';
     const fullText = csvContent.startsWith(bom) ? csvContent : bom + csvContent;
     const blob = new Blob([fullText], { type: 'text/csv;charset=utf-8;' });

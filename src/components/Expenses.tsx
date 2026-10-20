@@ -7,6 +7,7 @@ import React, { useState } from 'react';
 import { Expense, StoreConfig, Language } from '../types';
 import { parseDecimal, sanitizeDecimalInput } from '../utils/numberInput';
 import { languages } from '../languages';
+import { exportCsvFile } from '../utils/printService';
 import { 
   ReceiptText, Plus, Search, Calendar, Trash2, Edit3, X, 
   DollarSign, Filter, Download, Printer, TrendingDown,
@@ -177,31 +178,26 @@ export default function Expenses({
     };
   };
 
-  // Export to CSV
-  const handleExportCSV = () => {
+  // Export to CSV / Excel
+  const handleExportCSV = async () => {
     const headers = lang === 'ar' 
       ? ['المعرف', 'اسم المصروف', 'المبلغ', 'العملة', 'الفئة', 'التاريخ', 'المسؤول', 'ملاحظات']
       : ['ID', 'Title', 'Amount', 'Currency', 'Category', 'Date', 'Created By', 'Notes'];
 
     const rows = filteredExpenses.map((e) => [
       e.id,
-      `"${e.title.replace(/"/g, '""')}"`,
+      `"${(e.title || '').replace(/"/g, '""')}"`,
       e.amount.toFixed(2),
       config.currency,
-      getCategoryInfo(e.category).label,
+      `"${getCategoryInfo(e.category).label.replace(/"/g, '""')}"`,
       e.date ? new Date(e.date).toLocaleDateString() : '',
       `"${(e.createdByName || '').replace(/"/g, '""')}"`,
       `"${(e.notes || '').replace(/"/g, '""')}"`
     ]);
 
-    const csvContent = '\uFEFF' + [headers.join(','), ...rows.map(r => r.join(','))].join('\n');
-    const blob = new Blob([csvContent], { type: 'text/csv;charset=utf-8;' });
-    const url = URL.createObjectURL(blob);
-    const link = document.createElement('a');
-    link.href = url;
-    link.download = `Expenses_${new Date().toISOString().split('T')[0]}.csv`;
-    link.click();
-    URL.revokeObjectURL(url);
+    const csvContent = 'sep=;\r\n' + [headers.join(';'), ...rows.map(r => r.join(';'))].join('\r\n');
+    const filename = `SmartPOS_Expenses_${new Date().toISOString().split('T')[0]}.csv`;
+    await exportCsvFile(csvContent, filename);
   };
 
   return (

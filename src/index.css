@@ -654,12 +654,26 @@ body.smartpos-printing-now #smartpos-print-mount {
 
   #smartpos-print-mount .smartpos-print-sheet.sheet-80mm * {
     color: #000000 !important;
-    border-style: solid;
+    border-color: #000000 !important;
+    border-style: solid !important;
+    -webkit-print-color-adjust: exact !important;
+    print-color-adjust: exact !important;
   }
 
   #smartpos-print-mount .smartpos-print-sheet.sheet-80mm [style*="dashed"],
-  #smartpos-print-mount .smartpos-print-sheet.sheet-80mm .border-dashed {
+  #smartpos-print-mount .smartpos-print-sheet.sheet-80mm [style*="dotted"],
+  #smartpos-print-mount .smartpos-print-sheet.sheet-80mm .border-dashed,
+  #smartpos-print-mount .smartpos-print-sheet.sheet-80mm .border-dotted {
     border-style: solid !important;
+    border-color: #000000 !important;
+  }
+
+  #smartpos-print-mount .smartpos-print-sheet.sheet-80mm table,
+  #smartpos-print-mount .smartpos-print-sheet.sheet-80mm tr,
+  #smartpos-print-mount .smartpos-print-sheet.sheet-80mm th,
+  #smartpos-print-mount .smartpos-print-sheet.sheet-80mm td,
+  #smartpos-print-mount .smartpos-print-sheet.sheet-80mm hr {
+    border-color: #000000 !important;
   }
 
   #smartpos-print-mount .smartpos-print-sheet.sheet-a4 {
