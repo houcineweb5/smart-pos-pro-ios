@@ -700,14 +700,24 @@ export default function Invoices({ invoices, products = [], customers = [], conf
       docNumber: inv.invoiceNumber || '',
       date: inv.date ? new Date(inv.date).toLocaleString('fr-FR') : '',
       storeName: config.name,
-      storeAddress: config.address,
-      storePhone: config.phone,
-      storeEmail: config.email,
-      storeRegNumber: config.registrationNumber,
+      storeAddress: config.showAddressOnInvoice !== false ? config.address : undefined,
+      storePhone: config.showPhoneOnInvoice !== false ? config.phone : undefined,
+      storeEmail: config.showEmailOnInvoice !== false ? config.email : undefined,
+      storeRegNumber: config.showTaxNumberOnInvoice !== false ? config.registrationNumber : undefined,
+      storeTaxNumber: config.showTaxNumberOnInvoice !== false ? config.taxNumber : undefined,
+      storeLogoUrl: config.showLogoOnInvoice !== false ? config.logoUrl : undefined,
+      showLogo: config.showLogoOnInvoice !== false,
+      showPhone: config.showPhoneOnInvoice !== false,
+      showAddress: config.showAddressOnInvoice !== false,
+      showEmail: config.showEmailOnInvoice !== false,
+      showTaxNumber: config.showTaxNumberOnInvoice !== false,
+      showCashier: config.showCashierOnInvoice !== false,
+      showBarcode: config.showBarcodeOnInvoice !== false,
+      showDebt: config.showDebtOnInvoice !== false,
       customerLabel: lang === 'ar' ? 'الزبون:' : 'Customer:',
-      customerName: cust?.ice ? `${inv.customerName || ''} (ICE: ${cust.ice})` : (inv.customerName || ''),
-      customerPhone: cust?.phone,
-      sellerName: inv.sellerName || 'Admin',
+      customerName: cust?.ice ? `${inv.customerName || ''} - ICE: ${cust.ice}` : (inv.customerName || ''),
+      customerPhone: config.showPhoneOnInvoice !== false ? cust?.phone : undefined,
+      sellerName: config.showCashierOnInvoice !== false ? (inv.sellerName || 'Admin') : undefined,
       currency: config.currency,
       mode,
       isRTL,
@@ -723,9 +733,9 @@ export default function Invoices({ invoices, products = [], customers = [], conf
       discount: Number(inv.discount) || 0,
       tax: Number(inv.tax) || 0,
       total: invTotal,
-      previousBalance: Number(inv.previousBalance) || 0,
+      previousBalance: config.showDebtOnInvoice !== false ? (Number(inv.previousBalance) || 0) : 0,
       amountPaid: invPaid,
-      remainingDebt: remaining,
+      remainingDebt: config.showDebtOnInvoice !== false ? remaining : 0,
       notes: inv.notes,
       footerText: t.invoice.thankYou || (lang === 'ar' ? 'شكراً لزيارتكم!' : 'Thank you!'),
       a4Theme: config.a4Theme || 'slate',
@@ -1491,6 +1501,14 @@ export default function Invoices({ invoices, products = [], customers = [], conf
                     <div className="text-xs text-slate-500 space-y-0.5 pt-1">
                       {config.showPhoneOnInvoice !== false && config.phone && <p>{lang === 'ar' ? 'الهاتف:' : 'Tél:'} {config.phone}</p>}
                       {config.showEmailOnInvoice !== false && config.email && <p>{lang === 'ar' ? 'البريد:' : 'Email:'} {config.email}</p>}
+                      {config.showTaxNumberOnInvoice !== false && (config.registrationNumber || config.taxNumber) && (
+                        <p className="font-mono text-[11px] text-slate-600">
+                          {[
+                            config.registrationNumber ? `ICE: ${config.registrationNumber}` : '',
+                            config.taxNumber ? `RC/IF: ${config.taxNumber}` : ''
+                          ].filter(Boolean).join('  |  ')}
+                        </p>
+                      )}
                     </div>
                   </div>
 
@@ -1680,10 +1698,17 @@ export default function Invoices({ invoices, products = [], customers = [], conf
                 <div className="pt-4 border-t border-slate-200 text-center text-[11px] text-slate-600 font-semibold space-y-1">
                   <div className="font-bold text-slate-800 text-xs">{config.name}</div>
                   <div className="flex flex-wrap items-center justify-center gap-x-4 gap-y-1">
-                    {config.address && <span>{config.address}</span>}
-                    {config.phone && <span>{lang === 'ar' ? 'الهاتف:' : 'Tél:'} <b className="font-mono text-slate-800" dir="ltr">{config.phone}</b></span>}
-                    {config.email && <span>{lang === 'ar' ? 'البريد:' : 'Email:'} <b className="font-mono text-slate-800">{config.email}</b></span>}
-                    {config.registrationNumber && <span>ICE: <b className="font-mono text-slate-800">{config.registrationNumber}</b></span>}
+                    {config.showAddressOnInvoice !== false && config.address && <span>{config.address}</span>}
+                    {config.showPhoneOnInvoice !== false && config.phone && <span>{lang === 'ar' ? 'الهاتف:' : 'Tél:'} <b className="font-mono text-slate-800" dir="ltr">{config.phone}</b></span>}
+                    {config.showEmailOnInvoice !== false && config.email && <span>{lang === 'ar' ? 'البريد:' : 'Email:'} <b className="font-mono text-slate-800">{config.email}</b></span>}
+                    {config.showTaxNumberOnInvoice !== false && (config.registrationNumber || config.taxNumber) && (
+                      <span>
+                        {[
+                          config.registrationNumber ? `ICE: ${config.registrationNumber}` : '',
+                          config.taxNumber ? `RC: ${config.taxNumber}` : ''
+                        ].filter(Boolean).join('  |  ')}
+                      </span>
+                    )}
                   </div>
                 </div>
               </div>

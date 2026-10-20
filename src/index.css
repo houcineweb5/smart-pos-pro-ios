@@ -665,3 +665,19 @@ body.smartpos-printing-now #smartpos-print-mount {
     box-sizing: border-box !important;
   }
 }
+
+/* Mobile bottom navigation bar behavior:
+   When the user is typing, searching, or when the virtual keyboard is active,
+   hide the bottom navigation bar so it never jumps up or obscures content above the keyboard. */
+@media (max-width: 1023px) {
+  body.keyboard-open #mobile-bottom-nav,
+  body:has(input:focus):not(:has(input[type="checkbox"]:focus)):not(:has(input[type="radio"]:focus)) #mobile-bottom-nav,
+  body:has(textarea:focus) #mobile-bottom-nav,
+  body:has([contenteditable="true"]:focus) #mobile-bottom-nav {
+    transform: translateY(100%) !important;
+    opacity: 0 !important;
+    pointer-events: none !important;
+    visibility: hidden !important;
+  }
+}
+

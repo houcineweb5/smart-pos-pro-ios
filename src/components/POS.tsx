@@ -177,6 +177,7 @@ export default function POS({ products, customers, config, onAddTransaction, onR
   // Small thermal receipt popup state
   const [lastCheckedInvoice, setLastCheckedInvoice] = useState<Invoice | null>(null);
   const [showReceiptModal, setShowReceiptModal] = useState(false);
+  const [isPreviewDraft, setIsPreviewDraft] = useState(false);
 
   // Direct checkout toast alert message state
   const [showDirectToast, setShowDirectToast] = useState<{ visible: boolean; invoiceNumber: string; total: number }>({
@@ -622,13 +623,23 @@ export default function POS({ products, customers, config, onAddTransaction, onR
       docNumber: inv.invoiceNumber,
       date: inv.date ? new Date(inv.date).toLocaleString() : '',
       storeName: config.name,
-      storeAddress: config.address,
-      storePhone: config.phone,
-      storeEmail: config.email,
-      storeRegNumber: config.registrationNumber,
+      storeAddress: config.showAddressOnInvoice !== false ? config.address : undefined,
+      storePhone: config.showPhoneOnInvoice !== false ? config.phone : undefined,
+      storeEmail: config.showEmailOnInvoice !== false ? config.email : undefined,
+      storeRegNumber: config.showTaxNumberOnInvoice !== false ? config.registrationNumber : undefined,
+      storeTaxNumber: config.showTaxNumberOnInvoice !== false ? config.taxNumber : undefined,
+      storeLogoUrl: config.showLogoOnInvoice !== false ? config.logoUrl : undefined,
+      showLogo: config.showLogoOnInvoice !== false,
+      showPhone: config.showPhoneOnInvoice !== false,
+      showAddress: config.showAddressOnInvoice !== false,
+      showEmail: config.showEmailOnInvoice !== false,
+      showTaxNumber: config.showTaxNumberOnInvoice !== false,
+      showCashier: config.showCashierOnInvoice !== false,
+      showBarcode: config.showBarcodeOnInvoice !== false,
+      showDebt: config.showDebtOnInvoice !== false,
       customerLabel: lang === 'ar' ? 'الزبون:' : 'Customer:',
       customerName: inv.customerName,
-      sellerName: inv.sellerName || 'System',
+      sellerName: config.showCashierOnInvoice !== false ? (inv.sellerName || 'System') : undefined,
       currency: config.currency,
       mode: '80mm',
       isRTL,
@@ -643,7 +654,7 @@ export default function POS({ products, customers, config, onAddTransaction, onR
       discount: inv.discount,
       tax: inv.tax,
       total: inv.total,
-      previousBalance: inv.previousBalance,
+      previousBalance: config.showDebtOnInvoice !== false ? inv.previousBalance : undefined,
       amountPaid: inv.amountPaid,
       paymentMethodLabel:
         inv.paymentMethod === 'cash'
@@ -651,7 +662,7 @@ export default function POS({ products, customers, config, onAddTransaction, onR
           : inv.paymentMethod === 'card'
           ? (lang === 'ar' ? 'بطاقة بنكية' : 'Card')
           : (lang === 'ar' ? 'دين (آجل)' : 'Debt'),
-      remainingDebt: inv.paymentMethod === 'debt' ? Math.max(0, inv.total - inv.amountPaid) : 0
+      remainingDebt: config.showDebtOnInvoice !== false && inv.paymentMethod === 'debt' ? Math.max(0, inv.total - inv.amountPaid) : 0
     };
   };
 
@@ -744,6 +755,16 @@ export default function POS({ products, customers, config, onAddTransaction, onR
       pricingMode: pricingTier,
     };
 
+    if (mode === 'preview') {
+      // PREVIEW ONLY: Do not save invoice to transactions, do not deduct stock, keep cart intact!
+      setIsPreviewDraft(true);
+      setLastCheckedInvoice(newInvoice);
+      setShowReceiptModal(true);
+      return;
+    }
+
+    // Direct / Print: Commit transaction
+    setIsPreviewDraft(false);
     onAddTransaction(newInvoice);
 
     // Dynamic handling based on mode
@@ -755,9 +776,6 @@ export default function POS({ products, customers, config, onAddTransaction, onR
       setTimeout(() => {
         printThermalReceiptWindow(newInvoice.invoiceNumber, newInvoice);
       }, 200);
-    } else if (mode === 'preview') {
-      setLastCheckedInvoice(newInvoice);
-      setShowReceiptModal(true);
     } else if (mode === 'direct') {
       // Just toast / notice
       setShowDirectToast({
@@ -768,6 +786,28 @@ export default function POS({ products, customers, config, onAddTransaction, onR
       setTimeout(() => setShowDirectToast({ visible: false, invoiceNumber: '', total: 0 }), 3000);
     }
 
+    // Instant Reset
+    setCart([]);
+    setAmountPaid('');
+    setGeneralDiscount('');
+    setPreviousBalanceInput('');
+    setNotes('');
+    setCustomerId('walk-in');
+    setPaymentMethod('cash');
+    setIsWholesale(false);
+  };
+
+  const handleConfirmSaveDraft = (andPrint = false) => {
+    if (!lastCheckedInvoice) return;
+    onAddTransaction(lastCheckedInvoice);
+    setIsPreviewDraft(false);
+    if (andPrint) {
+      setTimeout(() => {
+        printThermalReceiptWindow(lastCheckedInvoice.invoiceNumber, lastCheckedInvoice);
+      }, 150);
+    } else {
+      setShowReceiptModal(false);
+    }
     // Instant Reset
     setCart([]);
     setAmountPaid('');
@@ -1290,12 +1330,12 @@ export default function POS({ products, customers, config, onAddTransaction, onR
 
           {/* Cart Header Column Labels */}
           {cart.length > 0 && (
-            <div className="flex items-center justify-between gap-1 px-1.5 sm:px-2 py-1 text-[10px] font-black text-slate-400 border-b border-slate-100 uppercase">
-              <span className="flex-1 min-w-0 text-start truncate">{lang === 'ar' ? 'المنتج' : 'Article'}</span>
-              <span className="w-14 sm:w-20 text-center shrink-0">{lang === 'ar' ? 'السعر' : 'Prix'}</span>
-              <span className="w-19 sm:w-22 text-center shrink-0">{lang === 'ar' ? 'الكمية' : 'Qté'}</span>
-              <span className="w-9 sm:w-11 text-center shrink-0">{lang === 'ar' ? 'خصم%' : 'Rem%'}</span>
-              <span className="w-13 sm:w-16 text-end shrink-0">{lang === 'ar' ? 'المجموع' : 'Total'}</span>
+            <div className="flex items-center justify-between gap-1 px-1 sm:px-2 py-1 text-[10px] font-black text-slate-400 border-b border-slate-100 uppercase">
+              <span className="flex-1 min-w-0 text-start">{lang === 'ar' ? 'المنتج' : 'Article'}</span>
+              <span className="w-11 sm:w-18 text-center shrink-0">{lang === 'ar' ? 'السعر' : 'Prix'}</span>
+              <span className="w-13 sm:w-20 text-center shrink-0">{lang === 'ar' ? 'الكمية' : 'Qté'}</span>
+              <span className="w-8 sm:w-11 text-center shrink-0">{lang === 'ar' ? 'خصم%' : 'Rem%'}</span>
+              <span className="w-12 sm:w-16 text-end shrink-0">{lang === 'ar' ? 'المجموع' : 'Total'}</span>
               <span className="w-5 sm:w-6 shrink-0"></span>
             </div>
           )}
@@ -1324,15 +1364,15 @@ export default function POS({ products, customers, config, onAddTransaction, onR
                     }`}
                   >
                     <div className="flex items-center justify-between gap-1 sm:gap-1.5">
-                      {/* 1. Product Name */}
-                      <div className="flex-1 min-w-0 truncate text-start">
-                        <span className="font-bold text-slate-800 text-[11px] sm:text-xs truncate block" title={item.product.name}>
+                      {/* 1. Product Name - Flexible & never cut off on iPhone / Mobile */}
+                      <div className="flex-1 min-w-0 text-start pr-0.5">
+                        <span className="font-bold text-slate-800 text-[11px] sm:text-xs leading-tight block line-clamp-2" title={item.product.name}>
                           {item.product.name}
                         </span>
                       </div>
 
                       {/* 2. Unit Price */}
-                      <div className="w-14 sm:w-20 shrink-0">
+                      <div className="w-11 sm:w-18 shrink-0">
                         <input
                           id={`p-price-${item.product.id}`}
                           type="text"
@@ -1349,7 +1389,7 @@ export default function POS({ products, customers, config, onAddTransaction, onR
                               updatePrice(item.product.id, parseDecimal(e.target.value), true);
                             }
                           }}
-                          className={`w-full text-center border rounded px-1 py-0.5 font-bold font-mono text-[11px] sm:text-xs focus:outline-none ${
+                          className={`w-full text-center border rounded px-0.5 py-0.5 font-bold font-mono text-[10.5px] sm:text-xs focus:outline-none ${
                             isBelowPurchasePrice
                               ? 'bg-amber-50 border-amber-400 text-rose-700 focus:border-rose-500'
                               : item.customPrice !== undefined
@@ -1361,14 +1401,14 @@ export default function POS({ products, customers, config, onAddTransaction, onR
                       </div>
 
                       {/* 3. Quantity Controls [-] [qty] [+] */}
-                      <div className="w-19 sm:w-22 shrink-0 flex items-center justify-between bg-slate-50 border border-slate-200 rounded p-0.5">
+                      <div className="w-13 sm:w-20 shrink-0 flex items-center justify-between bg-slate-50 border border-slate-200 rounded p-0.5">
                         <button
                           id={`qty-minus-${item.product.id}`}
                           type="button"
                           onClick={() => updateQty(item.product.id, -1)}
-                          className="w-4 sm:w-4.5 h-4 sm:h-4.5 rounded bg-white hover:bg-slate-200 text-slate-700 flex items-center justify-center transition cursor-pointer font-bold shrink-0 text-[10px] shadow-2xs"
+                          className="w-3.5 sm:w-4.5 h-3.5 sm:h-4.5 rounded bg-white hover:bg-slate-200 text-slate-700 flex items-center justify-center transition cursor-pointer font-bold shrink-0 text-[9px] shadow-2xs p-0"
                         >
-                          <Minus className="w-2.5 h-2.5" />
+                          <Minus className="w-2 sm:w-2.5 h-2 sm:h-2.5" />
                         </button>
                         <input
                           id={`qty-input-${item.product.id}`}
@@ -1388,20 +1428,20 @@ export default function POS({ products, customers, config, onAddTransaction, onR
                               setQty(item.product.id, val);
                             }
                           }}
-                          className="w-8 sm:w-10 text-center font-bold font-mono text-[11px] sm:text-xs focus:outline-none bg-transparent"
+                          className="w-5.5 sm:w-9 text-center font-bold font-mono text-[10.5px] sm:text-xs focus:outline-none bg-transparent px-0"
                         />
                         <button
                           id={`qty-plus-${item.product.id}`}
                           type="button"
                           onClick={() => updateQty(item.product.id, 1)}
-                          className="w-4 sm:w-4.5 h-4 sm:h-4.5 rounded bg-white hover:bg-slate-200 text-slate-700 flex items-center justify-center transition cursor-pointer font-bold shrink-0 text-[10px] shadow-2xs"
+                          className="w-3.5 sm:w-4.5 h-3.5 sm:h-4.5 rounded bg-white hover:bg-slate-200 text-slate-700 flex items-center justify-center transition cursor-pointer font-bold shrink-0 text-[9px] shadow-2xs p-0"
                         >
-                          <Plus className="w-2.5 h-2.5" />
+                          <Plus className="w-2 sm:w-2.5 h-2 sm:h-2.5" />
                         </button>
                       </div>
 
                       {/* 4. Discount % */}
-                      <div className="w-9 sm:w-11 shrink-0 flex items-center">
+                      <div className="w-8 sm:w-11 shrink-0 flex items-center">
                         <input
                           id={`p-disc-${item.product.id}`}
                           type="text"
@@ -1416,13 +1456,13 @@ export default function POS({ products, customers, config, onAddTransaction, onR
                             const val = Math.max(0, Math.min(100, parseDecimal(e.target.value, 0)));
                             updateDiscount(item.product.id, val === 0 ? '' : val, true);
                           }}
-                          className="w-full text-center bg-slate-50 border border-slate-200 rounded px-0.5 py-0.5 font-bold font-mono text-[10px] sm:text-[11px] focus:outline-none focus:border-indigo-500"
+                          className="w-full text-center bg-slate-50 border border-slate-200 rounded px-0.5 py-0.5 font-bold font-mono text-[9.5px] sm:text-[11px] focus:outline-none focus:border-indigo-500"
                           title={lang === 'ar' ? 'الخصم %' : 'Discount %'}
                         />
                       </div>
 
                       {/* 5. Line Total */}
-                      <div className="w-13 sm:w-16 shrink-0 text-end font-mono font-black text-slate-900 text-[11px] sm:text-xs truncate">
+                      <div className="w-12 sm:w-16 shrink-0 text-end font-mono font-black text-slate-900 text-[10.5px] sm:text-xs truncate" dir="ltr">
                         {subTotalLine.toFixed(2)}
                       </div>
 
@@ -1775,14 +1815,21 @@ export default function POS({ products, customers, config, onAddTransaction, onR
               <div className="flex items-center gap-1.5 font-bold">
                 <button
                   type="button"
-                  onClick={() => setShowReceiptModal(false)}
+                  onClick={() => {
+                    setShowReceiptModal(false);
+                    setIsPreviewDraft(false);
+                  }}
                   className="flex items-center gap-1 px-2.5 py-1.5 bg-slate-800 hover:bg-slate-700 text-white text-xs font-black rounded-lg border border-slate-700 transition cursor-pointer"
-                  title={lang === 'ar' ? 'رجوع' : 'Back'}
+                  title={lang === 'ar' ? 'رجوع للسلة' : 'Back to Cart'}
                 >
                   <ArrowRight className={`w-3.5 h-3.5 ${isRTL ? '' : 'rotate-180'}`} />
-                  <span>{lang === 'ar' ? 'رجوع' : 'Back'}</span>
+                  <span>{lang === 'ar' ? (isPreviewDraft ? 'رجوع للسلة' : 'رجوع') : 'Back'}</span>
                 </button>
-                <span className="text-[11px] font-black truncate">{lang === 'ar' ? 'وصل المبيعات' : 'Receipt'}</span>
+                <span className="text-[11px] font-black truncate">
+                  {isPreviewDraft
+                    ? (lang === 'ar' ? 'معاينة الفاتورة (مشاهدة فقط)' : 'Draft Preview (View only)')
+                    : (lang === 'ar' ? 'وصل المبيعات' : 'Receipt')}
+                </span>
               </div>
               <div className="flex items-center gap-1.5">
                 <button
@@ -1798,11 +1845,17 @@ export default function POS({ products, customers, config, onAddTransaction, onR
                 <button
                   id="btn-pos-receipt-print"
                   type="button"
-                  onClick={() => printThermalReceiptWindow(lastCheckedInvoice.invoiceNumber, lastCheckedInvoice)}
+                  onClick={() => {
+                    if (isPreviewDraft) {
+                      handleConfirmSaveDraft(true);
+                    } else {
+                      printThermalReceiptWindow(lastCheckedInvoice.invoiceNumber, lastCheckedInvoice);
+                    }
+                  }}
                   className="flex items-center gap-1 px-2.5 py-1.5 bg-indigo-600 hover:bg-indigo-700 text-white text-xs font-black rounded-lg transition shrink-0 cursor-pointer shadow-xs"
                 >
                   <Printer className="w-3.5 h-3.5" />
-                  <span>{lang === 'ar' ? 'طباعة' : 'Print'}</span>
+                  <span>{lang === 'ar' ? (isPreviewDraft ? 'حفظ وطباعة' : 'طباعة') : 'Print'}</span>
                 </button>
               </div>
             </div>
@@ -1818,24 +1871,38 @@ export default function POS({ products, customers, config, onAddTransaction, onR
               />
             </div>
 
-            {/* Bottom confirmation footer to reset cart */}
+            {/* Bottom confirmation footer */}
             <div className="p-3 bg-slate-50 border-t border-slate-100 shrink-0 flex items-center gap-2">
               <button
                 type="button"
-                onClick={() => setShowReceiptModal(false)}
+                onClick={() => {
+                  setShowReceiptModal(false);
+                  setIsPreviewDraft(false);
+                }}
                 className="px-4 py-2.5 bg-slate-200 hover:bg-slate-300 text-slate-800 font-black rounded-xl text-xs transition cursor-pointer flex items-center gap-1.5 shrink-0"
               >
                 <ArrowRight className={`w-4 h-4 ${isRTL ? '' : 'rotate-180'}`} />
-                <span>{lang === 'ar' ? 'رجوع' : 'Back'}</span>
+                <span>{lang === 'ar' ? (isPreviewDraft ? 'رجوع لتعديل السلة' : 'رجوع') : 'Back'}</span>
               </button>
-              <button
-                id="btn-pos-receipt-next-trans"
-                type="button"
-                onClick={() => setShowReceiptModal(false)}
-                className="flex-1 py-2.5 bg-indigo-600 hover:bg-indigo-700 text-white font-bold rounded-xl text-xs transition cursor-pointer shadow-xs"
-              >
-                {lang === 'ar' ? 'معاملة جديدة (موافق)' : 'New Transaction'}
-              </button>
+              {isPreviewDraft ? (
+                <button
+                  id="btn-pos-receipt-confirm-draft"
+                  type="button"
+                  onClick={() => handleConfirmSaveDraft(false)}
+                  className="flex-1 py-2.5 bg-emerald-600 hover:bg-emerald-700 text-white font-bold rounded-xl text-xs transition cursor-pointer shadow-xs"
+                >
+                  {lang === 'ar' ? 'تأكيد وحفظ الفاتورة' : 'Confirm & Save Invoice'}
+                </button>
+              ) : (
+                <button
+                  id="btn-pos-receipt-next-trans"
+                  type="button"
+                  onClick={() => setShowReceiptModal(false)}
+                  className="flex-1 py-2.5 bg-indigo-600 hover:bg-indigo-700 text-white font-bold rounded-xl text-xs transition cursor-pointer shadow-xs"
+                >
+                  {lang === 'ar' ? 'معاملة جديدة (موافق)' : 'New Transaction'}
+                </button>
+              )}
             </div>
           </div>
         </div>

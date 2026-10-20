@@ -181,6 +181,7 @@ export interface Translations {
     storeEmail: string;
     storeAddress: string;
     registrationNumber: string;
+    taxNumber: string;
     currency: string;
     defaultTaxRate: string;
     save: string;
@@ -380,7 +381,8 @@ export const languages: Record<Language, Translations> = {
       storePhone: 'رقم هاتف المنشأة',
       storeEmail: 'البريد الإلكتروني للمنشأة',
       storeAddress: 'العنوان الكامل',
-      registrationNumber: 'الرقم الضريبي أو السجل التجاري',
+      registrationNumber: 'ICE (المعرف الموحد للمقاولة)',
+      taxNumber: 'الرقم الضريبي أو السجل التجاري',
       currency: 'العملة الافتراضية',
       defaultTaxRate: 'نسبة ضريبة القيمة المضافة الافتراضية (%)',
       save: 'حفظ التعديلات العامة',
@@ -578,7 +580,8 @@ export const languages: Record<Language, Translations> = {
       storePhone: 'Téléphone Entreprise',
       storeEmail: 'E-mail Entreprise',
       storeAddress: 'Adresse Civique',
-      registrationNumber: 'N° TVA / Siret ou RC',
+      registrationNumber: 'ICE (Identifiant Commun Entreprise)',
+      taxNumber: 'N° Fiscal ou Registre de Commerce (IF / RC)',
       currency: 'Devise par défaut',
       defaultTaxRate: 'Taux TVA par défaut (%)',
       save: 'Sauvegarder les paramètres',
@@ -776,7 +779,8 @@ export const languages: Record<Language, Translations> = {
       storePhone: 'Store Phone Line',
       storeEmail: 'Corporate Email',
       storeAddress: 'Full Store Location',
-      registrationNumber: 'VAT Registration / CR Number',
+      registrationNumber: 'ICE (Unified Enterprise ID)',
+      taxNumber: 'Tax Registration / Commercial Register (IF / CR)',
       currency: 'Business Base Currency',
       defaultTaxRate: 'Default VAT Calculation (%)',
       save: 'Commit Corporate settings',

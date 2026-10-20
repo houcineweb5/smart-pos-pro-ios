@@ -88,6 +88,79 @@ export default function App() {
     setDeferredInstallPrompt(null);
   };
 
+  // Track soft keyboard visibility on mobile to prevent bottom nav bar from floating over keyboard
+  const [isKeyboardVisible, setIsKeyboardVisible] = useState(false);
+
+  useEffect(() => {
+    let blurTimer: any = null;
+
+    const handleFocusIn = (e: FocusEvent) => {
+      const target = e.target as HTMLElement | null;
+      if (
+        target &&
+        (target.tagName === 'INPUT' || target.tagName === 'TEXTAREA' || target.isContentEditable) &&
+        (target as HTMLInputElement).type !== 'checkbox' &&
+        (target as HTMLInputElement).type !== 'radio'
+      ) {
+        setIsKeyboardVisible(true);
+        document.body.classList.add('keyboard-open');
+      }
+    };
+
+    const handleFocusOut = () => {
+      clearTimeout(blurTimer);
+      blurTimer = setTimeout(() => {
+        const activeEl = document.activeElement;
+        const isInputStillFocused =
+          activeEl &&
+          (activeEl.tagName === 'INPUT' || activeEl.tagName === 'TEXTAREA' || (activeEl as HTMLElement).isContentEditable) &&
+          (activeEl as HTMLInputElement).type !== 'checkbox' &&
+          (activeEl as HTMLInputElement).type !== 'radio';
+        if (!isInputStillFocused) {
+          setIsKeyboardVisible(false);
+          document.body.classList.remove('keyboard-open');
+        }
+      }, 120);
+    };
+
+    const handleViewportResize = () => {
+      if (window.visualViewport) {
+        const heightDiff = window.innerHeight - window.visualViewport.height;
+        if (heightDiff > 120) {
+          setIsKeyboardVisible(true);
+          document.body.classList.add('keyboard-open');
+        } else {
+          const activeEl = document.activeElement;
+          const isInputStillFocused =
+            activeEl &&
+            (activeEl.tagName === 'INPUT' || activeEl.tagName === 'TEXTAREA' || (activeEl as HTMLElement).isContentEditable) &&
+            (activeEl as HTMLInputElement).type !== 'checkbox' &&
+            (activeEl as HTMLInputElement).type !== 'radio';
+          if (!isInputStillFocused) {
+            setIsKeyboardVisible(false);
+            document.body.classList.remove('keyboard-open');
+          }
+        }
+      }
+    };
+
+    window.addEventListener('focusin', handleFocusIn);
+    window.addEventListener('focusout', handleFocusOut);
+    if (window.visualViewport) {
+      window.visualViewport.addEventListener('resize', handleViewportResize);
+    }
+
+    return () => {
+      clearTimeout(blurTimer);
+      window.removeEventListener('focusin', handleFocusIn);
+      window.removeEventListener('focusout', handleFocusOut);
+      if (window.visualViewport) {
+        window.visualViewport.removeEventListener('resize', handleViewportResize);
+      }
+    };
+  }, []);
+
+
   const handleSidebarMouseEnter = () => {
     if (sidebarHoverTimeout.current) {
       clearTimeout(sidebarHoverTimeout.current);
@@ -2572,7 +2645,9 @@ export default function App() {
         {/* Native Smartphone Bottom Navigation Bar (< lg) for Android & iPhone */}
         <nav
           id="mobile-bottom-nav"
-          className="lg:hidden fixed bottom-0 left-0 right-0 bg-white/95 backdrop-blur-md border-t border-slate-200 grid grid-cols-5 z-30 shadow-lg"
+          className={`lg:hidden fixed bottom-0 left-0 right-0 bg-white/95 backdrop-blur-md border-t border-slate-200 grid grid-cols-5 z-30 shadow-lg transition-all duration-200 ease-in-out ${
+            isKeyboardVisible ? 'translate-y-full opacity-0 pointer-events-none' : 'translate-y-0 opacity-100'
+          }`}
           style={{ paddingBottom: 'env(safe-area-inset-bottom, 0px)' }}
         >
           <button

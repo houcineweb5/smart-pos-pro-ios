@@ -234,9 +234,21 @@ export default function Settings({
                 <input
                   id="set-s-reg"
                   type="text"
-                  placeholder={lang === 'ar' ? 'رقم السجل التجاري / ICE (اختياري)' : 'Registration / Tax ID (Optional)'}
+                  placeholder={lang === 'ar' ? 'رقم المعرف الموحد ICE (15 رقماً)' : 'ICE (15 chiffres)'}
                   value={formConfig.registrationNumber || ''}
                   onChange={(e) => setFormConfig({ ...formConfig, registrationNumber: e.target.value })}
+                  className="w-full px-4 py-2.5 sm:py-3 border border-slate-200 rounded-xl focus:outline-none focus:ring-2 focus:ring-indigo-500 font-mono text-slate-800 text-sm bg-slate-50/40 focus:bg-white transition"
+                />
+              </div>
+
+              <div>
+                <label className="block text-xs sm:text-sm font-bold text-slate-700 mb-1.5">{t.settings.taxNumber}</label>
+                <input
+                  id="set-s-tax-num"
+                  type="text"
+                  placeholder={lang === 'ar' ? 'الرقم الضريبي أو السجل التجاري (IF / RC)' : 'IF / RC / Tax ID'}
+                  value={formConfig.taxNumber || ''}
+                  onChange={(e) => setFormConfig({ ...formConfig, taxNumber: e.target.value })}
                   className="w-full px-4 py-2.5 sm:py-3 border border-slate-200 rounded-xl focus:outline-none focus:ring-2 focus:ring-indigo-500 font-mono text-slate-800 text-sm bg-slate-50/40 focus:bg-white transition"
                 />
               </div>
@@ -794,6 +806,14 @@ export default function Settings({
                         {formConfig.showPhoneOnInvoice !== false && formConfig.phone && (
                           <p className="text-[10px] text-slate-500">Tél: {formConfig.phone}</p>
                         )}
+                        {formConfig.showTaxNumberOnInvoice !== false && (formConfig.registrationNumber || formConfig.taxNumber) && (
+                          <p className="text-[9px] text-slate-500 font-mono">
+                            {[
+                              formConfig.registrationNumber ? `ICE: ${formConfig.registrationNumber}` : '',
+                              formConfig.taxNumber ? `RC/IF: ${formConfig.taxNumber}` : ''
+                            ].filter(Boolean).join('  |  ')}
+                          </p>
+                        )}
                       </div>
                       <div className="text-end space-y-1">
                         <span className="text-[10px] font-mono font-black px-2 py-0.5 rounded text-white" style={{ backgroundColor: formConfig.printPrimaryColor || (A4_PRINT_THEMES[formConfig.a4Theme || 'slate'] || A4_PRINT_THEMES.slate).primary }}>
@@ -855,27 +875,50 @@ export default function Settings({
                       <img src={formConfig.logoUrl} alt="Logo" className="h-6 object-contain mx-auto mb-1" />
                     )}
                     <h4 className="font-black text-xs text-slate-900">{formConfig.name || 'اسم المحل'}</h4>
+                    {formConfig.showAddressOnInvoice !== false && formConfig.address && (
+                      <p className="text-[9px] text-slate-500">{formConfig.address}</p>
+                    )}
                     {formConfig.showPhoneOnInvoice !== false && formConfig.phone && <p className="text-[9px] text-slate-500">Tél: {formConfig.phone}</p>}
-                    <div className="border-t border-dashed border-slate-300 pt-1 text-[9px] flex justify-between">
+                    {formConfig.showTaxNumberOnInvoice !== false && (formConfig.registrationNumber || formConfig.taxNumber) && (
+                      <p className="text-[8.5px] text-slate-500 font-mono">
+                        {[
+                          formConfig.registrationNumber ? `ICE: ${formConfig.registrationNumber}` : '',
+                          formConfig.taxNumber ? `RC: ${formConfig.taxNumber}` : ''
+                        ].filter(Boolean).join(' | ')}
+                      </p>
+                    )}
+                    <div className="border-t border-slate-300 pt-1 text-[9px] flex justify-between">
                       <span>FAC-2026-001</span>
                       <span>10/10/2026</span>
                     </div>
-                    <div className="border-t border-dashed border-slate-300 py-1 text-[9px] text-start">
+                    {formConfig.showCashierOnInvoice !== false && (
+                      <div className="text-[8.5px] text-slate-600 flex justify-between">
+                        <span>الزبون: زبون عابر</span>
+                        <span>البائع: Admin</span>
+                      </div>
+                    )}
+                    <div className="border-t border-slate-300 py-1 text-[9px] text-start">
                       <div className="flex justify-between font-bold">
                         <span>منتج تجريبي x2</span>
                         <span>300.00 {formConfig.currency}</span>
                       </div>
                     </div>
-                    <div className="border-t border-dashed border-slate-300 pt-1 flex justify-between font-black text-[11px] text-slate-900">
+                    <div className="border-t border-slate-300 pt-1 flex justify-between font-black text-[11px] text-slate-900">
                       <span>TOTAL:</span>
                       <span>300.00 {formConfig.currency}</span>
                     </div>
+                    {formConfig.showDebtOnInvoice !== false && (
+                      <div className="flex justify-between text-[8.5px] text-amber-700 font-bold">
+                        <span>الباقي (كريدي):</span>
+                        <span>0.00 {formConfig.currency}</span>
+                      </div>
+                    )}
                     {formConfig.showBarcodeOnInvoice !== false && (
                       <div className="py-1 tracking-widest text-[9px] font-bold">
                         ||||| | |||| ||| | |||||
                       </div>
                     )}
-                    <div className="border-t border-dashed border-slate-300 pt-1 text-[9px] text-slate-500">
+                    <div className="border-t border-slate-300 pt-1 text-[9px] text-slate-500">
                       {formConfig.receiptFooterMessage || 'شكراً لزيارتكم!'}
                     </div>
                   </div>

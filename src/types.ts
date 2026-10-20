@@ -122,7 +122,8 @@ export interface StoreConfig {
   phone: string;
   email: string;
   address: string;
-  registrationNumber: string;
+  registrationNumber: string; // ICE (Moroccan ICE / Unique Company Identifier)
+  taxNumber?: string; // الرقم الضريبي أو السجل التجاري (IF / RC)
   currency: string;
   taxRate: number; // default tax percentage e.g. 15 for 15%
   logoUrl?: string;

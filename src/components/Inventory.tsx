@@ -23,6 +23,13 @@ import {
   ChevronLeft,
   ChevronRight,
   Camera,
+  BarChart3,
+  TrendingUp,
+  PieChart,
+  PackageCheck,
+  PackageX,
+  DollarSign,
+  Layers,
 } from 'lucide-react';
 import CameraBarcodeModal from './CameraBarcodeModal';
 
@@ -62,6 +69,10 @@ export default function Inventory({ products, config, onSaveProduct, onDeletePro
   const [barcodeSelection, setBarcodeSelection] = useState<Record<string, number>>({});
   const [barcodePrintMode, setBarcodePrintMode] = useState<'thermal' | 'a4'>('thermal');
 
+  // Inventory Statistics Modal & Stock Status Filter
+  const [showStatsModal, setShowStatsModal] = useState(false);
+  const [stockStatusFilter, setStockStatusFilter] = useState<'all' | 'in_stock' | 'out_of_stock' | 'low_stock'>('all');
+
   // CSV Import status
   const fileInputRef = useRef<HTMLInputElement>(null);
   const [importSummary, setImportSummary] = useState<{ show: boolean; imported: number; updated: number; total: number } | null>(null);
@@ -76,7 +87,15 @@ export default function Inventory({ products, config, onSaveProduct, onDeletePro
       p.sku.toLowerCase().includes(search.toLowerCase()) ||
       p.category.toLowerCase().includes(search.toLowerCase());
     const matchCat = selectedCategory === 'all' || p.category === selectedCategory;
-    return matchSearch && matchCat;
+    const stockNum = Number(p.stock) || 0;
+    const minStockNum = Number(p.minStock) || 0;
+    const matchStockStatus =
+      stockStatusFilter === 'all' ||
+      (stockStatusFilter === 'in_stock' && stockNum > 0) ||
+      (stockStatusFilter === 'out_of_stock' && stockNum <= 0) ||
+      (stockStatusFilter === 'low_stock' && stockNum > 0 && stockNum <= minStockNum);
+
+    return matchSearch && matchCat && matchStockStatus;
   });
 
   // Safe sorting
@@ -206,9 +225,20 @@ export default function Inventory({ products, config, onSaveProduct, onDeletePro
     setEditingProduct(null);
   };
 
-  // CSV Export with UTF-8 BOM (Compatible with iPhone / iOS & Desktop)
+  // CSV / Excel Export with explicit sep=; directive and UTF-8 BOM
+  // Ensures every element appears in its own distinct column in Microsoft Excel!
   const handleExportCSV = async () => {
-    const headers = ['SKU', 'Name', 'Category', 'PurchasePrice', 'SellingPrice', 'WholesalePrice', 'Stock', 'MinStock', 'Unit'];
+    const headers = [
+      'SKU',
+      lang === 'ar' ? 'اسم المنتج' : 'Nom Produit',
+      lang === 'ar' ? 'القسم' : 'Categorie',
+      lang === 'ar' ? 'سعر الشراء' : 'Prix Achat',
+      lang === 'ar' ? 'سعر البيع' : 'Prix Vente',
+      lang === 'ar' ? 'سعر الجملة' : 'Prix Gros',
+      lang === 'ar' ? 'المخزون' : 'Stock',
+      lang === 'ar' ? 'الحد الادنى' : 'Min Stock',
+      lang === 'ar' ? 'الوحدة' : 'Unite'
+    ];
     const rows = products.map(p => [
       `"${(p.sku || '').replace(/"/g, '""')}"`,
       `"${(p.name || '').replace(/"/g, '""')}"`,
@@ -221,7 +251,8 @@ export default function Inventory({ products, config, onSaveProduct, onDeletePro
       `"${(p.unit || 'pcs').replace(/"/g, '""')}"`
     ]);
 
-    const csvContent = [headers.join(','), ...rows.map(r => r.join(','))].join('\n');
+    // sep=;\r\n tells Microsoft Excel directly to use semicolon separator so each column is in its own cell!
+    const csvContent = 'sep=;\r\n' + [headers.join(';'), ...rows.map(r => r.join(';'))].join('\r\n');
     await exportCsvFile(`inventory_${new Date().toISOString().slice(0, 10)}.csv`, csvContent);
   };
 
@@ -236,7 +267,7 @@ export default function Inventory({ products, config, onSaveProduct, onDeletePro
         const text = event.target?.result as string;
         if (!text) return;
 
-        const lines = text.split(/\r?\n/).filter(line => line.trim().length > 0);
+        const lines = text.split(/\r?\n/).filter(line => line.trim().length > 0 && !line.trim().toLowerCase().startsWith('sep='));
         if (lines.length < 2) {
           alert(lang === 'ar' ? 'الملف فارغ أو لا يحتوي على بيانات كافية.' : 'File is empty or invalid.');
           return;
@@ -568,10 +599,21 @@ export default function Inventory({ products, config, onSaveProduct, onDeletePro
             id="btn-export-csv"
             onClick={handleExportCSV}
             className="flex items-center gap-1.5 px-3.5 py-2.5 bg-slate-100 hover:bg-slate-200 text-slate-700 font-bold rounded-xl transition text-xs cursor-pointer border border-slate-200"
-            title={lang === 'ar' ? 'تصدير المخزون كملف Excel / CSV' : 'Export products to CSV'}
+            title={lang === 'ar' ? 'تصدير المخزون كملف Excel / CSV مرتب في خانات منفصلة' : 'Export products to Excel'}
           >
             <Download className="w-4 h-4 text-emerald-600" />
-            <span>{lang === 'ar' ? 'تصدير Excel' : 'Export CSV'}</span>
+            <span>{lang === 'ar' ? 'تصدير Excel' : 'Export Excel'}</span>
+          </button>
+
+          {/* Inventory Statistics Modal Button */}
+          <button
+            id="btn-inventory-stats"
+            onClick={() => setShowStatsModal(true)}
+            className="flex items-center gap-1.5 px-3.5 py-2.5 bg-emerald-50 hover:bg-emerald-100 text-emerald-800 font-bold rounded-xl transition text-xs cursor-pointer border border-emerald-200 shadow-2xs"
+            title={lang === 'ar' ? 'عرض كافة إحصائيات المخزن، رأس المال، المنتجات المتوفرة والمنتهية' : 'Inventory Statistics & Valuation'}
+          >
+            <BarChart3 className="w-4 h-4 text-emerald-600" />
+            <span>{lang === 'ar' ? 'إحصائيات المخزن' : 'Statistiques Stock'}</span>
           </button>
 
           {/* Barcode Stickers Modal Button */}
@@ -707,6 +749,28 @@ export default function Inventory({ products, config, onSaveProduct, onDeletePro
           </button>
         </div>
       </div>
+
+      {/* Active Stock Status Filter Chip */}
+      {stockStatusFilter !== 'all' && (
+        <div className="flex items-center gap-2 px-3.5 py-2 bg-indigo-50 border border-indigo-200 rounded-2xl text-xs font-bold text-indigo-900 w-fit animate-fade-in shadow-2xs">
+          <span>
+            {lang === 'ar' ? 'تصفية المخزن حسب:' : 'Filter:'} <b className="text-indigo-950 font-black">{
+              stockStatusFilter === 'in_stock' ? (lang === 'ar' ? 'المنتجات المتوفرة فقط' : 'In Stock only') :
+              stockStatusFilter === 'out_of_stock' ? (lang === 'ar' ? 'المنتجات المنتهية (غير المتوفرة) فقط' : 'Out of Stock only') :
+              (lang === 'ar' ? 'المنتجات قريبة من النفاد' : 'Low Stock only')
+            }</b>
+          </span>
+          <button
+            type="button"
+            onClick={() => setStockStatusFilter('all')}
+            className="px-2 py-0.5 bg-indigo-200/80 hover:bg-indigo-300 rounded-lg text-indigo-900 cursor-pointer flex items-center gap-1 font-black text-[11px] transition"
+            title={lang === 'ar' ? 'إلغاء التصفية وإظهار الكل' : 'Clear filter'}
+          >
+            <X className="w-3.5 h-3.5" />
+            <span>{lang === 'ar' ? 'إلغاء التصفية' : 'Clear'}</span>
+          </button>
+        </div>
+      )}
 
       {/* Mobile-Friendly Product Cards Grid (Optimized for iPhone & Mobile) */}
       <div className="block md:hidden space-y-3" id="inv-mobile-cards-section">
@@ -1582,6 +1646,265 @@ export default function Inventory({ products, config, onSaveProduct, onDeletePro
         lang={lang}
         allowWirelessPcSend={false}
       />
+
+      {/* Inventory Comprehensive Statistics Modal */}
+      {showStatsModal && (() => {
+        const totalProducts = products.length;
+        const inStockProducts = products.filter(p => (Number(p.stock) || 0) > 0);
+        const outOfStockProducts = products.filter(p => (Number(p.stock) || 0) <= 0);
+        const lowStockList = products.filter(p => {
+          const s = Number(p.stock) || 0;
+          const ms = Number(p.minStock) || 0;
+          return s > 0 && s <= ms;
+        });
+        const totalStockUnits = products.reduce((acc, p) => acc + (Number(p.stock) || 0), 0);
+        const totalPurchaseValue = products.reduce((acc, p) => acc + (Math.max(0, Number(p.stock) || 0) * (Number(p.purchasePrice) || 0)), 0);
+        const totalSellingValue = products.reduce((acc, p) => acc + (Math.max(0, Number(p.stock) || 0) * (Number(p.sellingPrice) || 0)), 0);
+        const expectedProfit = totalSellingValue - totalPurchaseValue;
+        const profitMargin = totalSellingValue > 0 ? (expectedProfit / totalSellingValue) * 100 : 0;
+
+        const categoryStats = categories.filter(c => c !== 'all').map(cat => {
+          const catProds = products.filter(p => p.category === cat);
+          const catUnits = catProds.reduce((sum, p) => sum + (Number(p.stock) || 0), 0);
+          const catPurchaseVal = catProds.reduce((sum, p) => sum + (Math.max(0, Number(p.stock) || 0) * (Number(p.purchasePrice) || 0)), 0);
+          const catSellingVal = catProds.reduce((sum, p) => sum + (Math.max(0, Number(p.stock) || 0) * (Number(p.sellingPrice) || 0)), 0);
+          return {
+            category: cat,
+            count: catProds.length,
+            units: catUnits,
+            purchaseValue: catPurchaseVal,
+            sellingValue: catSellingVal,
+            expectedProfit: catSellingVal - catPurchaseVal
+          };
+        }).sort((a, b) => b.sellingValue - a.sellingValue);
+
+        return (
+          <div className="fixed inset-0 bg-slate-900/60 backdrop-blur-xs flex items-center justify-center p-3 sm:p-5 z-50 safe-modal-overlay">
+            <div className="bg-white rounded-3xl shadow-2xl border border-slate-100 w-full max-w-4xl max-h-[92vh] flex flex-col overflow-hidden animate-fade-in">
+              {/* Modal Header */}
+              <div className="bg-slate-900 text-white px-6 py-4 flex items-center justify-between shrink-0">
+                <div className="flex items-center gap-3">
+                  <div className="w-10 h-10 rounded-2xl bg-indigo-500/20 border border-indigo-400/30 flex items-center justify-center text-indigo-400">
+                    <BarChart3 className="w-5 h-5" />
+                  </div>
+                  <div>
+                    <h2 className="text-base sm:text-lg font-black">
+                      {lang === 'ar' ? 'إحصائيات المخزن ورأس المال الشاملة' : 'Inventory Statistics & Valuation'}
+                    </h2>
+                    <p className="text-xs text-slate-400">
+                      {lang === 'ar' ? 'بيانات تفصيلية دقيقة عن المخزون، رأس المال، المنتجات المتوفرة والمنتهية' : 'Detailed breakdown of stock values, profit margins and availability'}
+                    </p>
+                  </div>
+                </div>
+                <button
+                  type="button"
+                  onClick={() => setShowStatsModal(false)}
+                  className="p-2 hover:bg-slate-800 text-slate-400 hover:text-white rounded-xl transition cursor-pointer"
+                >
+                  <X className="w-5 h-5" />
+                </button>
+              </div>
+
+              {/* Modal Body */}
+              <div className="p-4 sm:p-6 overflow-y-auto space-y-6 flex-1 text-slate-800">
+                {/* 4 Key Metric Cards */}
+                <div className="grid grid-cols-2 lg:grid-cols-4 gap-3 sm:gap-4">
+                  {/* Card 1: Total Products */}
+                  <div className="bg-gradient-to-br from-indigo-50 to-indigo-100/50 border border-indigo-200/80 rounded-2xl p-4">
+                    <div className="flex items-center justify-between text-indigo-600 mb-2">
+                      <span className="text-xs font-black">{lang === 'ar' ? 'مجموع المنتجات' : 'Total Products'}</span>
+                      <Package className="w-4.5 h-4.5" />
+                    </div>
+                    <div className="text-xl sm:text-2xl font-black font-mono text-indigo-950">
+                      {totalProducts} <span className="text-xs font-normal text-slate-600">{lang === 'ar' ? 'صنف' : 'items'}</span>
+                    </div>
+                    <div className="text-[11px] font-bold text-indigo-700 mt-1">
+                      {totalStockUnits.toLocaleString()} {lang === 'ar' ? 'قطعة في المخزن' : 'units in stock'}
+                    </div>
+                  </div>
+
+                  {/* Card 2: Purchase Value */}
+                  <div className="bg-gradient-to-br from-blue-50 to-blue-100/50 border border-blue-200/80 rounded-2xl p-4">
+                    <div className="flex items-center justify-between text-blue-600 mb-2">
+                      <span className="text-xs font-black">{lang === 'ar' ? 'قيمة الشراء (رأس المال)' : 'Purchase Cost (Capital)'}</span>
+                      <DollarSign className="w-4.5 h-4.5" />
+                    </div>
+                    <div className="text-xl sm:text-2xl font-black font-mono text-blue-950">
+                      {totalPurchaseValue.toFixed(2)}
+                    </div>
+                    <div className="text-[11px] font-bold text-blue-700 mt-1">
+                      {currency} ({lang === 'ar' ? 'تكلفة شراء المخزون الحالي' : 'cost of current stock'})
+                    </div>
+                  </div>
+
+                  {/* Card 3: Selling Value */}
+                  <div className="bg-gradient-to-br from-emerald-50 to-emerald-100/50 border border-emerald-200/80 rounded-2xl p-4">
+                    <div className="flex items-center justify-between text-emerald-600 mb-2">
+                      <span className="text-xs font-black">{lang === 'ar' ? 'قيمة البيع (المبيعات المتوقعة)' : 'Total Selling Value'}</span>
+                      <TrendingUp className="w-4.5 h-4.5" />
+                    </div>
+                    <div className="text-xl sm:text-2xl font-black font-mono text-emerald-950">
+                      {totalSellingValue.toFixed(2)}
+                    </div>
+                    <div className="text-[11px] font-bold text-emerald-700 mt-1">
+                      {currency} ({lang === 'ar' ? 'القيمة السوقية للمخزن' : 'market stock value'})
+                    </div>
+                  </div>
+
+                  {/* Card 4: Expected Profit */}
+                  <div className="bg-gradient-to-br from-purple-50 to-purple-100/50 border border-purple-200/80 rounded-2xl p-4">
+                    <div className="flex items-center justify-between text-purple-600 mb-2">
+                      <span className="text-xs font-black">{lang === 'ar' ? 'صافي الربح المتوقع' : 'Expected Profit'}</span>
+                      <PieChart className="w-4.5 h-4.5" />
+                    </div>
+                    <div className="text-xl sm:text-2xl font-black font-mono text-purple-950">
+                      {expectedProfit.toFixed(2)} <span className="text-xs text-purple-700 font-bold">{currency}</span>
+                    </div>
+                    <div className="text-[11px] font-bold text-purple-700 mt-1">
+                      {lang === 'ar' ? 'هامش ربح:' : 'Margin:'} <b className="font-mono">%{profitMargin.toFixed(1)}</b>
+                    </div>
+                  </div>
+                </div>
+
+                {/* 3 Availability Status Filter Pills */}
+                <div>
+                  <h3 className="text-xs font-black text-slate-500 uppercase tracking-wider mb-2.5">
+                    {lang === 'ar' ? 'حالة توفر المنتجات في المخزن:' : 'Stock Availability Status:'}
+                  </h3>
+                  <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
+                    {/* In Stock */}
+                    <div className="bg-emerald-50/70 border border-emerald-200 rounded-2xl p-3.5 flex items-center justify-between">
+                      <div className="flex items-center gap-2.5">
+                        <div className="w-8 h-8 rounded-xl bg-emerald-100 text-emerald-700 flex items-center justify-center shrink-0">
+                          <PackageCheck className="w-4 h-4" />
+                        </div>
+                        <div>
+                          <div className="text-xs font-black text-emerald-950">{lang === 'ar' ? 'منتجات متوفرة (موجودة)' : 'In Stock'}</div>
+                          <div className="text-xs font-mono font-black text-emerald-700">{inStockProducts.length} {lang === 'ar' ? 'منتج متوفر' : 'items'}</div>
+                        </div>
+                      </div>
+                      <button
+                        type="button"
+                        onClick={() => {
+                          setStockStatusFilter('in_stock');
+                          setShowStatsModal(false);
+                        }}
+                        className="px-2.5 py-1 bg-white hover:bg-emerald-100 border border-emerald-300 text-emerald-800 text-[11px] font-black rounded-lg transition cursor-pointer shadow-2xs"
+                      >
+                        {lang === 'ar' ? 'عرض القائمة' : 'Filter'}
+                      </button>
+                    </div>
+
+                    {/* Out of Stock */}
+                    <div className="bg-rose-50/70 border border-rose-200 rounded-2xl p-3.5 flex items-center justify-between">
+                      <div className="flex items-center gap-2.5">
+                        <div className="w-8 h-8 rounded-xl bg-rose-100 text-rose-700 flex items-center justify-center shrink-0">
+                          <PackageX className="w-4 h-4" />
+                        </div>
+                        <div>
+                          <div className="text-xs font-black text-rose-950">{lang === 'ar' ? 'منتجات نفذت (غير موجودة)' : 'Out of Stock'}</div>
+                          <div className="text-xs font-mono font-black text-rose-700">{outOfStockProducts.length} {lang === 'ar' ? 'منتج منتهي' : 'items'}</div>
+                        </div>
+                      </div>
+                      <button
+                        type="button"
+                        onClick={() => {
+                          setStockStatusFilter('out_of_stock');
+                          setShowStatsModal(false);
+                        }}
+                        className="px-2.5 py-1 bg-white hover:bg-rose-100 border border-rose-300 text-rose-800 text-[11px] font-black rounded-lg transition cursor-pointer shadow-2xs"
+                      >
+                        {lang === 'ar' ? 'عرض القائمة' : 'Filter'}
+                      </button>
+                    </div>
+
+                    {/* Low Stock Alert */}
+                    <div className="bg-amber-50/70 border border-amber-200 rounded-2xl p-3.5 flex items-center justify-between">
+                      <div className="flex items-center gap-2.5">
+                        <div className="w-8 h-8 rounded-xl bg-amber-100 text-amber-700 flex items-center justify-center shrink-0">
+                          <AlertCircle className="w-4 h-4" />
+                        </div>
+                        <div>
+                          <div className="text-xs font-black text-amber-950">{lang === 'ar' ? 'قريبة من النفاد (إنذار)' : 'Low Stock Alert'}</div>
+                          <div className="text-xs font-mono font-black text-amber-700">{lowStockList.length} {lang === 'ar' ? 'منتج تحت الحد' : 'items'}</div>
+                        </div>
+                      </div>
+                      <button
+                        type="button"
+                        onClick={() => {
+                          setStockStatusFilter('low_stock');
+                          setShowStatsModal(false);
+                        }}
+                        className="px-2.5 py-1 bg-white hover:bg-amber-100 border border-amber-300 text-amber-800 text-[11px] font-black rounded-lg transition cursor-pointer shadow-2xs"
+                      >
+                        {lang === 'ar' ? 'عرض القائمة' : 'Filter'}
+                      </button>
+                    </div>
+                  </div>
+                </div>
+
+                {/* Categories Distribution Table */}
+                <div className="bg-slate-50 border border-slate-200 rounded-2xl p-4 space-y-3">
+                  <div className="flex items-center gap-2 text-slate-800 font-black text-sm">
+                    <Layers className="w-4 h-4 text-indigo-600" />
+                    <span>{lang === 'ar' ? 'توزيع المخزون والقيمة حسب الأقسام:' : 'Inventory Breakdown by Category:'}</span>
+                  </div>
+                  <div className="overflow-x-auto">
+                    <table className="w-full text-xs">
+                      <thead>
+                        <tr className="border-b border-slate-200 text-slate-500 font-black uppercase text-[10px]">
+                          <th className="py-2 text-start">{lang === 'ar' ? 'القسم' : 'Category'}</th>
+                          <th className="py-2 text-center">{lang === 'ar' ? 'عدد الأصناف' : 'Products'}</th>
+                          <th className="py-2 text-center">{lang === 'ar' ? 'كمية القطع' : 'Units'}</th>
+                          <th className="py-2 text-end">{lang === 'ar' ? 'قيمة الشراء' : 'Purchase Cost'}</th>
+                          <th className="py-2 text-end">{lang === 'ar' ? 'قيمة البيع' : 'Selling Value'}</th>
+                          <th className="py-2 text-end text-emerald-700">{lang === 'ar' ? 'الربح المتوقع' : 'Profit'}</th>
+                        </tr>
+                      </thead>
+                      <tbody className="divide-y divide-slate-100 font-bold">
+                        {categoryStats.map(cs => (
+                          <tr key={cs.category} className="hover:bg-white/80 transition">
+                            <td className="py-2.5 text-start font-black text-slate-900">{cs.category}</td>
+                            <td className="py-2.5 text-center font-mono">{cs.count}</td>
+                            <td className="py-2.5 text-center font-mono text-indigo-600">{cs.units}</td>
+                            <td className="py-2.5 text-end font-mono text-slate-700">{cs.purchaseValue.toFixed(2)} {currency}</td>
+                            <td className="py-2.5 text-end font-mono text-emerald-700">{cs.sellingValue.toFixed(2)} {currency}</td>
+                            <td className="py-2.5 text-end font-mono text-emerald-600 font-black">+{cs.expectedProfit.toFixed(2)} {currency}</td>
+                          </tr>
+                        ))}
+                      </tbody>
+                    </table>
+                  </div>
+                </div>
+              </div>
+
+              {/* Modal Footer */}
+              <div className="bg-slate-50 px-6 py-4 border-t border-slate-100 flex flex-wrap items-center justify-between gap-3 shrink-0">
+                <div className="text-xs font-bold text-slate-500">
+                  {stockStatusFilter !== 'all' && (
+                    <button
+                      type="button"
+                      onClick={() => setStockStatusFilter('all')}
+                      className="text-rose-600 hover:text-rose-800 underline cursor-pointer"
+                    >
+                      {lang === 'ar' ? 'إعادة تعيين فلتر المخزون' : 'Reset Filter'}
+                    </button>
+                  )}
+                </div>
+                <div className="flex items-center gap-2">
+                  <button
+                    type="button"
+                    onClick={() => setShowStatsModal(false)}
+                    className="px-5 py-2.5 bg-slate-800 hover:bg-slate-900 text-white text-xs font-black rounded-xl transition cursor-pointer shadow-xs"
+                  >
+                    {lang === 'ar' ? 'إغلاق' : 'Close'}
+                  </button>
+                </div>
+              </div>
+            </div>
+          </div>
+        );
+      })()}
     </div>
   );
 }

@@ -22,6 +22,15 @@ export interface PdfDocumentMeta {
   storeEmail?: string;
   storeAddress?: string;
   storeRegNumber?: string;
+  storeTaxNumber?: string;
+  storeLogoUrl?: string;
+  showLogo?: boolean;
+  showPhone?: boolean;
+  showAddress?: boolean;
+  showEmail?: boolean;
+  showTaxNumber?: boolean;
+  showCashier?: boolean;
+  showDebt?: boolean;
   customerLabel?: string;
   customerName: string;
   customerPhone?: string;
@@ -189,6 +198,14 @@ function drawCode39BarcodeOnCanvas(
   return barHeight + 16;
 }
 
+export function formatCustomerDisplayName(name?: string): string {
+  if (!name) return '';
+  return name
+    .replace(/\s*\(\s*ICE:\s*([^)]+)\s*\)/gi, ' - ICE: $1')
+    .replace(/[()]/g, '')
+    .trim();
+}
+
 /**
  * Single Unified 80mm Thermal Receipt HTML Builder used across POS and Invoices.
  * Matches the unified receipt photo model while using a crisp, legible font family ('Tajawal', 'Tahoma', 'Arial')
@@ -224,6 +241,17 @@ export function buildUnified80mmReceiptHtml(
     currency?: string;
     receiptTheme?: 'classic' | 'navy' | 'emerald' | 'minimal' | 'modern';
     printPrimaryColor?: string;
+    logoUrl?: string;
+    registrationNumber?: string;
+    taxNumber?: string;
+    showLogoOnInvoice?: boolean;
+    showPhoneOnInvoice?: boolean;
+    showAddressOnInvoice?: boolean;
+    showEmailOnInvoice?: boolean;
+    showTaxNumberOnInvoice?: boolean;
+    showCashierOnInvoice?: boolean;
+    showBarcodeOnInvoice?: boolean;
+    showDebtOnInvoice?: boolean;
   },
   lang: 'ar' | 'fr' | 'en' = 'ar',
   thankYouText?: string
@@ -286,9 +314,15 @@ export function buildUnified80mmReceiptHtml(
   return `
     <div style="font-family: ${receiptFont}; font-size: 11px; font-weight: 700; color: #000000; background: #ffffff; direction: ${isRTL ? 'rtl' : 'ltr'}; line-height: 1.45;">
       <div style="text-align: center; margin-bottom: 8px;">
+        ${config.showLogoOnInvoice !== false && config.logoUrl ? `<img src="${config.logoUrl}" style="max-height: 44px; max-width: 140px; object-fit: contain; margin: 0 auto 4px auto; display: block;" />` : ''}
         <h2 style="margin: 0; font-size: 15px; font-weight: 900; color: ${activeReceiptStyle.accent}; font-family: ${receiptFont};">${config.name || 'Smart POS'}</h2>
-        ${config.address ? `<div style="font-size: 10px; font-weight: 700; margin-top: 2px; color: #334155;">${config.address}</div>` : ''}
-        ${config.phone ? `<div style="font-size: 10px; font-weight: 700; color: #334155;">${lang === 'ar' ? 'الهاتف:' : 'Tél:'} ${config.phone}</div>` : ''}
+        ${config.showAddressOnInvoice !== false && config.address ? `<div style="font-size: 10px; font-weight: 700; margin-top: 2px; color: #334155;">${config.address}</div>` : ''}
+        ${config.showPhoneOnInvoice !== false && config.phone ? `<div style="font-size: 10px; font-weight: 700; color: #334155;">${lang === 'ar' ? 'الهاتف:' : 'Tél:'} ${config.phone}</div>` : ''}
+        ${config.showTaxNumberOnInvoice !== false && (config.registrationNumber || config.taxNumber) ? `
+          <div style="font-size: 9.5px; font-weight: 700; color: #475569; font-family: ${numFont}; margin-top: 1px;">
+            ${[config.registrationNumber ? `ICE: ${config.registrationNumber}` : '', config.taxNumber ? `RC/IF: ${config.taxNumber}` : ''].filter(Boolean).join('  |  ')}
+          </div>
+        ` : ''}
         ${inv.docTitle ? `<div style="font-size: 12px; font-weight: 900; margin-top: 5px; color: #000000 !important; background: #ffffff !important; border: 1.5px solid #000000 !important; display: inline-block; padding: 2.5px 12px; border-radius: 4px; text-transform: uppercase; font-family: ${receiptFont};">${inv.docTitle}</div>` : ''}
       </div>
 
@@ -298,8 +332,8 @@ export function buildUnified80mmReceiptHtml(
           <span style="font-family: ${numFont};" dir="ltr">${dateStr}</span>
         </div>
         <div style="display: flex; justify-content: space-between; align-items: center; gap: 4px; margin-top: 3px;">
-          <span>${inv.partyLabel || (lang === 'ar' ? 'الزبون :' : 'Client :')} <b>${inv.customerName || (lang === 'ar' ? 'زبون عابر' : 'Walk-in')}</b></span>
-          <span>${lang === 'ar' ? 'البائع:' : 'Vendeur:'} <b>${inv.sellerName || 'admin'}</b></span>
+          <span>${inv.partyLabel || (lang === 'ar' ? 'الزبون :' : 'Client :')} <b>${formatCustomerDisplayName(inv.customerName) || (lang === 'ar' ? 'زبون عابر' : 'Walk-in')}</b></span>
+          ${config.showCashierOnInvoice !== false ? `<span>${lang === 'ar' ? 'البائع:' : 'Vendeur:'} <b>${inv.sellerName || 'admin'}</b></span>` : ''}
         </div>
       </div>
 
@@ -343,7 +377,7 @@ export function buildUnified80mmReceiptHtml(
             : ''
         }
         ${
-          prevBal > 0
+          config.showDebtOnInvoice !== false && prevBal > 0
             ? `
         <div style="display: flex; justify-content: space-between; margin-bottom: 3px;">
           <span>${lang === 'ar' ? 'مجموع الفاتورة الحالي:' : 'Total Facture:'}</span>
@@ -358,7 +392,7 @@ export function buildUnified80mmReceiptHtml(
         }
         <div style="border: 2px solid ${activeReceiptStyle.border}; padding: 5px 8px; border-radius: 6px; margin: 6px 0; display: flex; justify-content: space-between; align-items: center; background: ${receiptTheme === 'classic' ? '#ffffff' : '#f8fafc'}; white-space: nowrap;">
           <span style="font-weight: 800; font-size: 12px; color: ${activeReceiptStyle.accent}; font-family: ${receiptFont};">${
-            prevBal > 0
+            config.showDebtOnInvoice !== false && prevBal > 0
               ? lang === 'ar'
                 ? 'المجموع الكلي:'
                 : 'TOTAL GÉNÉRAL:'
@@ -373,7 +407,7 @@ export function buildUnified80mmReceiptHtml(
           <span style="font-family: ${numFont}; font-weight: 800;">${totalItemsCount}</span>
         </div>
         ${
-          remaining > 0
+          config.showDebtOnInvoice !== false && remaining > 0
             ? `
         <div style="display: flex; justify-content: space-between; font-weight: 800; margin-bottom: 2px;">
           <span>${lang === 'ar' ? 'الباقي (كريدي):' : 'Reste (Crédit):'}</span>
@@ -384,11 +418,17 @@ export function buildUnified80mmReceiptHtml(
         }
       </div>
 
+      ${
+        config.showBarcodeOnInvoice !== false
+          ? `
       <div style="margin: 8px 0; display: flex; justify-content: center; align-items: center;">
         ${generateCode39BarcodeSvg(inv.invoiceNumber || 'INV', 36)}
       </div>
+      `
+          : ''
+      }
 
-      <div style="text-align: center; margin-top: 8px; padding-top: 6px; border-top: 1px dashed #000000; font-size: 10.5px; font-weight: 700; color: #000000; font-family: ${receiptFont}; line-height: 1.5;">
+      <div style="text-align: center; margin-top: 8px; padding-top: 6px; border-top: 1.5px solid #000000; font-size: 10.5px; font-weight: 700; color: #000000; font-family: ${receiptFont}; line-height: 1.5;">
         ${thankYouText || (lang === 'ar' ? 'شكراً لتعاملكم معنا ومرحباً بكم في أي وقت!' : 'Thank you for your business!')}
       </div>
     </div>
@@ -643,13 +683,16 @@ export function buildStructuredA4Html(meta: PdfDocumentMeta): string {
       <!-- Top Header -->
       <div style="display: flex; justify-content: space-between; align-items: flex-start; border-bottom: 2.5px solid ${primaryBrandColor}; padding-bottom: 14px; margin-bottom: 16px;">
         <div style="text-align: ${alignStart};">
+          ${meta.showLogo !== false && meta.storeLogoUrl ? `<img src="${meta.storeLogoUrl}" style="max-height: 48px; max-width: 140px; object-fit: contain; margin-bottom: 6px; display: block;" />` : ''}
           <h1 style="margin: 0; font-size: 22px; font-weight: 900; color: #0f172a;">${meta.storeName || 'Smart POS'}</h1>
-          ${meta.storeAddress ? `<div style="font-size: 12px; color: #334155; font-weight: 700; margin-top: 4px;">${meta.storeAddress}</div>` : ''}
+          ${meta.showAddress !== false && meta.storeAddress ? `<div style="font-size: 12px; color: #334155; font-weight: 700; margin-top: 4px;">${meta.storeAddress}</div>` : ''}
           <div style="font-size: 11.5px; color: #475569; font-weight: 700; margin-top: 3px;">
             ${[
-              meta.storePhone ? `${isRTL ? 'الهاتف:' : 'Tél:'} ${meta.storePhone}` : '',
-              meta.storeEmail ? meta.storeEmail : '',
-              meta.storeRegNumber ? `ICE/RC: ${meta.storeRegNumber}` : '',
+              meta.showPhone !== false && meta.storePhone ? `${isRTL ? 'الهاتف:' : 'Tél:'} ${meta.storePhone}` : '',
+              meta.showEmail !== false && meta.storeEmail ? meta.storeEmail : '',
+              meta.showTaxNumber !== false && (meta.storeRegNumber || meta.storeTaxNumber)
+                ? [meta.storeRegNumber ? `ICE: ${meta.storeRegNumber}` : '', meta.storeTaxNumber ? `RC/IF: ${meta.storeTaxNumber}` : ''].filter(Boolean).join('  |  ')
+                : '',
             ]
               .filter(Boolean)
               .join('  |  ')}
@@ -666,11 +709,11 @@ export function buildStructuredA4Html(meta: PdfDocumentMeta): string {
       <div style="background: #f8fafc; border: 1px solid #cbd5e1; border-radius: 10px; padding: 12px 16px; margin-bottom: 18px; display: flex; justify-content: space-between; align-items: center;">
         <div style="text-align: ${alignStart};">
           <div style="font-size: 11px; font-weight: 800; color: #64748b;">${meta.customerLabel || (isRTL ? 'بيانات العميل / الزبون:' : 'Client:')}</div>
-          <div style="font-size: 15px; font-weight: 900; color: #0f172a; margin-top: 2px;">${meta.customerName || ''}</div>
+          <div style="font-size: 15px; font-weight: 900; color: #0f172a; margin-top: 2px;">${formatCustomerDisplayName(meta.customerName)}</div>
         </div>
         <div style="text-align: ${alignEnd}; font-size: 12px; font-weight: 700; color: #334155;">
-          ${meta.customerPhone ? `<div>${isRTL ? 'الهاتف:' : 'Tél:'} <span style="font-family: Tahoma, Arial, sans-serif;" dir="ltr">${meta.customerPhone}</span></div>` : ''}
-          ${meta.sellerName ? `<div style="margin-top: 2px;">${isRTL ? 'البائع:' : 'Vendeur:'} <b>${meta.sellerName}</b></div>` : ''}
+          ${meta.showPhone !== false && meta.customerPhone ? `<div>${isRTL ? 'الهاتف:' : 'Tél:'} <span style="font-family: Tahoma, Arial, sans-serif;" dir="ltr">${meta.customerPhone}</span></div>` : ''}
+          ${meta.showCashier !== false && meta.sellerName ? `<div style="margin-top: 2px;">${isRTL ? 'البائع:' : 'Vendeur:'} <b>${meta.sellerName}</b></div>` : ''}
         </div>
       </div>
 
@@ -733,7 +776,7 @@ export function buildStructuredA4Html(meta: PdfDocumentMeta): string {
             <span style="font-family: Tahoma, Arial, sans-serif; color: ${primaryBrandColor}; font-size: 16px;" dir="ltr">${Number(meta.total || 0).toFixed(2)} ${meta.currency}</span>
           </div>
           ${
-            prevBal > 0
+            meta.showDebt !== false && prevBal > 0
               ? `
             <div style="display: flex; justify-content: space-between; margin-top: 6px; font-weight: 800; color: #b45309; font-size: 12px;">
               <span>${isRTL ? 'كريدي قديم / سابق:' : 'Ancien Crédit:'}</span>
@@ -749,7 +792,7 @@ export function buildStructuredA4Html(meta: PdfDocumentMeta): string {
           ${
             meta.amountPaid !== undefined
               ? `
-            <div style="display: flex; justify-content: space-between; margin-top: 6px; padding-top: 6px; border-top: 1px dashed #cbd5e1; font-weight: 800; color: #047857; font-size: 12px;">
+            <div style="display: flex; justify-content: space-between; margin-top: 6px; padding-top: 6px; border-top: 1px solid #cbd5e1; font-weight: 800; color: #047857; font-size: 12px;">
               <span>${isRTL ? 'المبلغ المدفوع:' : 'Montant Payé:'}</span>
               <span style="font-family: Tahoma, Arial, sans-serif;" dir="ltr">${Number(meta.amountPaid).toFixed(2)} ${meta.currency}</span>
             </div>
@@ -757,7 +800,7 @@ export function buildStructuredA4Html(meta: PdfDocumentMeta): string {
               : ''
           }
           ${
-            meta.remainingDebt && meta.remainingDebt > 0
+            meta.showDebt !== false && meta.remainingDebt && meta.remainingDebt > 0
               ? `
             <div style="display: flex; justify-content: space-between; margin-top: 4px; font-weight: 900; color: #e11d48; font-size: 12.5px;">
               <span>${isRTL ? 'الباقي (كريدي):' : 'Reste (Crédit):'}</span>
@@ -998,7 +1041,7 @@ function paintDocumentContentOnContext(
     });
     y += 24;
 
-    if (meta.storeAddress) {
+    if (meta.showAddress !== false && meta.storeAddress) {
       drawText(meta.storeAddress, logicalWidth / 2, y, {
         size: 11,
         weight: '700',
@@ -1009,13 +1052,29 @@ function paintDocumentContentOnContext(
       y += 16;
     }
 
-    if (meta.storePhone) {
+    if (meta.showPhone !== false && meta.storePhone) {
       drawText(`${isRTL ? 'الهاتف:' : 'Tél:'} ${meta.storePhone}`, logicalWidth / 2, y, {
         size: 11,
         weight: '700',
         color: '#000000',
         align: 'center',
         maxWidth: contentWidth,
+      });
+      y += 16;
+    }
+
+    if (meta.showTaxNumber !== false && (meta.storeRegNumber || meta.storeTaxNumber)) {
+      const taxLine = [
+        meta.storeRegNumber ? `ICE: ${meta.storeRegNumber}` : '',
+        meta.storeTaxNumber ? `RC: ${meta.storeTaxNumber}` : ''
+      ].filter(Boolean).join('  |  ');
+      drawText(taxLine, logicalWidth / 2, y, {
+        size: 10,
+        weight: '700',
+        color: '#000000',
+        align: 'center',
+        maxWidth: contentWidth,
+        isNumeric: true,
       });
       y += 16;
     }
@@ -1041,17 +1100,19 @@ function paintDocumentContentOnContext(
     y += 18;
 
     drawText(
-      `${meta.partyLabel || (isRTL ? 'الزبون :' : 'Client :')} ${meta.customerName || (isRTL ? 'زبون عابر' : 'Walk-in')}`,
+      `${meta.partyLabel || (isRTL ? 'الزبون :' : 'Client :')} ${formatCustomerDisplayName(meta.customerName) || (isRTL ? 'زبون عابر' : 'Walk-in')}`,
       startX,
       y,
       { size: 11, weight: '800', color: '#000000', align: startAlign }
     );
-    drawText(
-      `${isRTL ? 'البائع:' : 'Vendeur:'} ${meta.sellerName || 'admin'}`,
-      endX,
-      y,
-      { size: 11, weight: '800', color: '#000000', align: endAlign }
-    );
+    if (meta.showCashier !== false) {
+      drawText(
+        `${isRTL ? 'البائع:' : 'Vendeur:'} ${meta.sellerName || 'admin'}`,
+        endX,
+        y,
+        { size: 11, weight: '800', color: '#000000', align: endAlign }
+      );
+    }
     y += 18;
 
     drawLine(y, false, '#000000');
@@ -1222,7 +1283,7 @@ function paintDocumentContentOnContext(
     );
     y += 19;
 
-    if (meta.remainingDebt && meta.remainingDebt > 0) {
+    if (meta.showDebt !== false && meta.remainingDebt && meta.remainingDebt > 0) {
       drawMetaRow(
         isRTL ? 'المتبقي:' : 'Reste:',
         `${Number(meta.remainingDebt).toFixed(2)} ${meta.currency}`
@@ -1230,11 +1291,13 @@ function paintDocumentContentOnContext(
     }
 
     // Barcode
-    y += 6;
-    y += drawCode39BarcodeOnCanvas(ctx, meta.docNumber || 'INV', logicalWidth / 2, y, 36);
+    if (meta.showBarcode !== false) {
+      y += 6;
+      y += drawCode39BarcodeOnCanvas(ctx, meta.docNumber || 'INV', logicalWidth / 2, y, 36);
+    }
 
     y += 6;
-    drawLine(y, false, '#000000', true);
+    drawLine(y, false, '#000000', false);
     y += 10;
     drawText(
       meta.footerText || (isRTL ? 'شكراً لتعاملكم معنا ومرحباً بكم في أي وقت!' : 'Thank you for your business!'),
@@ -1304,10 +1367,14 @@ function paintDocumentContentOnContext(
       });
       y += 32;
 
-      if (meta.storeAddress || meta.storePhone || meta.storeEmail) {
-        const storeDetails = [meta.storeAddress, meta.storePhone, meta.storeEmail]
-          .filter(Boolean)
-          .join('  |  ');
+      const storeDetails = [
+        meta.showAddress !== false ? meta.storeAddress : '',
+        meta.showPhone !== false ? meta.storePhone : '',
+        meta.showEmail !== false ? meta.storeEmail : ''
+      ]
+        .filter(Boolean)
+        .join('  |  ');
+      if (storeDetails) {
         drawText(storeDetails, startX, y, {
           size: 12,
           weight: '700',
@@ -1325,8 +1392,12 @@ function paintDocumentContentOnContext(
       });
       y += 24;
 
-      if (meta.storeRegNumber) {
-        drawText(`ICE / RC: ${meta.storeRegNumber}`, startX, y, {
+      if (meta.showTaxNumber !== false && (meta.storeRegNumber || meta.storeTaxNumber)) {
+        const taxParts = [
+          meta.storeRegNumber ? `ICE: ${meta.storeRegNumber}` : '',
+          meta.storeTaxNumber ? `RC/IF: ${meta.storeTaxNumber}` : ''
+        ].filter(Boolean).join('  |  ');
+        drawText(taxParts, startX, y, {
           size: 11,
           weight: '700',
           color: '#64748b',
@@ -1359,13 +1430,13 @@ function paintDocumentContentOnContext(
         y + 11,
         { size: 11, weight: '800', color: '#64748b', align: startAlign }
       );
-      drawText(meta.customerName, cardStartX, y + 31, {
+      drawText(formatCustomerDisplayName(meta.customerName), cardStartX, y + 31, {
         size: 15,
         weight: '900',
         color: '#0f172a',
         align: startAlign,
       });
-      if (meta.customerPhone) {
+      if (meta.showPhone !== false && meta.customerPhone) {
         drawText(`${isRTL ? 'الهاتف:' : 'Tel:'} ${meta.customerPhone}`, cardEndX, y + 31, {
           size: 13,
           weight: '700',

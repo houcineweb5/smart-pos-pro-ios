@@ -23,6 +23,7 @@ export const INITIAL_CONFIG: StoreConfig = {
   email: 'SmartPos@gmail.com',
   address: '',
   registrationNumber: '',
+  taxNumber: '',
   currency: 'MAD',
   taxRate: 0,
   logoUrl: '',
