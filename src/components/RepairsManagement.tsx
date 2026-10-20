@@ -848,7 +848,7 @@ export default function RepairsManagement({ repairs, config, onSaveRepair, onDel
                 <h3 className="text-center font-black text-sm text-[14px] mt-1 mb-0.5">{config.name}</h3>
                 <p className="text-center text-[10px] text-slate-500 mt-0 mb-2">{config.address}</p>
 
-                <div className="border-t border-dashed border-slate-300 my-2"></div>
+                <div className="border-t border-solid border-slate-300 my-2"></div>
 
                 <p className="text-center font-mono font-bold text-[12px] bg-slate-100 py-1 rounded">
                   {lang === 'ar' ? 'وصــل اسـتـلام صـيـانـة' : 'SAV CLAIM TICKET'}
@@ -869,7 +869,7 @@ export default function RepairsManagement({ repairs, config, onSaveRepair, onDel
                   </div>
                 </div>
 
-                <div className="border-t border-dashed border-slate-300 my-2"></div>
+                <div className="border-t border-solid border-slate-300 my-2"></div>
 
                 <div className="space-y-1 text-[10px]">
                   <p className="font-bold text-[11px]">{lang === 'ar' ? 'بيانات الزبون:' : 'Customer:'}</p>
@@ -877,7 +877,7 @@ export default function RepairsManagement({ repairs, config, onSaveRepair, onDel
                   {printTarget.customerPhone && <p className="ltr:pl-2 rtl:pr-2 font-mono">{printTarget.customerPhone}</p>}
                 </div>
 
-                <div className="border-t border-dashed border-slate-300 my-2"></div>
+                <div className="border-t border-solid border-slate-300 my-2"></div>
 
                 <div className="space-y-1 text-[10px]/snug">
                   <p className="font-bold text-[11px]">{lang === 'ar' ? 'مواصفات الجهاز والأعطال:' : 'Device & Diagnose:'}</p>
@@ -888,7 +888,7 @@ export default function RepairsManagement({ repairs, config, onSaveRepair, onDel
                   </p>
                 </div>
 
-                <div className="border-t border-dashed border-slate-300 my-2"></div>
+                <div className="border-t border-solid border-slate-300 my-2"></div>
 
                 {/* Financial overview breakdown */}
                 {(() => {
@@ -919,7 +919,7 @@ export default function RepairsManagement({ repairs, config, onSaveRepair, onDel
                   );
                 })()}
 
-                <div className="border-t border-dashed border-slate-300 my-3"></div>
+                <div className="border-t border-solid border-slate-300 my-3"></div>
 
                 <div className="text-[8.5px] text-center text-slate-500 font-medium space-y-1 leading-normal px-2">
                   <p>{lang === 'ar' ? 'تنبيه: يرجى إحضار هذا الوصل لتسليمك جهازك.' : 'Notice: Please present this claim voucher for recovery.'}</p>

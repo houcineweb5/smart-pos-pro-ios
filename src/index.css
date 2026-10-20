@@ -654,6 +654,12 @@ body.smartpos-printing-now #smartpos-print-mount {
 
   #smartpos-print-mount .smartpos-print-sheet.sheet-80mm * {
     color: #000000 !important;
+    border-style: solid;
+  }
+
+  #smartpos-print-mount .smartpos-print-sheet.sheet-80mm [style*="dashed"],
+  #smartpos-print-mount .smartpos-print-sheet.sheet-80mm .border-dashed {
+    border-style: solid !important;
   }
 
   #smartpos-print-mount .smartpos-print-sheet.sheet-a4 {

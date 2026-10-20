@@ -818,6 +818,13 @@ export function buildStructuredA4Html(meta: PdfDocumentMeta): string {
         <span style="color: #1e3a8a; font-weight: 900;">${isArabic ? amountToWordsAr(Number(meta.total || 0) + prevBal, meta.currency) : amountToWordsFr(Number(meta.total || 0) + prevBal, meta.currency)}</span>
       </div>
 
+      <!-- Barcode (Code-39) for Official Large Print / Invoices -->
+      ${meta.showBarcode !== false && meta.docNumber ? `
+      <div style="margin-top: 14px; display: flex; flex-direction: column; align-items: center; justify-content: center; page-break-inside: avoid;">
+        ${generateCode39BarcodeSvg(meta.docNumber, 36)}
+      </div>
+      ` : ''}
+
       <!-- Thank You Message -->
       <div style="margin-top: 20px; padding-top: 10px; border-top: 1px solid #cbd5e1; text-align: center; font-size: 11.5px; font-weight: 800; color: #475569;">
         ${meta.footerText || (isRTL ? 'شكراً لتعاملكم معنا ومرحباً بكم في أي وقت!' : 'Thank you for your business!')}
@@ -1016,9 +1023,8 @@ function paintDocumentContentOnContext(
     ctx.save();
     ctx.strokeStyle = color;
     ctx.lineWidth = thick ? 1.8 : 1;
-    if (dashed) {
-      ctx.setLineDash([4, 3]);
-    }
+    // Always render solid continuous lines for clean printing
+    ctx.setLineDash([]);
     ctx.beginPath();
     ctx.moveTo(pad, yPos);
     ctx.lineTo(logicalWidth - pad, yPos);
@@ -1790,6 +1796,13 @@ function paintDocumentContentOnContext(
       });
       y += boxHeight + 10;
 
+      // Barcode (Code-39) for Official Large Print / Invoices
+      if (meta.showBarcode !== false && meta.docNumber) {
+        y += 6;
+        y += drawCode39BarcodeOnCanvas(ctx, meta.docNumber, logicalWidth / 2, y, 36);
+        y += 6;
+      }
+
       // Thank you message
       drawLine(y, false, '#cbd5e1');
       y += 10;
@@ -2247,10 +2260,25 @@ export async function exportDatabaseBackupFile(
  * as well as Android and Desktop browsers.
  */
 export async function exportCsvFile(
-  csvContent: string,
-  filename = `inventory_export_${new Date().toISOString().slice(0, 10)}.csv`
+  arg1: string,
+  arg2?: string
 ): Promise<'shared' | 'downloaded' | 'error'> {
   try {
+    let csvContent = arg1 || '';
+    let filename = arg2 || `inventory_${new Date().toISOString().slice(0, 10)}.csv`;
+
+    // Robust argument order detection:
+    // If arg1 looks like a filename (e.g. ends with .csv or is a short single-line name)
+    // and arg2 looks like the CSV body (contains newlines or separators)
+    if (
+      (arg1.endsWith('.csv') || (!arg1.includes('\n') && arg1.length < 150)) &&
+      arg2 &&
+      (arg2.includes('\n') || arg2.includes(';') || arg2.includes(','))
+    ) {
+      filename = arg1;
+      csvContent = arg2;
+    }
+
     const safeFilename = filename.endsWith('.csv') ? filename : `${filename}.csv`;
     const bom = '\uFEFF';
     const fullText = csvContent.startsWith(bom) ? csvContent : bom + csvContent;

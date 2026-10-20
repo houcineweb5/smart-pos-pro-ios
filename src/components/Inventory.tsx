@@ -225,7 +225,7 @@ export default function Inventory({ products, config, onSaveProduct, onDeletePro
     setEditingProduct(null);
   };
 
-  // CSV / Excel Export with explicit sep=; directive and UTF-8 BOM
+  // CSV / Excel Export with explicit UTF-8 BOM
   // Ensures every element appears in its own distinct column in Microsoft Excel!
   const handleExportCSV = async () => {
     const headers = [
@@ -243,17 +243,18 @@ export default function Inventory({ products, config, onSaveProduct, onDeletePro
       `"${(p.sku || '').replace(/"/g, '""')}"`,
       `"${(p.name || '').replace(/"/g, '""')}"`,
       `"${(p.category || '').replace(/"/g, '""')}"`,
-      p.purchasePrice ?? 0,
-      p.sellingPrice ?? 0,
-      p.wholesalePrice ?? p.sellingPrice ?? 0,
-      p.stock ?? 0,
-      p.minStock ?? 0,
+      Number(p.purchasePrice || 0).toFixed(2),
+      Number(p.sellingPrice || 0).toFixed(2),
+      Number(p.wholesalePrice ?? p.sellingPrice ?? 0).toFixed(2),
+      Number(p.stock || 0),
+      Number(p.minStock || 0),
       `"${(p.unit || 'pcs').replace(/"/g, '""')}"`
     ]);
 
-    // sep=;\r\n tells Microsoft Excel directly to use semicolon separator so each column is in its own cell!
-    const csvContent = 'sep=;\r\n' + [headers.join(';'), ...rows.map(r => r.join(';'))].join('\r\n');
-    await exportCsvFile(`inventory_${new Date().toISOString().slice(0, 10)}.csv`, csvContent);
+    // Use semicolon separator so Microsoft Excel in European/Arab regional settings opens columns automatically
+    const csvContent = [headers.join(';'), ...rows.map(r => r.join(';'))].join('\r\n');
+    const filename = `inventory_${new Date().toISOString().slice(0, 10)}.csv`;
+    await exportCsvFile(csvContent, filename);
   };
 
   // CSV Import handler
@@ -299,6 +300,13 @@ export default function Inventory({ products, config, onSaveProduct, onDeletePro
         const hasHeader = isNaN(Number(firstRow[3])) && isNaN(Number(firstRow[4]));
         const startIdx = hasHeader ? 1 : 0;
 
+        const parseNum = (val: string | undefined): number => {
+          if (!val) return 0;
+          const cleaned = String(val).replace(/,/g, '.').trim();
+          const n = parseFloat(cleaned);
+          return isNaN(n) ? 0 : n;
+        };
+
         for (let i = startIdx; i < lines.length; i++) {
           const cols = parseCSVLine(lines[i]);
           if (cols.length < 5) continue;
@@ -306,11 +314,11 @@ export default function Inventory({ products, config, onSaveProduct, onDeletePro
           const sku = cols[0] || Math.floor(10000000 + Math.random() * 90000000).toString();
           const name = cols[1] || `Item ${i}`;
           const category = cols[2] || 'General';
-          const purchasePrice = parseFloat(cols[3]) || 0;
-          const sellingPrice = parseFloat(cols[4]) || 0;
-          const wholesalePrice = cols[5] ? parseFloat(cols[5]) : sellingPrice;
-          const stock = cols[6] ? parseInt(cols[6]) : 0;
-          const minStock = cols[7] ? parseInt(cols[7]) : 5;
+          const purchasePrice = parseNum(cols[3]);
+          const sellingPrice = parseNum(cols[4]);
+          const wholesalePrice = cols[5] ? parseNum(cols[5]) : sellingPrice;
+          const stock = cols[6] ? parseInt(cols[6].replace(/,/g, '.')) : 0;
+          const minStock = cols[7] ? parseInt(cols[7].replace(/,/g, '.')) : 5;
           const unit = cols[8] || 'pcs';
 
           const existing = products.find(p => p.sku === sku);

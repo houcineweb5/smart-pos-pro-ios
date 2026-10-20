@@ -114,12 +114,12 @@ export default function CashRegisterModal({
           <div style="font-size: 14px; font-weight: 900; margin-bottom: 2px;">${config.name}</div>
           <div>${config.address || ''}</div>
           <div>TEL: ${config.phone || ''}</div>
-          <div style="border-top: 1px dashed #000; margin: 6px 0;"></div>
+          <div style="border-top: 1.5px solid #000; margin: 6px 0;"></div>
           <div style="font-weight: bold; font-size: 13px;">=== RAPPORT Z / تقرير إغلاق الصندوق ===</div>
           <div>${now.toLocaleDateString()} - ${now.toLocaleTimeString()}</div>
           <div>المسؤول / Caissier: ${currentUser?.name || 'Administrator'}</div>
         </div>
-        <div style="border-top: 1px dashed #000; margin: 6px 0;"></div>
+        <div style="border-top: 1.5px solid #000; margin: 6px 0;"></div>
         <div style="display: flex; justify-content: space-between; margin: 2px 0;">
           <span>عدد المبيعات / Nb Ventes:</span>
           <b>${todayInvoices.length}</b>
@@ -128,7 +128,7 @@ export default function CashRegisterModal({
           <span>إجمالي المبيعات / Total Ventes:</span>
           <b>${totalSalesToday.toFixed(2)} ${config.currency}</b>
         </div>
-        <div style="border-top: 1px dashed #000; margin: 6px 0;"></div>
+        <div style="border-top: 1.5px solid #000; margin: 6px 0;"></div>
         <div style="display: flex; justify-content: space-between; margin: 2px 0;">
           <span>(+) رصيد البداية:</span>
           <span>${openingVal.toFixed(2)} ${config.currency}</span>
@@ -141,7 +141,7 @@ export default function CashRegisterModal({
           <span>(-) مصاريف الصندوق:</span>
           <span>-${totalCashExpensesToday.toFixed(2)} ${config.currency}</span>
         </div>
-        <div style="border-top: 1px dashed #000; margin: 6px 0;"></div>
+        <div style="border-top: 1.5px solid #000; margin: 6px 0;"></div>
         <div style="display: flex; justify-content: space-between; font-size: 12px; font-weight: 900;">
           <span>المتوقع في الصندوق:</span>
           <span>${expectedCash.toFixed(2)} ${config.currency}</span>
@@ -156,7 +156,7 @@ export default function CashRegisterModal({
             <span>${(difference || 0) > 0 ? '+' : ''}${(difference || 0).toFixed(2)} ${config.currency}</span>
           </div>
         ` : ''}
-        ${notes ? `<div style="border-top: 1px dashed #000; margin: 6px 0;"></div><div><b>ملاحظات:</b> ${notes}</div>` : ''}
+        ${notes ? `<div style="border-top: 1.5px solid #000; margin: 6px 0;"></div><div><b>ملاحظات:</b> ${notes}</div>` : ''}
       </div>
     `;
     printHtmlContent({

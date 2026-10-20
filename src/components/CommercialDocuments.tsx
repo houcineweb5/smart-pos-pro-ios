@@ -15,6 +15,7 @@ import {
 import { parseDecimal, sanitizeDecimalInput } from '../utils/numberInput';
 import { printHtmlContent, exportStructuredPdf, buildUnified80mmReceiptHtml, buildStructuredA4Html } from '../utils/printService';
 import { amountToWordsAr, amountToWordsFr } from '../utils/numberToWords';
+import { generateBarcodeSvg } from '../utils/barcode';
 
 interface CommercialDocumentsProps {
   initialType?: CommercialDocType;
@@ -2854,7 +2855,7 @@ export default function CommercialDocuments({
 
               {/* Official Signatures & Stamp Blocks */}
               <div className="grid grid-cols-2 gap-8 pt-4 border-t border-slate-200">
-                <div className="border border-dashed border-slate-300 rounded-2xl p-4 h-28 flex flex-col justify-between text-center bg-slate-50/40">
+                <div className="border border-solid border-slate-300 rounded-2xl p-4 h-28 flex flex-col justify-between text-center bg-slate-50/40">
                   <span className="text-xs font-bold text-slate-600">
                     {viewingDoc.docType === 'devis' && (lang === 'ar' ? 'موافقة وتوقيع الزبون (Bon pour accord):' : 'Bon pour accord client:')}
                     {viewingDoc.docType === 'bon_commande' && (lang === 'ar' ? 'توقيع الزبون بالموافقة:' : 'Signature du Client:')}
@@ -2863,13 +2864,24 @@ export default function CommercialDocuments({
                   </span>
                   <span className="text-[10px] text-slate-400 font-mono italic">Date & Signature</span>
                 </div>
-                <div className="border border-dashed border-slate-300 rounded-2xl p-4 h-28 flex flex-col justify-between text-center bg-slate-50/40">
+                <div className="border border-solid border-slate-300 rounded-2xl p-4 h-28 flex flex-col justify-between text-center bg-slate-50/40">
                   <span className="text-xs font-bold text-slate-600">
                     {lang === 'ar' ? 'خاتم وتوقيع المؤسسة:' : 'Cachet et Signature de l\'Entreprise:'}
                   </span>
                   <span className="text-[10px] text-slate-400 font-mono italic">Cachet & Signature</span>
                 </div>
               </div>
+
+              {/* Barcode (Code-39) when enabled in settings */}
+              {config.showBarcodeOnInvoice !== false && viewingDoc?.docNumber && (
+                <div className="flex flex-col items-center justify-center pt-4">
+                  <div
+                    dangerouslySetInnerHTML={{
+                      __html: generateBarcodeSvg(viewingDoc.docNumber, 32)
+                    }}
+                  />
+                </div>
+              )}
 
               {/* Company Info Footer Strip (Address, Phone, Email, ICE) */}
               <div className="pt-4 border-t border-slate-200 text-center text-[11px] text-slate-600 font-semibold space-y-1">

@@ -34,6 +34,7 @@ import {
 import { StoreConfig } from '../types';
 import { printHtmlContent, exportStructuredPdf, buildUnified80mmReceiptHtml } from '../utils/printService';
 import { parseDecimal, sanitizeDecimalInput } from '../utils/numberInput';
+import { generateBarcodeSvg } from '../utils/barcode';
 
 interface PurchasesProps {
   purchases: Purchase[];
@@ -386,6 +387,7 @@ export default function Purchases({
       storeEmail: config.email,
       storeAddress: config.address,
       storeRegNumber: config.registrationNumber,
+      showBarcode: config.showBarcodeOnInvoice !== false,
       customerLabel: lang === 'ar' ? 'المورد' : 'Fournisseur',
       customerName: p.supplierName,
       customerPhone: supplierObj?.phone,
@@ -1560,19 +1562,30 @@ export default function Purchases({
 
                 {/* Official Signatures & Stamp Area */}
                 <div className="grid grid-cols-2 gap-8 pt-6 border-t-2 border-slate-200">
-                  <div className="border border-dashed border-slate-300 rounded-2xl p-4 h-28 flex flex-col justify-between text-center bg-slate-50/40">
+                  <div className="border border-solid border-slate-300 rounded-2xl p-4 h-28 flex flex-col justify-between text-center bg-slate-50/40">
                     <span className="text-xs font-bold text-slate-600">
                       {lang === 'ar' ? 'توقيع وخاتم المورّد (المسلّم):' : 'Supplier Signature & Stamp:'}
                     </span>
                     <span className="text-[10px] text-slate-400 font-mono italic">Signature & Cachet</span>
                   </div>
-                  <div className="border border-dashed border-slate-300 rounded-2xl p-4 h-28 flex flex-col justify-between text-center bg-slate-50/40">
+                  <div className="border border-solid border-slate-300 rounded-2xl p-4 h-28 flex flex-col justify-between text-center bg-slate-50/40">
                     <span className="text-xs font-bold text-slate-600">
                       {lang === 'ar' ? 'توقيع وخاتم أمين المخزن (المستلم):' : 'Receiving Warehouse Clerk Stamp:'}
                     </span>
                     <span className="text-[10px] text-slate-400 font-mono italic">Signature & Cachet</span>
                   </div>
                 </div>
+
+                {/* Barcode (Code-39) when enabled in settings */}
+                {config.showBarcodeOnInvoice !== false && viewingPurchase?.purchaseNumber && (
+                  <div className="flex flex-col items-center justify-center pt-4">
+                    <div
+                      dangerouslySetInnerHTML={{
+                        __html: generateBarcodeSvg(viewingPurchase.purchaseNumber, 32)
+                      }}
+                    />
+                  </div>
+                )}
 
                 <div className="text-center text-xs text-slate-400 font-bold pt-2 uppercase tracking-widest font-sans">
                   {lang === 'ar' ? 'تمت مراجعة وقبول السلع المستلمة بالمخزن ومطابقتها للمواصفات' : 'Goods Received in Warehouse Verified and Inspected in Good Condition'}
