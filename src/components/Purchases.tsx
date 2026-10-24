@@ -32,7 +32,7 @@ import {
   ArrowRight
 } from 'lucide-react';
 import { StoreConfig } from '../types';
-import { printHtmlContent, exportStructuredPdf, buildUnified80mmReceiptHtml } from '../utils/printService';
+import { printHtmlContent, exportStructuredPdf, buildUnified80mmReceiptHtml, buildStructuredA4Html } from '../utils/printService';
 import { parseDecimal, sanitizeDecimalInput } from '../utils/numberInput';
 import { generateBarcodeSvg } from '../utils/barcode';
 
@@ -383,18 +383,28 @@ export default function Purchases({
       docNumber: p.purchaseNumber,
       date: p.date ? new Date(p.date).toLocaleString('fr-FR') : '',
       storeName: config.name || 'المتجر',
-      storePhone: config.phone,
-      storeEmail: config.email,
-      storeAddress: config.address,
-      storeRegNumber: config.registrationNumber,
+      storePhone: config.showPhoneOnInvoice !== false ? config.phone : undefined,
+      storeEmail: config.showEmailOnInvoice !== false ? config.email : undefined,
+      storeAddress: config.showAddressOnInvoice !== false ? config.address : undefined,
+      storeRegNumber: config.showTaxNumberOnInvoice !== false ? config.registrationNumber : undefined,
+      storeTaxNumber: config.showTaxNumberOnInvoice !== false ? config.taxNumber : undefined,
+      storeLogoUrl: config.showLogoOnInvoice !== false ? config.logoUrl : undefined,
+      showLogo: config.showLogoOnInvoice !== false,
+      showPhone: config.showPhoneOnInvoice !== false,
+      showAddress: config.showAddressOnInvoice !== false,
+      showEmail: config.showEmailOnInvoice !== false,
+      showTaxNumber: config.showTaxNumberOnInvoice !== false,
+      showCashier: config.showCashierOnInvoice !== false,
       showBarcode: config.showBarcodeOnInvoice !== false,
       customerLabel: lang === 'ar' ? 'المورد' : 'Fournisseur',
       customerName: p.supplierName,
-      customerPhone: supplierObj?.phone,
+      customerPhone: config.showPhoneOnInvoice !== false ? supplierObj?.phone : undefined,
       sellerName: 'admin',
       currency: config.currency,
       mode,
       isRTL,
+      lang,
+      taxRate: config.taxRate,
       items: (p.items || []).map(it => ({
         name: it.productName,
         quantity: it.quantity,
@@ -406,7 +416,10 @@ export default function Purchases({
       amountPaid: p.amountPaid,
       remainingDebt: billDebt,
       notes: p.notes,
-      footerText: lang === 'ar' ? 'تمت مراجعة وقبول السلع المستلمة بالمخزن' : 'Procured and verified in good condition'
+      footerText: lang === 'ar' ? 'تمت مراجعة وقبول السلع المستلمة بالمخزن' : 'Procured and verified in good condition',
+      a4Theme: config.a4Theme || 'slate',
+      receiptTheme: config.receiptTheme || 'classic',
+      themeColor: config.printPrimaryColor
     };
   };
 
@@ -433,6 +446,7 @@ export default function Purchases({
         subtotal: p.total,
         total: p.total,
         amountPaid: p.amountPaid,
+        taxRate: config.taxRate,
       },
       config,
       lang,
@@ -452,18 +466,17 @@ export default function Purchases({
   const triggerPrintLayout = (targetPo?: Purchase) => {
     const po = targetPo || viewingPurchase;
     if (!po) return;
-    const printArea = document.getElementById('printable-purchase-area');
-    const bodyHtml = printArea
-      ? `<div style="font-family: -apple-system, BlinkMacSystemFont, 'Cairo', 'Tajawal', sans-serif; color: #0f172a; font-size: 12px; direction: ${isRTL ? 'rtl' : 'ltr'};">${printArea.innerHTML}</div>`
-      : '';
+    const meta = buildPurchasePdfMeta(po, 'a4');
+    // Unified structured A4 design identical to PDF
+    const a4Html = buildStructuredA4Html(meta);
     printHtmlContent(
       {
         title: `${po.purchaseNumber} - ${config.name || 'Smart POS'}`,
-        html: bodyHtml || `<h2>${po.purchaseNumber}</h2>`,
+        html: a4Html,
         isRTL,
         mode: 'a4'
       },
-      buildPurchasePdfMeta(po)
+      meta
     );
   };
 

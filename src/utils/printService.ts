@@ -69,11 +69,13 @@ export interface PdfDocumentMeta {
   subtotal: number;
   discount?: number;
   tax?: number;
+  taxRate?: number;
   total: number;
   previousBalance?: number;
   amountPaid?: number;
   paymentMethodLabel?: string;
   remainingDebt?: number;
+  hidePaymentDetails?: boolean;
   notes?: string;
   footerText?: string;
   themeColor?: string;
@@ -207,6 +209,21 @@ export function formatCustomerDisplayName(name?: string): string {
 }
 
 /**
+ * Preloads a store logo image safely for direct Canvas and PDF embedding.
+ */
+export function loadLogoImage(url?: string): Promise<HTMLImageElement | null> {
+  if (!url || typeof window === 'undefined') return Promise.resolve(null);
+  return new Promise((resolve) => {
+    const img = new Image();
+    img.crossOrigin = 'anonymous';
+    img.onload = () => resolve(img);
+    img.onerror = () => resolve(null);
+    img.src = url;
+    setTimeout(() => resolve(null), 1500);
+  });
+}
+
+/**
  * Single Unified 80mm Thermal Receipt HTML Builder used across POS and Invoices.
  * Matches the unified receipt photo model while using a crisp, legible font family ('Tajawal', 'Tahoma', 'Arial')
  * and keeping the exact same dimensions and font sizes.
@@ -230,6 +247,7 @@ export function buildUnified80mmReceiptHtml(
     subtotal?: number | string;
     discount?: number | string;
     tax?: number | string;
+    taxRate?: number | string;
     total?: number | string;
     amountPaid?: number | string;
     previousBalance?: number | string;
@@ -244,6 +262,7 @@ export function buildUnified80mmReceiptHtml(
     logoUrl?: string;
     registrationNumber?: string;
     taxNumber?: string;
+    taxRate?: number;
     showLogoOnInvoice?: boolean;
     showPhoneOnInvoice?: boolean;
     showAddressOnInvoice?: boolean;
@@ -368,12 +387,22 @@ export function buildUnified80mmReceiptHtml(
         }
         ${
           invTax > 0
-            ? `
+            ? (() => {
+                const tr = inv.taxRate !== undefined && Number(inv.taxRate) > 0
+                  ? Number(inv.taxRate)
+                  : config.taxRate !== undefined && Number(config.taxRate) > 0
+                  ? Number(config.taxRate)
+                  : (invSubtotal - invDiscount > 0 ? Math.round((invTax / (invSubtotal - invDiscount)) * 100) : 0);
+                const taxLabel = tr > 0
+                  ? (lang === 'ar' ? `الضريبة (${tr}%):` : `TVA (${tr}%):`)
+                  : (lang === 'ar' ? 'الضريبة (%):' : 'TVA (%):');
+                return `
         <div style="display: flex; justify-content: space-between; margin-bottom: 3px;">
-          <span>${lang === 'ar' ? 'الضريبة:' : 'TVA:'}</span>
+          <span>${taxLabel}</span>
           <span style="font-family: ${numFont}; font-weight: 700;" dir="ltr">+${invTax.toFixed(2)} ${currency}</span>
         </div>
-        `
+        `;
+              })()
             : ''
         }
         ${
@@ -763,20 +792,26 @@ export function buildStructuredA4Html(meta: PdfDocumentMeta): string {
           }
           ${
             meta.tax && meta.tax > 0
-              ? `
+              ? (() => {
+                  const tr = meta.taxRate !== undefined && Number(meta.taxRate) > 0
+                    ? Number(meta.taxRate)
+                    : ((meta.subtotal || 0) - (meta.discount || 0) > 0 ? Math.round((meta.tax / ((meta.subtotal || 0) - (meta.discount || 0))) * 100) : 0);
+                  const taxLabel = tr > 0 ? (isRTL ? `الضريبة (${tr}%):` : `TVA (${tr}%):`) : (isRTL ? 'الضريبة (%):' : 'TVA (%):');
+                  return `
             <div style="display: flex; justify-content: space-between; margin-bottom: 6px; font-weight: 700; color: #334155;">
-              <span>${isRTL ? 'الضريبة:' : 'TVA:'}</span>
+              <span>${taxLabel}</span>
               <span style="font-family: Tahoma, Arial, sans-serif; font-weight: 800;" dir="ltr">+${Number(meta.tax).toFixed(2)} ${meta.currency}</span>
             </div>
-          `
+            `;
+                })()
               : ''
           }
           <div style="border-top: 2px solid ${primaryBrandColor}; padding-top: 8px; margin-top: 6px; display: flex; justify-content: space-between; align-items: center; font-size: 15px; font-weight: 900; color: #0f172a;">
-            <span>${prevBal > 0 ? (isRTL ? 'مجموع الفاتورة:' : 'Total Facture:') : isRTL ? 'المجموع الإجمالي:' : 'TOTAL:'}</span>
+            <span>${!meta.hidePaymentDetails && prevBal > 0 ? (isRTL ? 'مجموع الفاتورة:' : 'Total Facture:') : isRTL ? 'المجموع الإجمالي:' : 'TOTAL:'}</span>
             <span style="font-family: Tahoma, Arial, sans-serif; color: ${primaryBrandColor}; font-size: 16px;" dir="ltr">${Number(meta.total || 0).toFixed(2)} ${meta.currency}</span>
           </div>
           ${
-            meta.showDebt !== false && prevBal > 0
+            !meta.hidePaymentDetails && meta.showDebt !== false && prevBal > 0
               ? `
             <div style="display: flex; justify-content: space-between; margin-top: 6px; font-weight: 800; color: #b45309; font-size: 12px;">
               <span>${isRTL ? 'كريدي قديم / سابق:' : 'Ancien Crédit:'}</span>
@@ -790,7 +825,7 @@ export function buildStructuredA4Html(meta: PdfDocumentMeta): string {
               : ''
           }
           ${
-            meta.amountPaid !== undefined
+            !meta.hidePaymentDetails && meta.amountPaid !== undefined
               ? `
             <div style="display: flex; justify-content: space-between; margin-top: 6px; padding-top: 6px; border-top: 1px solid #cbd5e1; font-weight: 800; color: #047857; font-size: 12px;">
               <span>${isRTL ? 'المبلغ المدفوع:' : 'Montant Payé:'}</span>
@@ -800,7 +835,7 @@ export function buildStructuredA4Html(meta: PdfDocumentMeta): string {
               : ''
           }
           ${
-            meta.showDebt !== false && meta.remainingDebt && meta.remainingDebt > 0
+            !meta.hidePaymentDetails && meta.showDebt !== false && meta.remainingDebt && meta.remainingDebt > 0
               ? `
             <div style="display: flex; justify-content: space-between; margin-top: 4px; font-weight: 900; color: #e11d48; font-size: 12.5px;">
               <span>${isRTL ? 'الباقي (كريدي):' : 'Reste (Crédit):'}</span>
@@ -967,7 +1002,8 @@ function paintDocumentContentOnContext(
   ctx: CanvasRenderingContext2D,
   meta: PdfDocumentMeta,
   logicalWidth: number,
-  pad: number
+  pad: number,
+  logoImg?: HTMLImageElement | null
 ): number {
   const is80mm = meta.mode === '80mm';
   const isRTL = meta.isRTL !== false;
@@ -1039,6 +1075,23 @@ function paintDocumentContentOnContext(
 
   if (is80mm) {
     // --- UNIFIED 80MM THERMAL RECEIPT LAYOUT (Matches attached photo model) ---
+    if (logoImg && meta.showLogo !== false) {
+      try {
+        const maxW = 120;
+        const maxH = 46;
+        let drawW = logoImg.naturalWidth || logoImg.width || maxW;
+        let drawH = logoImg.naturalHeight || logoImg.height || maxH;
+        const scale = Math.min(maxW / drawW, maxH / drawH);
+        drawW = Math.round(drawW * scale);
+        drawH = Math.round(drawH * scale);
+        const logoX = Math.round((logicalWidth - drawW) / 2);
+        ctx.drawImage(logoImg, logoX, y, drawW, drawH);
+        y += drawH + 6;
+      } catch (e) {
+        console.warn('Error drawing receipt logo on canvas:', e);
+      }
+    }
+
     drawText(meta.storeName || 'Smart POS', logicalWidth / 2, y, {
       size: 18,
       weight: '800',
@@ -1221,13 +1274,17 @@ function paintDocumentContentOnContext(
       );
     }
     if (meta.tax && meta.tax > 0) {
+      const tr = meta.taxRate !== undefined && Number(meta.taxRate) > 0
+        ? Number(meta.taxRate)
+        : ((meta.subtotal || 0) - (meta.discount || 0) > 0 ? Math.round((meta.tax / ((meta.subtotal || 0) - (meta.discount || 0))) * 100) : 0);
+      const taxLabel = tr > 0 ? (isRTL ? `الضريبة (${tr}%):` : `TVA (${tr}%):`) : (isRTL ? 'الضريبة (%):' : 'TVA (%):');
       drawMetaRow(
-        isRTL ? 'الضريبة:' : 'TVA:',
+        taxLabel,
         `+${Number(meta.tax).toFixed(2)} ${meta.currency}`
       );
     }
 
-    const prevBal = Number(meta.previousBalance || 0);
+    const prevBal = !meta.hidePaymentDetails ? Number(meta.previousBalance || 0) : 0;
     if (prevBal > 0) {
       drawMetaRow(
         isRTL ? 'مجموع الفاتورة الحالي:' : 'Total Facture:',
@@ -1289,7 +1346,7 @@ function paintDocumentContentOnContext(
     );
     y += 19;
 
-    if (meta.showDebt !== false && meta.remainingDebt && meta.remainingDebt > 0) {
+    if (!meta.hidePaymentDetails && meta.showDebt !== false && meta.remainingDebt && meta.remainingDebt > 0) {
       drawMetaRow(
         isRTL ? 'المتبقي:' : 'Reste:',
         `${Number(meta.remainingDebt).toFixed(2)} ${meta.currency}`
@@ -1319,6 +1376,23 @@ function paintDocumentContentOnContext(
     const headerBgColor = meta.themeColor || activeA4.headerBg;
 
     if (meta.isReport) {
+      if (logoImg && meta.showLogo !== false) {
+        try {
+          const maxW = 140;
+          const maxH = 50;
+          let drawW = logoImg.naturalWidth || logoImg.width || maxW;
+          let drawH = logoImg.naturalHeight || logoImg.height || maxH;
+          const scale = Math.min(maxW / drawW, maxH / drawH);
+          drawW = Math.round(drawW * scale);
+          drawH = Math.round(drawH * scale);
+          const logoX = isRTL ? startX - drawW : startX;
+          ctx.drawImage(logoImg, logoX, y, drawW, drawH);
+          y += drawH + 8;
+        } catch (e) {
+          console.warn('Error drawing report logo on canvas:', e);
+        }
+      }
+
       // Clean Report Header matching Photo 2
       drawText(`${meta.storeName || 'Smart POS'} - ${meta.title}`, startX, y, {
         size: 19,
@@ -1359,6 +1433,23 @@ function paintDocumentContentOnContext(
       y += 16;
     } else {
       // Standard Invoice / Document Header
+      if (logoImg && meta.showLogo !== false) {
+        try {
+          const maxW = 150;
+          const maxH = 55;
+          let drawW = logoImg.naturalWidth || logoImg.width || maxW;
+          let drawH = logoImg.naturalHeight || logoImg.height || maxH;
+          const scale = Math.min(maxW / drawW, maxH / drawH);
+          drawW = Math.round(drawW * scale);
+          drawH = Math.round(drawH * scale);
+          const logoX = isRTL ? startX - drawW : startX;
+          ctx.drawImage(logoImg, logoX, y, drawW, drawH);
+          y += drawH + 8;
+        } catch (e) {
+          console.warn('Error drawing A4 logo on canvas:', e);
+        }
+      }
+
       drawText(meta.storeName || 'Smart POS', startX, y, {
         size: 24,
         weight: '900',
@@ -1710,15 +1801,19 @@ function paintDocumentContentOnContext(
         );
       }
       if (meta.tax && meta.tax > 0) {
+        const tr = meta.taxRate !== undefined && Number(meta.taxRate) > 0
+          ? Number(meta.taxRate)
+          : ((meta.subtotal || 0) - (meta.discount || 0) > 0 ? Math.round((meta.tax / ((meta.subtotal || 0) - (meta.discount || 0))) * 100) : 0);
+        const taxLabel = tr > 0 ? (isRTL ? `الضريبة (${tr}%):` : `TVA (${tr}%):`) : (isRTL ? 'الضريبة (%):' : 'TVA (%):');
         sumRow(
-          isRTL ? 'الضريبة:' : 'Tax:',
+          taxLabel,
           `+${Number(meta.tax).toFixed(2)} ${meta.currency}`,
           false,
           '#475569'
         );
       }
 
-      const prevBalA4 = Number(meta.previousBalance || 0);
+      const prevBalA4 = !meta.hidePaymentDetails ? Number(meta.previousBalance || 0) : 0;
       drawLine(y, true, primaryColor);
       y += 10;
       sumRow(
@@ -1743,7 +1838,7 @@ function paintDocumentContentOnContext(
         );
       }
 
-      if (meta.amountPaid !== undefined) {
+      if (!meta.hidePaymentDetails && meta.amountPaid !== undefined) {
         sumRow(
           isRTL ? 'المبلغ المؤدى:' : 'Amount Paid:',
           `${Number(meta.amountPaid).toFixed(2)} ${meta.currency}`,
@@ -1751,7 +1846,7 @@ function paintDocumentContentOnContext(
           '#059669'
         );
       }
-      if (meta.remainingDebt && meta.remainingDebt > 0) {
+      if (!meta.hidePaymentDetails && meta.remainingDebt && meta.remainingDebt > 0) {
         sumRow(
           isRTL ? 'الباقي (كريدي):' : 'Reste (Crédit):',
           `${Number(meta.remainingDebt).toFixed(2)} ${meta.currency}`,
@@ -1850,7 +1945,8 @@ function paintDocumentContentOnContext(
  * Renders structured document metadata into one or more JPEG pages without exceeding iOS WebKit canvas memory limits.
  */
 function renderDocumentToJpegPages(
-  meta: PdfDocumentMeta
+  meta: PdfDocumentMeta,
+  logoImg?: HTMLImageElement | null
 ): { jpegDataUrl: string; widthPx: number; heightPx: number }[] {
   const is80mm = meta.mode === '80mm';
   const scale = 2; // High-DPI (2x) while staying 100% safe within iOS WebKit 16MP canvas limit
@@ -1864,7 +1960,7 @@ function renderDocumentToJpegPages(
   const measureCtx = measureCanvas.getContext('2d')!;
   const usedLogicalHeight = Math.max(
     is80mm ? 360 : 1123,
-    Math.ceil(paintDocumentContentOnContext(measureCtx, meta, logicalWidth, pad))
+    Math.ceil(paintDocumentContentOnContext(measureCtx, meta, logicalWidth, pad, logoImg))
   );
 
   if (is80mm) {
@@ -1876,7 +1972,7 @@ function renderDocumentToJpegPages(
     ctx.scale(scale, scale);
     ctx.fillStyle = '#ffffff';
     ctx.fillRect(0, 0, logicalWidth, safeHeight);
-    paintDocumentContentOnContext(ctx, meta, logicalWidth, pad);
+    paintDocumentContentOnContext(ctx, meta, logicalWidth, pad, logoImg);
     return [
       {
         jpegDataUrl: canvas.toDataURL('image/jpeg', 0.94),
@@ -1902,7 +1998,7 @@ function renderDocumentToJpegPages(
 
     pCtx.save();
     pCtx.translate(0, -p * a4LogicalHeight);
-    paintDocumentContentOnContext(pCtx, meta, logicalWidth, pad);
+    paintDocumentContentOnContext(pCtx, meta, logicalWidth, pad, logoImg);
     pCtx.restore();
 
     pages.push({
@@ -1942,7 +2038,15 @@ export async function exportStructuredPdf(
 ): Promise<boolean> {
   try {
     const mode = meta.mode || 'a4';
-    const pages = renderDocumentToJpegPages(meta);
+    let logoImage: HTMLImageElement | null = null;
+    if (meta.showLogo !== false && meta.storeLogoUrl) {
+      try {
+        logoImage = await loadLogoImage(meta.storeLogoUrl);
+      } catch (err) {
+        console.warn('Failed to load logo for PDF:', err);
+      }
+    }
+    const pages = renderDocumentToJpegPages(meta, logoImage);
     const pdfBytes = createPdfFromJpegPages(pages, mode);
 
     const safeName =
@@ -2135,10 +2239,17 @@ export function printHtmlContent(
     if (fallbackPdfMeta && (window as any).AndroidNative.printPdf) {
       try {
         const targetMode = fallbackPdfMeta.mode || mode;
-        const pages = renderDocumentToJpegPages({ ...fallbackPdfMeta, mode: targetMode });
-        const pdfBytes = createPdfFromJpegPages(pages, targetMode);
-        const base64 = uint8ArrayToBase64(pdfBytes);
-        (window as any).AndroidNative.printPdf(base64, docTitle);
+        loadLogoImage(fallbackPdfMeta.storeLogoUrl).then((logoImg) => {
+          const pages = renderDocumentToJpegPages({ ...fallbackPdfMeta, mode: targetMode }, logoImg);
+          const pdfBytes = createPdfFromJpegPages(pages, targetMode);
+          const base64 = uint8ArrayToBase64(pdfBytes);
+          (window as any).AndroidNative.printPdf(base64, docTitle);
+        }).catch(() => {
+          const pages = renderDocumentToJpegPages({ ...fallbackPdfMeta, mode: targetMode });
+          const pdfBytes = createPdfFromJpegPages(pages, targetMode);
+          const base64 = uint8ArrayToBase64(pdfBytes);
+          (window as any).AndroidNative.printPdf(base64, docTitle);
+        });
         return;
       } catch (err) {
         console.warn('AndroidNative.printPdf failed, fallback to printCurrentPage:', err);

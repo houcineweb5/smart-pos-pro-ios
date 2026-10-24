@@ -13,6 +13,11 @@
       "launchShowDuration": 1200,
       "backgroundColor": "#0f172a",
       "showSpinner": false
+    },
+    "Keyboard": {
+      "resize": "body",
+      "style": "dark",
+      "resizeOnFullScreen": true
     }
   }
 }

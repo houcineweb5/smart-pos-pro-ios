@@ -643,6 +643,7 @@ export default function POS({ products, customers, config, onAddTransaction, onR
       currency: config.currency,
       mode: '80mm',
       isRTL,
+      taxRate: config.taxRate,
       items: (inv.items || []).map((it) => ({
         name: it.productName,
         quantity: it.quantity,
@@ -669,7 +670,7 @@ export default function POS({ products, customers, config, onAddTransaction, onR
   const printThermalReceiptWindow = (invoiceNumber: string, invOverride?: Invoice) => {
     const activeInv = invOverride || lastCheckedInvoice;
     const printContent = activeInv
-      ? buildUnified80mmReceiptHtml(activeInv, config, lang, t.invoice.thankYou)
+      ? buildUnified80mmReceiptHtml({ ...activeInv, taxRate: config.taxRate }, config, lang, t.invoice.thankYou)
       : document.getElementById('pos-thermal-receipt-body')?.innerHTML;
     if (printContent) {
       printHtmlContent(
@@ -1331,9 +1332,9 @@ export default function POS({ products, customers, config, onAddTransaction, onR
           {/* Cart Header Column Labels */}
           {cart.length > 0 && (
             <div className="flex items-center justify-between gap-1 px-1 sm:px-2 py-1 text-[10px] font-black text-slate-400 border-b border-slate-100 uppercase">
-              <span className="flex-1 min-w-0 text-start">{lang === 'ar' ? 'المنتج' : 'Article'}</span>
+              <span className="flex-1 min-w-0 max-w-[105px] sm:max-w-none text-start">{lang === 'ar' ? 'المنتج' : 'Article'}</span>
               <span className="w-11 sm:w-18 text-center shrink-0">{lang === 'ar' ? 'السعر' : 'Prix'}</span>
-              <span className="w-13 sm:w-20 text-center shrink-0">{lang === 'ar' ? 'الكمية' : 'Qté'}</span>
+              <span className="w-16.5 sm:w-20 text-center shrink-0">{lang === 'ar' ? 'الكمية' : 'Qté'}</span>
               <span className="w-8 sm:w-11 text-center shrink-0">{lang === 'ar' ? 'خصم%' : 'Rem%'}</span>
               <span className="w-12 sm:w-16 text-end shrink-0">{lang === 'ar' ? 'المجموع' : 'Total'}</span>
               <span className="w-5 sm:w-6 shrink-0"></span>
@@ -1365,7 +1366,7 @@ export default function POS({ products, customers, config, onAddTransaction, onR
                   >
                     <div className="flex items-center justify-between gap-1 sm:gap-1.5">
                       {/* 1. Product Name - Flexible & never cut off on iPhone / Mobile */}
-                      <div className="flex-1 min-w-0 text-start pr-0.5">
+                      <div className="flex-1 min-w-0 max-w-[105px] sm:max-w-none text-start pr-0.5">
                         <span className="font-bold text-slate-800 text-[11px] sm:text-xs leading-tight block line-clamp-2" title={item.product.name}>
                           {item.product.name}
                         </span>
@@ -1401,14 +1402,14 @@ export default function POS({ products, customers, config, onAddTransaction, onR
                       </div>
 
                       {/* 3. Quantity Controls [-] [qty] [+] */}
-                      <div className="w-13 sm:w-20 shrink-0 flex items-center justify-between bg-slate-50 border border-slate-200 rounded p-0.5">
+                      <div className="w-16.5 sm:w-20 shrink-0 flex items-center justify-between bg-slate-50 border border-slate-200 rounded p-0.5">
                         <button
                           id={`qty-minus-${item.product.id}`}
                           type="button"
                           onClick={() => updateQty(item.product.id, -1)}
-                          className="w-3.5 sm:w-4.5 h-3.5 sm:h-4.5 rounded bg-white hover:bg-slate-200 text-slate-700 flex items-center justify-center transition cursor-pointer font-bold shrink-0 text-[9px] shadow-2xs p-0"
+                          className="w-4 sm:w-4.5 h-4 sm:h-4.5 rounded bg-white hover:bg-slate-200 text-slate-700 flex items-center justify-center transition cursor-pointer font-bold shrink-0 text-[10px] shadow-2xs p-0"
                         >
-                          <Minus className="w-2 sm:w-2.5 h-2 sm:h-2.5" />
+                          <Minus className="w-2.5 h-2.5" />
                         </button>
                         <input
                           id={`qty-input-${item.product.id}`}
@@ -1428,15 +1429,15 @@ export default function POS({ products, customers, config, onAddTransaction, onR
                               setQty(item.product.id, val);
                             }
                           }}
-                          className="w-5.5 sm:w-9 text-center font-bold font-mono text-[10.5px] sm:text-xs focus:outline-none bg-transparent px-0"
+                          className="w-6.5 sm:w-9 text-center font-bold font-mono text-[11px] sm:text-xs focus:outline-none bg-transparent px-0"
                         />
                         <button
                           id={`qty-plus-${item.product.id}`}
                           type="button"
                           onClick={() => updateQty(item.product.id, 1)}
-                          className="w-3.5 sm:w-4.5 h-3.5 sm:h-4.5 rounded bg-white hover:bg-slate-200 text-slate-700 flex items-center justify-center transition cursor-pointer font-bold shrink-0 text-[9px] shadow-2xs p-0"
+                          className="w-4 sm:w-4.5 h-4 sm:h-4.5 rounded bg-white hover:bg-slate-200 text-slate-700 flex items-center justify-center transition cursor-pointer font-bold shrink-0 text-[10px] shadow-2xs p-0"
                         >
-                          <Plus className="w-2 sm:w-2.5 h-2 sm:h-2.5" />
+                          <Plus className="w-2.5 h-2.5" />
                         </button>
                       </div>
 

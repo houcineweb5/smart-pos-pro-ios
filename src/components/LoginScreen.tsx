@@ -91,8 +91,8 @@ export default function LoginScreen({ employees, onLogin, lang, onSetLang }: Log
   };
 
   return (
-    <div className="min-h-screen flex items-center justify-center bg-slate-100 p-4 font-sans safe-modal-overlay" dir={isRTL ? 'rtl' : 'ltr'}>
-      <div className="w-full max-w-md bg-white border border-slate-200 rounded-3xl shadow-xl overflow-hidden hover:shadow-2xl transition-all duration-300">
+    <div className="min-h-screen min-h-[100dvh] flex items-center justify-center bg-slate-100 p-4 font-sans safe-modal-overlay overflow-y-auto" dir={isRTL ? 'rtl' : 'ltr'}>
+      <div className="w-full max-w-md my-auto bg-white border border-slate-200 rounded-3xl shadow-xl overflow-hidden hover:shadow-2xl transition-all duration-300">
         
         {/* Language Selection Header */}
         <div className="flex justify-end gap-1.5 p-4 bg-slate-50 border-b border-slate-100">

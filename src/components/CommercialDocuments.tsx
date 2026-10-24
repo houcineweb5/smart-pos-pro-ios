@@ -60,6 +60,7 @@ export default function CommercialDocuments({
   const [toDate, setToDate] = useState<string>('');
   const [viewingDoc, setViewingDoc] = useState<CommercialDocument | null>(null);
   const [receiptPreviewDoc, setReceiptPreviewDoc] = useState<CommercialDocument | null>(null);
+  const [showPaymentInOfficialInvoice, setShowPaymentInOfficialInvoice] = useState(false);
   const [editingDoc, setEditingDoc] = useState<CommercialDocument | null>(null);
   const [isCreating, setIsCreating] = useState(false);
   const [deletingId, setDeletingId] = useState<string | null>(null);
@@ -739,7 +740,7 @@ export default function CommercialDocuments({
     );
   };
 
-  const buildDocPdfMeta = (doc: CommercialDocument, mode: 'a4' | '80mm' = 'a4') => {
+  const buildDocPdfMeta = (doc: CommercialDocument, mode: 'a4' | '80mm' = 'a4', hidePaymentDetails?: boolean) => {
     const safeItems = getSafeDocItems(doc);
     const subtotalVal = Number(doc?.subtotal || 0);
     const discVal = Number(doc?.discount || 0);
@@ -748,6 +749,11 @@ export default function CommercialDocuments({
     const prevBalVal = Number(doc?.previousBalance || 0);
     const paidVal = doc?.amountPaid !== undefined ? Number(doc.amountPaid) : totalVal;
     const remDebt = doc?.docType === 'facture' ? Math.max(0, totalVal - paidVal) : 0;
+    const isFacture = doc?.docType === 'facture';
+    const effectiveHidePayment = hidePaymentDetails !== undefined
+      ? hidePaymentDetails
+      : (isFacture && !showPaymentInOfficialInvoice);
+
     return {
       title: getDocTypeLabel(doc?.docType || 'facture'),
       docNumberLabel: lang === 'ar' ? 'رقم الوثيقة:' : 'N°:',
@@ -780,6 +786,7 @@ export default function CommercialDocuments({
       mode,
       isRTL,
       lang,
+      taxRate: config.taxRate,
       items: safeItems.map(it => ({
         name: it.productName,
         quantity: it.quantity,
@@ -794,6 +801,7 @@ export default function CommercialDocuments({
       previousBalance: prevBalVal,
       amountPaid: paidVal,
       remainingDebt: remDebt,
+      hidePaymentDetails: effectiveHidePayment,
       notes: doc?.notes,
       footerText: t.invoice?.thankYou || (lang === 'ar' ? 'شكراً لتعاملكم معنا ومرحباً بكم في أي وقت!' : 'Merci pour votre confiance!'),
       a4Theme: config.a4Theme || 'slate',
@@ -802,9 +810,11 @@ export default function CommercialDocuments({
     };
   };
 
-  const handleExportDocPdf = async (doc: CommercialDocument, mode: 'a4' | '80mm' = 'a4') => {
+  const handleExportDocPdf = async (doc: CommercialDocument, mode: 'a4' | '80mm' = 'a4', withPayment?: boolean) => {
     try {
-      const meta = buildDocPdfMeta(doc, mode);
+      const isFacture = doc.docType === 'facture';
+      const hidePay = isFacture ? (withPayment !== undefined ? !withPayment : !showPaymentInOfficialInvoice) : false;
+      const meta = buildDocPdfMeta(doc, mode, hidePay);
       const prefix = mode === '80mm' ? 'RECEIPT' : getDocTypePrefix(doc.docType);
       await exportStructuredPdf(meta, `${prefix}-${doc.docNumber}.pdf`);
     } catch (err) {
@@ -835,6 +845,7 @@ export default function CommercialDocuments({
           subtotal: Number(doc.subtotal || 0),
           discount: Number(doc.discount || 0),
           tax: Number(doc.tax || 0),
+          taxRate: config.taxRate,
           total: Number(doc.total || 0),
           amountPaid: doc.amountPaid !== undefined ? Number(doc.amountPaid) : Number(doc.total || 0),
           previousBalance: Number(doc.previousBalance || 0),
@@ -858,19 +869,19 @@ export default function CommercialDocuments({
     }
   };
 
-  const triggerPrint = (targetDoc?: CommercialDocument) => {
+  const triggerPrint = (targetDoc?: CommercialDocument, withPayment?: boolean) => {
     try {
       const doc = targetDoc || viewingDoc;
       if (!doc) return;
-      const meta = buildDocPdfMeta(doc, 'a4');
-      const printArea = document.getElementById('printable-commercial-doc');
-      const bodyHtml = printArea
-        ? `<div style="font-family: -apple-system, BlinkMacSystemFont, 'Cairo', 'Tajawal', sans-serif; color: #1e293b; font-size: 13px; direction: ${isRTL ? 'rtl' : 'ltr'};">${printArea.innerHTML}</div>`
-        : buildStructuredA4Html(meta);
+      const isFacture = doc.docType === 'facture';
+      const hidePay = isFacture ? (withPayment !== undefined ? !withPayment : !showPaymentInOfficialInvoice) : false;
+      const meta = buildDocPdfMeta(doc, 'a4', hidePay);
+      // Guarantee identical design between A4 print and PDF by strictly using buildStructuredA4Html
+      const a4Html = buildStructuredA4Html(meta);
       printHtmlContent(
         {
           title: `${doc.docNumber} - ${config.name || 'Commercial Document'}`,
-          html: bodyHtml,
+          html: a4Html,
           isRTL,
           mode: 'a4'
         },
@@ -2641,22 +2652,36 @@ export default function CommercialDocuments({
                 {/* PDF button */}
                 <button
                   type="button"
-                  onClick={() => handleExportDocPdf(viewingDoc)}
+                  onClick={() => handleExportDocPdf(viewingDoc, 'a4', false)}
                   className="px-3 py-1.5 bg-rose-600 hover:bg-rose-700 text-white rounded-xl text-xs font-black flex items-center gap-1.5 cursor-pointer transition shadow-xs"
+                  title={viewingDoc.docType === 'facture' ? (lang === 'ar' ? 'تصدير PDF رسمي' : 'PDF Officiel') : 'PDF'}
                 >
                   <FileDown className="w-3.5 h-3.5" />
-                  <span>PDF</span>
+                  <span>{viewingDoc.docType === 'facture' ? (lang === 'ar' ? 'PDF رسمي' : 'PDF Officiel') : 'PDF'}</span>
                 </button>
 
                 {/* Print button */}
                 <button
                   type="button"
-                  onClick={() => triggerPrint(viewingDoc)}
+                  onClick={() => triggerPrint(viewingDoc, false)}
                   className="px-3.5 py-1.5 bg-slate-900 hover:bg-slate-800 text-white rounded-xl text-xs font-black flex items-center gap-1.5 cursor-pointer transition shadow-xs"
+                  title={viewingDoc.docType === 'facture' ? (lang === 'ar' ? 'طباعة فاتورة رسمية بدون دفع وباقي' : 'Imprimer Facture Officielle') : (lang === 'ar' ? 'طباعة A4' : 'Imprimer A4')}
                 >
                   <Printer className="w-3.5 h-3.5" />
-                  <span>{lang === 'ar' ? 'طباعة A4' : 'Imprimer A4'}</span>
+                  <span>{viewingDoc.docType === 'facture' ? (lang === 'ar' ? 'طباعة رسمية A4' : 'Facture A4') : (lang === 'ar' ? 'طباعة A4' : 'Imprimer A4')}</span>
                 </button>
+
+                {viewingDoc.docType === 'facture' && (
+                  <button
+                    type="button"
+                    onClick={() => triggerPrint(viewingDoc, true)}
+                    className="px-3 py-1.5 bg-indigo-600 hover:bg-indigo-700 text-white rounded-xl text-xs font-black flex items-center gap-1.5 cursor-pointer transition shadow-xs"
+                    title={lang === 'ar' ? 'طباعة نفس الفاتورة مع معطيات المبلغ المدفوع والباقي' : 'Imprimer avec détails paiement & reste'}
+                  >
+                    <Printer className="w-3.5 h-3.5 text-amber-300" />
+                    <span>{lang === 'ar' ? 'طباعة مع السداد' : 'Avec Paiement'}</span>
+                  </button>
+                )}
               </div>
             </div>
 
@@ -2796,7 +2821,12 @@ export default function CommercialDocuments({
                   )}
                   {Number(viewingDoc.tax || 0) > 0 && (
                     <div className="flex justify-between items-center text-slate-500">
-                      <span>{lang === 'ar' ? 'الضريبة TVA:' : 'TVA:'}</span>
+                      <span>{(() => {
+                        const tr = config.taxRate > 0
+                          ? config.taxRate
+                          : (viewingDoc.subtotal ? Math.round((Number(viewingDoc.tax || 0) / (Number(viewingDoc.subtotal || 0) - Number(viewingDoc.discount || 0))) * 100) : 0);
+                        return tr > 0 ? (lang === 'ar' ? `الضريبة (${tr}%):` : `TVA (${tr}%):`) : (lang === 'ar' ? 'الضريبة (%):' : 'TVA (%):');
+                      })()}</span>
                       <span className="font-mono">{Number(viewingDoc.tax || 0).toFixed(2)} {config.currency}</span>
                     </div>
                   )}
@@ -2818,13 +2848,26 @@ export default function CommercialDocuments({
                       </div>
                     </>
                   )}
-                  {viewingDoc.docType === 'facture' && viewingDoc.amountPaid !== undefined && (
+                  {viewingDoc.docType === 'facture' && (
+                    <div className="pt-2 border-t border-slate-200 flex justify-between items-center">
+                      <button
+                        type="button"
+                        onClick={() => setShowPaymentInOfficialInvoice(!showPaymentInOfficialInvoice)}
+                        className="text-[11px] font-bold text-indigo-600 hover:text-indigo-800 underline cursor-pointer"
+                      >
+                        {showPaymentInOfficialInvoice
+                          ? (lang === 'ar' ? '👁️ إخفاء معطيات الدفع والباقي (رسمي)' : '👁️ Masquer paiement & reste (officiel)')
+                          : (lang === 'ar' ? '👁️ إظهار معطيات الدفع والباقي' : '👁️ Afficher paiement & reste')}
+                      </button>
+                    </div>
+                  )}
+                  {viewingDoc.docType === 'facture' && showPaymentInOfficialInvoice && viewingDoc.amountPaid !== undefined && (
                     <div className="flex justify-between items-center text-emerald-700 pt-1 border-t border-slate-200">
                       <span>{lang === 'ar' ? 'المبلغ المؤدى:' : 'Montant payé:'}</span>
                       <span className="font-mono font-bold">{Number(viewingDoc.amountPaid).toFixed(2)} {config.currency}</span>
                     </div>
                   )}
-                  {viewingDoc.docType === 'facture' && viewingDoc.amountPaid !== undefined && (Number(viewingDoc.total || 0) - Number(viewingDoc.amountPaid)) > 0 && (
+                  {viewingDoc.docType === 'facture' && showPaymentInOfficialInvoice && viewingDoc.amountPaid !== undefined && (Number(viewingDoc.total || 0) - Number(viewingDoc.amountPaid)) > 0 && (
                     <div className="flex justify-between items-center text-rose-600 font-bold pt-1">
                       <span>{lang === 'ar' ? 'الباقي (كريدي):' : 'Reste (Crédit):'}</span>
                       <span className="font-mono font-black text-sm">{(Number(viewingDoc.total || 0) - Number(viewingDoc.amountPaid)).toFixed(2)} {config.currency}</span>

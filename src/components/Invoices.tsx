@@ -10,7 +10,7 @@ import { languages } from '../languages';
 import { Receipt, Search, Eye, Printer, X, DollarSign, Calendar, CheckSquare, AlertTriangle, Clock, Trash2, RotateCcw, MessageCircle, Share2, CheckCircle2, User, FileSpreadsheet, FileDown, ArrowRight, TrendingUp, Edit, Plus, Save, Camera, ScanBarcode } from 'lucide-react';
 import { generateBarcodeSvg } from '../utils/barcode';
 import { parseDecimal, sanitizeDecimalInput } from '../utils/numberInput';
-import { printHtmlContent, exportStructuredPdf, PdfDocumentMeta, buildUnified80mmReceiptHtml, A4_PRINT_THEMES } from '../utils/printService';
+import { printHtmlContent, exportStructuredPdf, PdfDocumentMeta, buildUnified80mmReceiptHtml, buildStructuredA4Html, A4_PRINT_THEMES } from '../utils/printService';
 import { amountToWordsAr, amountToWordsFr } from '../utils/numberToWords';
 import { pullCloudBarcodeScan } from '../utils/cloudSync';
 import CameraBarcodeModal from './CameraBarcodeModal';
@@ -36,6 +36,7 @@ export default function Invoices({ invoices, products = [], customers = [], conf
   const [selectedStatus, setSelectedStatus] = useState<string>('all');
   const [viewInvoice, setViewInvoice] = useState<Invoice | null>(null);
   const [receiptPreviewInvoice, setReceiptPreviewInvoice] = useState<Invoice | null>(null);
+  const [showPaymentInOfficialInvoice, setShowPaymentInOfficialInvoice] = useState(false);
 
   // Sales return states
   const [returningInvoice, setReturningInvoice] = useState<Invoice | null>(null);
@@ -688,15 +689,19 @@ export default function Invoices({ invoices, products = [], customers = [], conf
     window.open(waUrl, '_blank');
   };
 
-  const buildInvoicePdfMeta = (inv: Invoice, mode: 'a4' | '80mm' = 'a4'): PdfDocumentMeta => {
+  const buildInvoicePdfMeta = (inv: Invoice, mode: 'a4' | '80mm' = 'a4', hidePaymentDetails?: boolean): PdfDocumentMeta => {
     const cust = customers.find(c => c.id === inv.customerId || c.name === inv.customerName);
     const invTotal = Number(inv.total) || 0;
     const invPaid = Number(inv.amountPaid) || 0;
     const remaining = Math.max(0, invTotal - invPaid);
     const safeItems = getSafeItems(inv);
+    const isOfficial = String(inv.invoiceNumber || '').toUpperCase().startsWith('FAC-') || String(inv.id || '').startsWith('fac_inv_');
+    const effectiveHidePayment = hidePaymentDetails !== undefined
+      ? hidePaymentDetails
+      : (isOfficial && !showPaymentInOfficialInvoice);
 
     return {
-      title: mode === '80mm' ? (lang === 'ar' ? 'إيصال مبيعات' : 'Sales Receipt') : (lang === 'ar' ? 'فاتورة مبيعات' : 'Sales Invoice'),
+      title: isOfficial ? (lang === 'ar' ? 'فاتورة رسمية' : 'Facture') : (mode === '80mm' ? (lang === 'ar' ? 'إيصال مبيعات' : 'Sales Receipt') : (lang === 'ar' ? 'فاتورة مبيعات' : 'Sales Invoice')),
       docNumber: inv.invoiceNumber || '',
       date: inv.date ? new Date(inv.date).toLocaleString('fr-FR') : '',
       storeName: config.name,
@@ -722,6 +727,7 @@ export default function Invoices({ invoices, products = [], customers = [], conf
       mode,
       isRTL,
       lang,
+      taxRate: config.taxRate,
       items: safeItems.map((it) => ({
         name: it.productName || '',
         quantity: Number(it.quantity) || 0,
@@ -736,6 +742,7 @@ export default function Invoices({ invoices, products = [], customers = [], conf
       previousBalance: config.showDebtOnInvoice !== false ? (Number(inv.previousBalance) || 0) : 0,
       amountPaid: invPaid,
       remainingDebt: config.showDebtOnInvoice !== false ? remaining : 0,
+      hidePaymentDetails: effectiveHidePayment,
       notes: inv.notes,
       footerText: t.invoice.thankYou || (lang === 'ar' ? 'شكراً لزيارتكم!' : 'Thank you!'),
       a4Theme: config.a4Theme || 'slate',
@@ -744,29 +751,42 @@ export default function Invoices({ invoices, products = [], customers = [], conf
     };
   };
 
-  const handleExportInvoicePdf = async (inv: Invoice, mode: 'a4' | '80mm' = 'a4') => {
+  const handleExportInvoicePdf = async (inv: Invoice, mode: 'a4' | '80mm' = 'a4', withPayment = false) => {
+    const isOfficial = String(inv.invoiceNumber || '').toUpperCase().startsWith('FAC-') || String(inv.id || '').startsWith('fac_inv_');
+    const hidePay = isOfficial ? !withPayment : false;
     const prefix = mode === '80mm' ? 'RECEIPT' : 'INVOICE';
-    await exportStructuredPdf(buildInvoicePdfMeta(inv, mode), `${prefix}-${inv.invoiceNumber}.pdf`);
+    await exportStructuredPdf(buildInvoicePdfMeta(inv, mode, hidePay), `${prefix}-${inv.invoiceNumber}.pdf`);
   };
 
-  // Safe In-Page A4 Print layout (Works on iPhone & Desktop without popup blocking)
-  const triggerPrintLayout = () => {
-    const printContent = document.getElementById('printable-area')?.innerHTML;
-    if (!printContent || !viewInvoice) return;
+  // Safe In-Page A4 Print layout (Guarantees unified A4 print & PDF design)
+  const triggerPrintLayout = (withPayment = false) => {
+    if (!viewInvoice) return;
+    const isOfficial = String(viewInvoice.invoiceNumber || '').toUpperCase().startsWith('FAC-') || String(viewInvoice.id || '').startsWith('fac_inv_');
+    const hidePay = isOfficial ? !withPayment : false;
+    const meta = buildInvoicePdfMeta(viewInvoice, 'a4', hidePay);
+    const a4Html = buildStructuredA4Html(meta);
 
     printHtmlContent(
       {
-        html: printContent,
+        html: a4Html,
         title: `${viewInvoice.invoiceNumber} - ${config.name}`,
         isRTL,
         mode: 'a4'
       },
-      buildInvoicePdfMeta(viewInvoice, 'a4')
+      meta
     );
   };
 
   const buildThermalReceiptHtmlString = (inv: Invoice) => {
-    return buildUnified80mmReceiptHtml(inv, config, lang, t.invoice.thankYou);
+    return buildUnified80mmReceiptHtml(
+      {
+        ...inv,
+        taxRate: config.taxRate,
+      },
+      config,
+      lang,
+      t.invoice.thankYou
+    );
   };
 
   const triggerPrintThermalReceipt = (invOverride?: Invoice, openPreviewOnly = false) => {
@@ -1448,37 +1468,55 @@ export default function Invoices({ invoices, products = [], customers = [], conf
                       <span>{lang === 'ar' ? 'إرجاع' : 'Return'}</span>
                     </button>
                   )}
-                  <button
-                    id="pdf-invoice-btn"
-                    type="button"
-                    onClick={() => handleExportInvoicePdf(viewInvoice, 'a4')}
-                    className="px-2.5 py-1.5 bg-rose-600 hover:bg-rose-700 text-white rounded-lg text-xs font-bold flex items-center gap-1 cursor-pointer transition shadow-xs"
-                    title={lang === 'ar' ? 'حفظ أو مشاركة PDF' : 'Save or Share PDF'}
-                  >
-                    <FileDown className="w-3.5 h-3.5" />
-                    <span>PDF</span>
-                  </button>
-                  <button
-                    id="print-thermal-btn"
-                    type="button"
-                    onClick={() => triggerPrintThermalReceipt(viewInvoice, false)}
-                    className="px-2.5 py-1.5 bg-slate-800 hover:bg-slate-900 text-white rounded-lg text-xs font-semibold flex items-center gap-1 cursor-pointer transition shadow-xs"
-                    title={lang === 'ar' ? 'طباعة إيصال حراري (80mm)' : 'Print Thermal Receipt (80mm)'}
-                  >
-                    <Printer className="w-3.5 h-3.5 text-emerald-400" />
-                    <span>{lang === 'ar' ? 'إيصال (80mm)' : 'Receipt (80mm)'}</span>
-                  </button>
-                  <button
-                    id="print-btn-actual"
-                    type="button"
-                    onClick={triggerPrintLayout}
-                    style={{ backgroundColor: themePrimary }}
-                    className="px-2.5 py-1.5 text-white rounded-lg text-xs font-semibold flex items-center gap-1 cursor-pointer transition shadow-xs"
-                    title={lang === 'ar' ? 'طباعة A4' : 'Print A4'}
-                  >
-                    <Printer className="w-3.5 h-3.5" />
-                    <span>{lang === 'ar' ? 'طباعة A4' : t.invoice.print}</span>
-                  </button>
+                  {(() => {
+                    const isOfficial = String(viewInvoice.invoiceNumber || '').toUpperCase().startsWith('FAC-') || String(viewInvoice.id || '').startsWith('fac_inv_');
+                    return (
+                      <>
+                        <button
+                          id="pdf-invoice-btn"
+                          type="button"
+                          onClick={() => handleExportInvoicePdf(viewInvoice, 'a4', false)}
+                          className="px-2.5 py-1.5 bg-rose-600 hover:bg-rose-700 text-white rounded-lg text-xs font-bold flex items-center gap-1 cursor-pointer transition shadow-xs"
+                          title={isOfficial ? (lang === 'ar' ? 'تصدير PDF رسمي بدون دفع وباقي' : 'PDF Officiel') : 'PDF'}
+                        >
+                          <FileDown className="w-3.5 h-3.5" />
+                          <span>{isOfficial ? (lang === 'ar' ? 'PDF رسمي' : 'PDF Officiel') : 'PDF'}</span>
+                        </button>
+                        <button
+                          id="print-thermal-btn"
+                          type="button"
+                          onClick={() => triggerPrintThermalReceipt(viewInvoice, false)}
+                          className="px-2.5 py-1.5 bg-slate-800 hover:bg-slate-900 text-white rounded-lg text-xs font-semibold flex items-center gap-1 cursor-pointer transition shadow-xs"
+                          title={lang === 'ar' ? 'طباعة إيصال حراري (80mm)' : 'Print Thermal Receipt (80mm)'}
+                        >
+                          <Printer className="w-3.5 h-3.5 text-emerald-400" />
+                          <span>{lang === 'ar' ? 'إيصال (80mm)' : 'Receipt (80mm)'}</span>
+                        </button>
+                        <button
+                          id="print-btn-actual"
+                          type="button"
+                          onClick={() => triggerPrintLayout(false)}
+                          style={{ backgroundColor: themePrimary }}
+                          className="px-2.5 py-1.5 text-white rounded-lg text-xs font-semibold flex items-center gap-1 cursor-pointer transition shadow-xs"
+                          title={isOfficial ? (lang === 'ar' ? 'طباعة فاتورة رسمية بدون دفع وباقي (A4)' : 'Facture Officielle A4') : (lang === 'ar' ? 'طباعة A4' : 'Print A4')}
+                        >
+                          <Printer className="w-3.5 h-3.5" />
+                          <span>{isOfficial ? (lang === 'ar' ? 'طباعة رسمية A4' : 'Facture A4') : (lang === 'ar' ? 'طباعة A4' : t.invoice.print)}</span>
+                        </button>
+                        {isOfficial && (
+                          <button
+                            type="button"
+                            onClick={() => triggerPrintLayout(true)}
+                            className="px-2.5 py-1.5 bg-indigo-600 hover:bg-indigo-700 text-white rounded-lg text-xs font-semibold flex items-center gap-1 cursor-pointer transition shadow-xs"
+                            title={lang === 'ar' ? 'طباعة نفس الفاتورة مع معطيات المبلغ المدفوع والباقي' : 'Imprimer avec paiement & reste'}
+                          >
+                            <Printer className="w-3.5 h-3.5 text-amber-300" />
+                            <span>{lang === 'ar' ? 'طباعة مع السداد' : 'Avec Paiement'}</span>
+                          </button>
+                        )}
+                      </>
+                    );
+                  })()}
                 </div>
               </div>
 
@@ -1622,8 +1660,13 @@ export default function Invoices({ invoices, products = [], customers = [], conf
                     })()}
                     {invTax > 0 && (
                       <div className="flex justify-between">
-                        <span className="text-slate-400">{t.pos.tax} ({config.taxRate}%)</span>
-                        <span className="font-mono">{invTax.toFixed(2)} {config.currency}</span>
+                        <span className="text-slate-500 font-bold">
+                          {(() => {
+                            const tr = config.taxRate > 0 ? config.taxRate : (invSubtotal > 0 ? Math.round((invTax / (invSubtotal - invDiscount)) * 100) : 0);
+                            return tr > 0 ? (lang === 'ar' ? `الضريبة (${tr}%):` : `TVA (${tr}%):`) : (lang === 'ar' ? 'الضريبة (%):' : 'TVA (%):');
+                          })()}
+                        </span>
+                        <span className="font-mono font-bold">+{invTax.toFixed(2)} {config.currency}</span>
                       </div>
                     )}
                     <div className="flex justify-between border-t-2 border-slate-200 pt-2 text-base text-slate-900 font-black">
@@ -1644,17 +1687,54 @@ export default function Invoices({ invoices, products = [], customers = [], conf
                       </>
                     )}
 
-                    <div className="flex justify-between text-emerald-700 bg-emerald-50/50 px-2.5 py-1.5 rounded-lg border border-emerald-100 text-xs">
-                      <span>{t.invoice.paid}</span>
-                      <span className="font-bold font-mono">{invPaid.toFixed(2)} {config.currency}</span>
-                    </div>
-
-                    {billDebt > 0 && (
-                      <div className="flex justify-between text-rose-700 bg-rose-50/50 px-2.5 py-1.5 rounded-lg border border-rose-100 text-xs">
-                        <span>{t.invoice.remaining}</span>
-                        <span className="font-bold font-mono">{billDebt.toFixed(2)} {config.currency}</span>
-                      </div>
-                    )}
+                    {(() => {
+                      const isOfficial = String(viewInvoice.invoiceNumber || '').toUpperCase().startsWith('FAC-') || String(viewInvoice.id || '').startsWith('fac_inv_');
+                      if (isOfficial) {
+                        return (
+                          <>
+                            <div className="pt-2 border-t border-slate-200 flex justify-between items-center">
+                              <button
+                                type="button"
+                                onClick={() => setShowPaymentInOfficialInvoice(!showPaymentInOfficialInvoice)}
+                                className="text-[11px] font-bold text-indigo-600 hover:text-indigo-800 underline cursor-pointer"
+                              >
+                                {showPaymentInOfficialInvoice
+                                  ? (lang === 'ar' ? '👁️ إخفاء معطيات الدفع والباقي (رسمي)' : '👁️ Masquer paiement & reste (officiel)')
+                                  : (lang === 'ar' ? '👁️ إظهار معطيات الدفع والباقي' : '👁️ Afficher paiement & reste')}
+                              </button>
+                            </div>
+                            {showPaymentInOfficialInvoice && (
+                              <>
+                                <div className="flex justify-between text-emerald-700 bg-emerald-50/50 px-2.5 py-1.5 rounded-lg border border-emerald-100 text-xs">
+                                  <span>{t.invoice.paid}</span>
+                                  <span className="font-bold font-mono">{invPaid.toFixed(2)} {config.currency}</span>
+                                </div>
+                                {billDebt > 0 && (
+                                  <div className="flex justify-between text-rose-700 bg-rose-50/50 px-2.5 py-1.5 rounded-lg border border-rose-100 text-xs">
+                                    <span>{t.invoice.remaining}</span>
+                                    <span className="font-bold font-mono">{billDebt.toFixed(2)} {config.currency}</span>
+                                  </div>
+                                )}
+                              </>
+                            )}
+                          </>
+                        );
+                      }
+                      return (
+                        <>
+                          <div className="flex justify-between text-emerald-700 bg-emerald-50/50 px-2.5 py-1.5 rounded-lg border border-emerald-100 text-xs">
+                            <span>{t.invoice.paid}</span>
+                            <span className="font-bold font-mono">{invPaid.toFixed(2)} {config.currency}</span>
+                          </div>
+                          {billDebt > 0 && (
+                            <div className="flex justify-between text-rose-700 bg-rose-50/50 px-2.5 py-1.5 rounded-lg border border-rose-100 text-xs">
+                              <span>{t.invoice.remaining}</span>
+                              <span className="font-bold font-mono">{billDebt.toFixed(2)} {config.currency}</span>
+                            </div>
+                          )}
+                        </>
+                      );
+                    })()}
                   </div>
                 </div>
 

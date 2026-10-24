@@ -701,3 +701,18 @@ body.smartpos-printing-now #smartpos-print-mount {
   }
 }
 
+/* Mobile keyboard smooth scrolling & viewport adaptation for Android & iOS */
+html, body {
+  overscroll-behavior-y: contain;
+  -webkit-overflow-scrolling: touch;
+}
+
+@media (max-width: 1024px) {
+  #root, #root-viewport-wrap, main {
+    min-height: 100dvh;
+    overflow-y: auto !important;
+    -webkit-overflow-scrolling: touch;
+  }
+}
+
+
