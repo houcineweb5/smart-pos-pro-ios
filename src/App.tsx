@@ -745,7 +745,7 @@ export default function App() {
         userName: currentUser?.name || 'System',
         action: 'repair_deleted',
         details: lang === 'ar'
-          ? `تم حذف أمر الصيانة رقم ${toDelete?.orderNumber || id} للعميل "${toDelete?.customerName || 'غير معروف'}"`
+          ? `تم حذف أمر الصيانة رقم ${toDelete?.orderNumber || id} للزبون "${toDelete?.customerName || 'غير معروف'}"`
           : `Deleted SAV ticket ${toDelete?.orderNumber || id} for ${toDelete?.customerName || 'Unknown'}`
       };
 
@@ -1435,7 +1435,7 @@ export default function App() {
         userName: currentUser?.name || 'System',
         action: 'invoice_deleted',
         details: lang === 'ar'
-          ? `تم حذف فاتورة المبيعات رقم ${targetInvoice.invoiceNumber} للعميل "${targetInvoice.customerName}". إجمالي الفاتورة: ${targetInvoice.total} ${prev.config.currency}`
+          ? `تم حذف فاتورة المبيعات رقم ${targetInvoice.invoiceNumber} للزبون "${targetInvoice.customerName}". إجمالي الفاتورة: ${targetInvoice.total} ${prev.config.currency}`
           : `Deleted sales invoice ${targetInvoice.invoiceNumber} for customer "${targetInvoice.customerName}". Total was: ${targetInvoice.total} ${prev.config.currency}`
       };
 
@@ -1600,7 +1600,7 @@ export default function App() {
         userName: currentUser?.name || 'System',
         action: 'customer_debt_settled',
         details: lang === 'ar'
-          ? `تم تسوية دفعة ديون بقيمة ${amount} ${prev.config.currency} للعميل "${targetCustomer?.name || 'غير معروف'}".`
+          ? `تم تسوية دفعة ديون بقيمة ${amount} ${prev.config.currency} للزبون "${targetCustomer?.name || 'غير معروف'}".`
           : `Settled a debt payment of ${amount} ${prev.config.currency} for customer "${targetCustomer?.name || 'Unknown'}".`
       };
 
@@ -1736,7 +1736,7 @@ export default function App() {
         userName: currentUser?.name || 'System',
         action: 'sale_return',
         details: lang === 'ar'
-          ? `إرجاع مبيعات من الفاتورة رقم ${targetInvoice.invoiceNumber} للعميل "${targetInvoice.customerName}" بقيمة ${returnTotal.toFixed(2)} ${prev.config.currency}`
+          ? `إرجاع مبيعات من الفاتورة رقم ${targetInvoice.invoiceNumber} للزبون "${targetInvoice.customerName}" بقيمة ${returnTotal.toFixed(2)} ${prev.config.currency}`
           : `Sales return for invoice ${targetInvoice.invoiceNumber} (${targetInvoice.customerName}) worth ${returnTotal.toFixed(2)} ${prev.config.currency}`
       };
 

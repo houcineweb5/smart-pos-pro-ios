@@ -86,6 +86,7 @@ export async function initDB() {
       phone TEXT,
       email TEXT,
       ice TEXT,
+      address TEXT,
       debt REAL,
       notes TEXT,
       createdAt TEXT
@@ -94,6 +95,12 @@ export async function initDB() {
 
   try {
     await db.exec('ALTER TABLE customers ADD COLUMN ice TEXT');
+  } catch (e) {
+    // Column already exists
+  }
+
+  try {
+    await db.exec('ALTER TABLE customers ADD COLUMN address TEXT');
   } catch (e) {
     // Column already exists
   }
@@ -454,8 +461,8 @@ export async function saveData(data: any) {
       await database.run('DELETE FROM customers');
       for (const c of data.customers) {
         await database.run(
-          'INSERT INTO customers (id, name, phone, email, ice, debt, notes, createdAt) VALUES (?, ?, ?, ?, ?, ?, ?, ?)',
-          [c.id, c.name, c.phone, c.email, c.ice || '', c.debt, c.notes, c.createdAt]
+          'INSERT INTO customers (id, name, phone, email, ice, address, debt, notes, createdAt) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)',
+          [c.id, c.name, c.phone, c.email, c.ice || '', c.address || '', c.debt, c.notes, c.createdAt]
         );
       }
     }
@@ -609,8 +616,8 @@ export async function resetDB(zeroPayload?: any) {
       : INITIAL_CUSTOMERS;
     for (const c of customersToInsert) {
       await database.run(
-        'INSERT INTO customers (id, name, phone, email, ice, debt, notes, createdAt) VALUES (?, ?, ?, ?, ?, ?, ?, ?)',
-        [c.id, c.name, c.phone || '', c.email || '', c.ice || '', c.debt || 0, c.notes || '', c.createdAt || new Date().toISOString()]
+        'INSERT INTO customers (id, name, phone, email, ice, address, debt, notes, createdAt) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)',
+        [c.id, c.name, c.phone || '', c.email || '', c.ice || '', c.address || '', c.debt || 0, c.notes || '', c.createdAt || new Date().toISOString()]
       );
     }
 

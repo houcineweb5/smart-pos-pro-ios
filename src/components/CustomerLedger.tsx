@@ -94,7 +94,7 @@ export default function CustomerLedger({ customer, invoices, logs, onClose, lang
         type: 'payment' as const,
         reference: log.id.slice(-6).toUpperCase(),
         title: isRTL ? 'سداد ديون / دفعه حساب' : lang === 'fr' ? 'Règlement de Dette' : 'Debt Repayment',
-        subtitle: isRTL ? 'تسوية حساب العميل' : 'Client ledger adjustment',
+        subtitle: isRTL ? 'تسوية حساب الزبون' : 'Client ledger adjustment',
         total: 0,
         amountPaid: parsedAmount,
         debtCreated: -parsedAmount,
@@ -237,7 +237,7 @@ export default function CustomerLedger({ customer, invoices, logs, onClose, lang
 
     printHtmlContent(
       {
-        title: `${isRTL ? 'كشف حساب عميل تفصيلي' : 'Customer Account Statement'} - ${customer.name}`,
+        title: `${isRTL ? 'كشف حساب زبون تفصيلي' : 'Customer Account Statement'} - ${customer.name}`,
         html: styleAndBodyHtml,
         isRTL,
         mode: 'a4'
@@ -247,7 +247,7 @@ export default function CustomerLedger({ customer, invoices, logs, onClose, lang
   };
 
   const buildLedgerPdfMeta = () => ({
-    title: isRTL ? 'كشف حساب عميل تفصيلي' : 'Relevé de Compte Client',
+    title: isRTL ? 'كشف حساب زبون تفصيلي' : 'Relevé de Compte Client',
     docNumber: `STMT-${customer.name}${selectedMonth ? `-${selectedMonth}` : ''}`,
     date: new Date().toLocaleDateString('fr-FR'),
     storeName: config.name || 'المتجر',
@@ -255,7 +255,7 @@ export default function CustomerLedger({ customer, invoices, logs, onClose, lang
     storeEmail: config.email,
     storeAddress: config.address,
     storeRegNumber: config.registrationNumber,
-    customerLabel: isRTL ? 'العميل' : 'Client',
+    customerLabel: isRTL ? 'الزبون' : 'Client',
     customerName: customer.name,
     customerPhone: customer.phone,
     currency: config.currency,
@@ -280,7 +280,7 @@ export default function CustomerLedger({ customer, invoices, logs, onClose, lang
         color: '#059669'
       },
       {
-        label: isRTL ? 'الديون المتبقية بذمة العميل' : 'Remaining Debt',
+        label: isRTL ? 'الديون المتبقية بذمة الزبون' : 'Remaining Debt',
         value: `${(hasDateFilter ? Math.max(0, totalOutstandingBillDebt - totalDirectRepayments) : customer.debt).toFixed(2)} ${config.currency}`,
         color: '#e11d48'
       }
@@ -310,7 +310,7 @@ export default function CustomerLedger({ customer, invoices, logs, onClose, lang
   const getTranslatedLabels = () => {
     if (isRTL) {
       return {
-        statementTitle: 'كشف حساب العميل وحركة المبيعات والديون التفصيلي',
+        statementTitle: 'كشف حساب الزبون وحركة المبيعات والديون التفصيلي',
         searchPlaceholder: 'ابحث برقم الفاتورة أو المعاملة...',
         allTrans: 'الكل',
         invoicesOnly: 'الفواتير والمشتريات',
@@ -321,8 +321,8 @@ export default function CustomerLedger({ customer, invoices, logs, onClose, lang
         totalPaidOnInvoices: 'المدفوع المباشر بفواتير',
         totalSubRepayments: 'دفعات الحساب والديون اللاحقة',
         netOutstandingDebt: 'الديون المتبقية والذمم المالية',
-        transactionDetails: 'تفاصيل معاملات العميل',
-        noTransactions: 'لم يتم العثور على أي حركات مالية مسجلة للعميل.',
+        transactionDetails: 'تفاصيل معاملات الزبون',
+        noTransactions: 'لم يتم العثور على أي حركات مالية مسجلة للزبون.',
         itemsPurchased: 'المنتجات والخدمات المشتراة:',
         amount: 'الملبغ:',
         payMethod: 'طريقة الدفع:',
@@ -330,8 +330,8 @@ export default function CustomerLedger({ customer, invoices, logs, onClose, lang
         remaining: 'المتبقي كدين:',
         notes: 'ملاحظات:',
         receiptPrint: 'طباعة كشف الحساب والنشاط',
-        backToDir: 'الرجوع لدليل العملاء',
-        debtor: 'العميل المدين:',
+        backToDir: 'الرجوع لدليل الزبناء',
+        debtor: 'الزبون المدين:',
         outstandingBillsSum: 'أقساط الديون ومجمل الفاتورة:',
         cashier: 'أمين الصندوق (الكاشير):',
         invoiceItems: 'عناصر الفاتورة المشتراة'
@@ -528,7 +528,7 @@ export default function CustomerLedger({ customer, invoices, logs, onClose, lang
             customer.debt > 0 ? 'bg-rose-50 text-rose-600' : 'bg-emerald-50 text-emerald-600'
           }`}>
             {customer.debt > 0 
-              ? (isRTL ? 'العميل مطالب بالدفع (آجل)' : 'Client must repay debt') 
+              ? (isRTL ? 'الزبون مطالب بالدفع (آجل)' : 'Client must repay debt') 
               : (isRTL ? 'الحساب مسوى تماماً' : 'Balance clear & settled')}
           </span>
         </div>
@@ -815,7 +815,7 @@ export default function CustomerLedger({ customer, invoices, logs, onClose, lang
         <div className="header">
           <div className="title-box">
             <h1>{labels.statementTitle}</h1>
-            <p>{customer.name} — كشف حساب مالي تفصيلي للعميل ونشاطه للآجل والنقدي</p>
+            <p>{customer.name} — كشف حساب مالي تفصيلي للزبون ونشاطه للآجل والنقدي</p>
           </div>
           <div>
             <div style={{ fontSize: '12px', fontWeight: 'bold' }}>{labels.registeredOn} {new Date(customer.createdAt).toLocaleDateString()}</div>

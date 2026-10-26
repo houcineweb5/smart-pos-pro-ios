@@ -680,9 +680,19 @@ body.smartpos-printing-now #smartpos-print-mount {
     width: 100% !important;
     max-width: 100% !important;
     margin: 0 auto !important;
-    padding: 3mm 4mm !important;
-    font-family: 'Tajawal', 'Cairo', -apple-system, BlinkMacSystemFont, sans-serif !important;
+    padding: 0 !important;
+    font-family: 'Tajawal', 'Segoe UI', Tahoma, Arial, sans-serif !important;
     box-sizing: border-box !important;
+  }
+
+  #smartpos-print-mount * {
+    -webkit-print-color-adjust: exact !important;
+    print-color-adjust: exact !important;
+  }
+
+  tr, .smartpos-avoid-break {
+    page-break-inside: avoid !important;
+    break-inside: avoid !important;
   }
 }
 

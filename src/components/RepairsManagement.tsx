@@ -285,7 +285,7 @@ export default function RepairsManagement({ repairs, config, onSaveRepair, onDel
             <input
               id="repair-query-box"
               type="text"
-              placeholder={lang === 'ar' ? 'البحث عن أمر صيانة باسم العميل، الهاتف، نوع الجهاز أو رقم التذكرة...' : 'Search customer name, phone, item details or REP receipt...'}
+              placeholder={lang === 'ar' ? 'البحث عن أمر صيانة باسم الزبون، الهاتف، نوع الجهاز أو رقم التذكرة...' : 'Search customer name, phone, item details or REP receipt...'}
               value={searchQuery}
               onChange={(e) => setSearchQuery(e.target.value)}
               className="w-full ltr:pl-10 rtl:pr-10 ltr:pr-4 rtl:pl-4 py-2 bg-white border border-slate-200 rounded-xl focus:outline-none focus:ring-2 focus:ring-indigo-500 text-xs text-slate-700 font-medium"
@@ -594,13 +594,13 @@ export default function RepairsManagement({ repairs, config, onSaveRepair, onDel
 
               <h4 className="text-xs font-black text-indigo-600 border-b border-indigo-50 pb-2 flex items-center gap-1.5">
                 <User className="w-3.5 h-3.5" />
-                <span>{lang === 'ar' ? 'بيانات العميل (الزبون صاحب الجهاز)' : 'Customer Client Details'}</span>
+                <span>{lang === 'ar' ? 'بيانات الزبون (صاحب الجهاز)' : 'Customer Client Details'}</span>
               </h4>
 
               {/* Customer Info */}
               <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
                 <div>
-                  <label className="block text-[11px] font-bold text-slate-500 uppercase mb-1.5">{lang === 'ar' ? 'اسم العميل الكامل *' : 'Client Full Name *'}</label>
+                  <label className="block text-[11px] font-bold text-slate-500 uppercase mb-1.5">{lang === 'ar' ? 'اسم الزبون الكامل *' : 'Client Full Name *'}</label>
                   <input
                     id="frm-rep-cust-name"
                     type="text"
@@ -774,7 +774,7 @@ export default function RepairsManagement({ repairs, config, onSaveRepair, onDel
                       storeName: config.name || 'المتجر',
                       storePhone: config.phone,
                       storeAddress: config.address,
-                      customerLabel: lang === 'ar' ? 'العميل' : 'Client',
+                      customerLabel: lang === 'ar' ? 'الزبون' : 'Client',
                       customerName: printTarget.customerName,
                       customerPhone: printTarget.customerPhone,
                       currency: config.currency,
@@ -944,7 +944,7 @@ export default function RepairsManagement({ repairs, config, onSaveRepair, onDel
             </div>
             <p className="text-xs font-bold text-slate-600 leading-relaxed text-start">
               {lang === 'ar' 
-                ? `هل أنت متأكد تماماً من رغبتك في حذف أمر الصيانة رقم "${repairs.find(r => r.id === deletingRepairId)?.orderNumber || ''}" للعميل "${repairs.find(r => r.id === deletingRepairId)?.customerName || ''}" نهائياً من قاعدة البيانات؟`
+                ? `هل أنت متأكد تماماً من رغبتك في حذف أمر الصيانة رقم "${repairs.find(r => r.id === deletingRepairId)?.orderNumber || ''}" للزبون "${repairs.find(r => r.id === deletingRepairId)?.customerName || ''}" نهائياً من قاعدة البيانات؟`
                 : `Are you absolutely sure you want to delete repair ticket "${repairs.find(r => r.id === deletingRepairId)?.orderNumber || ''}" belonging to customer "${repairs.find(r => r.id === deletingRepairId)?.customerName || ''}"?`}
             </p>
             <div className="bg-rose-50 text-[10px] text-rose-800 p-2.5 rounded-xl border border-rose-100 font-bold leading-relaxed text-start">

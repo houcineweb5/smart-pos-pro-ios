@@ -8,7 +8,7 @@ import { createPortal } from 'react-dom';
 import { CommercialDocument, CommercialDocType, CommercialDocStatus, Customer, Product, StoreConfig, Language, Invoice, InvoiceItem } from '../types';
 import { languages } from '../languages';
 import { 
-  FileText, Plus, Search, Eye, Printer, Trash2, ArrowRightLeft, CheckCircle2, 
+  FileText, Plus, Search, Eye, EyeOff, Printer, Trash2, ArrowRightLeft, CheckCircle2, 
   Calendar, User, AlertCircle, X, Check, RefreshCw, FileCheck, Truck, ClipboardList,
   Edit, ArrowUpRight, Copy, Share2, Receipt, ShoppingCart, FileSpreadsheet, ArrowRight, FileDown, TrendingUp
 } from 'lucide-react';
@@ -359,6 +359,9 @@ export default function CommercialDocuments({
     if (found) {
       setFormCustomerName(found.name);
       setFormCustomerPhone(found.phone || '');
+      if (found.address) {
+        setFormCustomerAddress(found.address);
+      }
     }
   };
 
@@ -2740,7 +2743,7 @@ export default function CommercialDocuments({
               {/* Client Information Card */}
               <div className="bg-slate-50 p-4 rounded-2xl border border-slate-200 text-xs">
                 <span className="text-slate-400 font-black uppercase tracking-wider block mb-1 text-[10px]">
-                  {lang === 'ar' ? 'المرسل إليه / بيانات العميل (Client)' : 'Informations Client'}
+                  {lang === 'ar' ? 'المرسل إليه / بيانات الزبون (Client)' : 'Informations Client'}
                 </span>
                 <div className="flex items-center gap-2 flex-wrap">
                   <p className="font-black text-slate-900 text-sm">{viewingDoc.customerName}</p>
@@ -2853,11 +2856,23 @@ export default function CommercialDocuments({
                       <button
                         type="button"
                         onClick={() => setShowPaymentInOfficialInvoice(!showPaymentInOfficialInvoice)}
-                        className="text-[11px] font-bold text-indigo-600 hover:text-indigo-800 underline cursor-pointer"
+                        className={`inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-bold transition cursor-pointer border ${
+                          showPaymentInOfficialInvoice
+                            ? 'bg-amber-50 text-amber-800 border-amber-200 hover:bg-amber-100'
+                            : 'bg-indigo-50 text-indigo-700 border-indigo-200 hover:bg-indigo-100'
+                        }`}
                       >
-                        {showPaymentInOfficialInvoice
-                          ? (lang === 'ar' ? '👁️ إخفاء معطيات الدفع والباقي (رسمي)' : '👁️ Masquer paiement & reste (officiel)')
-                          : (lang === 'ar' ? '👁️ إظهار معطيات الدفع والباقي' : '👁️ Afficher paiement & reste')}
+                        {showPaymentInOfficialInvoice ? (
+                          <>
+                            <EyeOff className="w-3.5 h-3.5 text-amber-600 shrink-0" />
+                            <span>{lang === 'ar' ? 'إخفاء معطيات الدفع والباقي (رسمي)' : 'Masquer paiement & reste (officiel)'}</span>
+                          </>
+                        ) : (
+                          <>
+                            <Eye className="w-3.5 h-3.5 text-indigo-600 shrink-0" />
+                            <span>{lang === 'ar' ? 'إظهار معطيات الدفع والباقي' : 'Afficher paiement & reste'}</span>
+                          </>
+                        )}
                       </button>
                     </div>
                   )}

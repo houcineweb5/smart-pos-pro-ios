@@ -336,9 +336,10 @@ export function buildUnified80mmReceiptHtml(
         ${config.showLogoOnInvoice !== false && config.logoUrl ? `<img src="${config.logoUrl}" style="max-height: 44px; max-width: 140px; object-fit: contain; margin: 0 auto 4px auto; display: block;" />` : ''}
         <h2 style="margin: 0; font-size: 15px; font-weight: 900; color: #000000 !important; font-family: ${receiptFont};">${config.name || 'Smart POS'}</h2>
         ${config.showAddressOnInvoice !== false && config.address ? `<div style="font-size: 10px; font-weight: 700; margin-top: 2px; color: #000000 !important;">${config.address}</div>` : ''}
-        ${config.showPhoneOnInvoice !== false && config.phone ? `<div style="font-size: 10px; font-weight: 700; color: #000000 !important;">${lang === 'ar' ? 'الهاتف:' : 'Tél:'} ${config.phone}</div>` : ''}
+        ${config.showPhoneOnInvoice !== false && config.phone ? `<div style="font-size: 10px; font-weight: 700; color: #000000 !important;" dir="ltr">Tél: ${config.phone}</div>` : ''}
+        ${config.showEmailOnInvoice !== false && (config as any).email ? `<div style="font-size: 10px; font-weight: 700; color: #000000 !important;" dir="ltr">Email: ${(config as any).email}</div>` : ''}
         ${config.showTaxNumberOnInvoice !== false && (config.registrationNumber || config.taxNumber) ? `
-          <div style="font-size: 9.5px; font-weight: 700; color: #000000 !important; font-family: ${numFont}; margin-top: 1px;">
+          <div style="font-size: 9.5px; font-weight: 700; color: #000000 !important; font-family: ${numFont}; margin-top: 1px;" dir="ltr">
             ${[config.registrationNumber ? `ICE: ${config.registrationNumber}` : '', config.taxNumber ? `RC/IF: ${config.taxNumber}` : ''].filter(Boolean).join('  |  ')}
           </div>
         ` : ''}
@@ -633,11 +634,11 @@ export function buildStructuredA4Html(meta: PdfDocumentMeta): string {
       <table style="width: 100%; border-collapse: collapse; margin-bottom: 18px; font-size: 12px;">
         <thead>
           <tr style="background: ${headerBgColor}; color: #ffffff;">
-            <th style="padding: 9px 10px; text-align: ${alignStart}; font-weight: 800; width: 8%; border: 1px solid ${activeA4.border};">#</th>
-            <th style="padding: 9px 10px; text-align: ${alignStart}; font-weight: 800; width: ${hideQtyPrice ? '67%' : '43%'}; border: 1px solid ${activeA4.border};">${meta.customTableHeaders?.name || (isRTL ? 'البيان / المنتج' : 'Désignation')}</th>
-            ${!hideQtyPrice ? `<th style="padding: 9px 10px; text-align: center; font-weight: 800; width: 14%; border: 1px solid ${activeA4.border};">${meta.customTableHeaders?.qty || (isRTL ? 'الكمية' : 'Qté')}</th>` : ''}
-            ${!hideQtyPrice ? `<th style="padding: 9px 10px; text-align: center; font-weight: 800; width: 18%; border: 1px solid ${activeA4.border};">${meta.customTableHeaders?.price || (isRTL ? 'سعر الوحدة' : 'Prix Unitaire')}</th>` : ''}
-            <th style="padding: 9px 10px; text-align: ${alignEnd}; font-weight: 800; width: ${hideQtyPrice ? '25%' : '18%'}; border: 1px solid ${activeA4.border};">${meta.customTableHeaders?.total || (isRTL ? 'الإجمالي' : 'Total')}</th>
+            <th style="padding: 9px 10px; text-align: ${alignStart}; font-weight: 800; width: 8%;">#</th>
+            <th style="padding: 9px 10px; text-align: ${alignStart}; font-weight: 800; width: ${hideQtyPrice ? '67%' : '43%'};">${meta.customTableHeaders?.name || (isRTL ? 'البيان / المنتج' : 'Désignation')}</th>
+            ${!hideQtyPrice ? `<th style="padding: 9px 10px; text-align: center; font-weight: 800; width: 14%;">${meta.customTableHeaders?.qty || (isRTL ? 'الكمية' : 'Qté')}</th>` : ''}
+            ${!hideQtyPrice ? `<th style="padding: 9px 10px; text-align: center; font-weight: 800; width: 18%;">${meta.customTableHeaders?.price || (isRTL ? 'سعر الوحدة' : 'Prix Unitaire')}</th>` : ''}
+            <th style="padding: 9px 10px; text-align: ${alignEnd}; font-weight: 800; width: ${hideQtyPrice ? '25%' : '18%'};">${meta.customTableHeaders?.total || (isRTL ? 'الإجمالي' : 'Total')}</th>
           </tr>
         </thead>
         <tbody>
@@ -649,12 +650,12 @@ export function buildStructuredA4Html(meta: PdfDocumentMeta): string {
                 ? String(Math.round(Number(it.unitPrice || 0)))
                 : `${Number(it.unitPrice || 0).toFixed(2)} ${meta.currency}`;
               return `
-              <tr style="background: ${bg}; border-bottom: 1px solid #cbd5e1;">
-                <td style="padding: 8px 10px; text-align: ${alignStart}; color: #475569; font-weight: 700; border: 1px solid #e2e8f0; font-family: Tahoma, Arial, sans-serif;">${idx + 1}</td>
-                <td style="padding: 8px 10px; text-align: ${alignStart}; color: #0f172a; font-weight: 800; border: 1px solid #e2e8f0;">${label || ''}</td>
-                ${!hideQtyPrice ? `<td style="padding: 8px 10px; text-align: center; color: #0f172a; font-weight: 800; border: 1px solid #e2e8f0; font-family: Tahoma, Arial, sans-serif;">${it.quantity}</td>` : ''}
-                ${!hideQtyPrice ? `<td style="padding: 8px 10px; text-align: center; color: #1e293b; font-weight: 700; border: 1px solid #e2e8f0; font-family: Tahoma, Arial, sans-serif;" dir="ltr">${priceCellText}</td>` : ''}
-                <td style="padding: 8px 10px; text-align: ${alignEnd}; color: #0f172a; font-weight: 800; border: 1px solid #e2e8f0; font-family: Tahoma, Arial, sans-serif;" dir="ltr">${Number(it.total || 0).toFixed(2)} ${meta.currency}</td>
+              <tr style="background: ${bg}; border-bottom: 1px solid #f1f5f9; page-break-inside: avoid; break-inside: avoid;">
+                <td style="padding: 8px 10px; text-align: ${alignStart}; color: #64748b; font-weight: 700; font-family: Tahoma, Arial, sans-serif;">${idx + 1}</td>
+                <td style="padding: 8px 10px; text-align: ${alignStart}; color: #0f172a; font-weight: 800;">${label || ''}</td>
+                ${!hideQtyPrice ? `<td style="padding: 8px 10px; text-align: center; color: #0f172a; font-weight: 800; font-family: Tahoma, Arial, sans-serif;">${it.quantity}</td>` : ''}
+                ${!hideQtyPrice ? `<td style="padding: 8px 10px; text-align: center; color: #1e293b; font-weight: 700; font-family: Tahoma, Arial, sans-serif;" dir="ltr">${priceCellText}</td>` : ''}
+                <td style="padding: 8px 10px; text-align: ${alignEnd}; color: #0f172a; font-weight: 800; font-family: Tahoma, Arial, sans-serif;" dir="ltr">${Number(it.total || 0).toFixed(2)} ${meta.currency}</td>
               </tr>
             `;
             })
@@ -709,16 +710,23 @@ export function buildStructuredA4Html(meta: PdfDocumentMeta): string {
 
   return `
     <div style="font-family: ${fontStack}; color: #0f172a; background: #ffffff; direction: ${isRTL ? 'rtl' : 'ltr'}; padding: 4mm; width: 100%; box-sizing: border-box;">
+      <style>
+        @media print {
+          tr { page-break-inside: avoid !important; break-inside: avoid !important; }
+          .smartpos-avoid-break { page-break-inside: avoid !important; break-inside: avoid !important; }
+          * { -webkit-print-color-adjust: exact !important; print-color-adjust: exact !important; }
+        }
+      </style>
       <!-- Top Header -->
       <div style="display: flex; justify-content: space-between; align-items: flex-start; border-bottom: 2.5px solid ${primaryBrandColor}; padding-bottom: 14px; margin-bottom: 16px;">
         <div style="text-align: ${alignStart};">
           ${meta.showLogo !== false && meta.storeLogoUrl ? `<img src="${meta.storeLogoUrl}" style="max-height: 48px; max-width: 140px; object-fit: contain; margin-bottom: 6px; display: block;" />` : ''}
           <h1 style="margin: 0; font-size: 22px; font-weight: 900; color: #0f172a;">${meta.storeName || 'Smart POS'}</h1>
           ${meta.showAddress !== false && meta.storeAddress ? `<div style="font-size: 12px; color: #334155; font-weight: 700; margin-top: 4px;">${meta.storeAddress}</div>` : ''}
-          <div style="font-size: 11.5px; color: #475569; font-weight: 700; margin-top: 3px;">
+          <div style="font-size: 11.5px; color: #475569; font-weight: 700; margin-top: 3px;" dir="ltr">
             ${[
-              meta.showPhone !== false && meta.storePhone ? `${isRTL ? 'الهاتف:' : 'Tél:'} ${meta.storePhone}` : '',
-              meta.showEmail !== false && meta.storeEmail ? meta.storeEmail : '',
+              meta.showPhone !== false && meta.storePhone ? `Tél: ${meta.storePhone}` : '',
+              meta.showEmail !== false && meta.storeEmail ? `Email: ${meta.storeEmail}` : '',
               meta.showTaxNumber !== false && (meta.storeRegNumber || meta.storeTaxNumber)
                 ? [meta.storeRegNumber ? `ICE: ${meta.storeRegNumber}` : '', meta.storeTaxNumber ? `RC/IF: ${meta.storeTaxNumber}` : ''].filter(Boolean).join('  |  ')
                 : '',
@@ -735,13 +743,14 @@ export function buildStructuredA4Html(meta: PdfDocumentMeta): string {
       </div>
 
       <!-- Customer / Supplier Info Box -->
-      <div style="background: #f8fafc; border: 1px solid #cbd5e1; border-radius: 10px; padding: 12px 16px; margin-bottom: 18px; display: flex; justify-content: space-between; align-items: center;">
+      <div style="background: #f8fafc; border: 1px solid #cbd5e1; border-radius: 10px; padding: 12px 16px; margin-bottom: 18px; display: flex; justify-content: space-between; align-items: center; page-break-inside: avoid; break-inside: avoid;">
         <div style="text-align: ${alignStart};">
-          <div style="font-size: 11px; font-weight: 800; color: #64748b;">${meta.customerLabel || (isRTL ? 'بيانات العميل / الزبون:' : 'Client:')}</div>
+          <div style="font-size: 11px; font-weight: 800; color: #64748b;">${meta.customerLabel || (isRTL ? 'بيانات الزبون:' : 'Client:')}</div>
           <div style="font-size: 15px; font-weight: 900; color: #0f172a; margin-top: 2px;">${formatCustomerDisplayName(meta.customerName)}</div>
+          ${meta.customerAddress ? `<div style="font-size: 11px; font-weight: 600; color: #475569; margin-top: 2px;">${meta.customerAddress}</div>` : ''}
         </div>
         <div style="text-align: ${alignEnd}; font-size: 12px; font-weight: 700; color: #334155;">
-          ${meta.showPhone !== false && meta.customerPhone ? `<div>${isRTL ? 'الهاتف:' : 'Tél:'} <span style="font-family: Tahoma, Arial, sans-serif;" dir="ltr">${meta.customerPhone}</span></div>` : ''}
+          ${meta.showPhone !== false && meta.customerPhone ? `<div dir="ltr"><span style="color: #64748b;">Tél:</span> <b style="font-family: Tahoma, Arial, sans-serif; color: #0f172a;">${meta.customerPhone}</b></div>` : ''}
           ${meta.showCashier !== false && meta.sellerName ? `<div style="margin-top: 2px;">${isRTL ? 'البائع:' : 'Vendeur:'} <b>${meta.sellerName}</b></div>` : ''}
         </div>
       </div>
@@ -855,23 +864,23 @@ export function buildStructuredA4Html(meta: PdfDocumentMeta): string {
 
       <!-- Barcode (Code-39) for Official Large Print / Invoices -->
       ${meta.showBarcode !== false && meta.docNumber ? `
-      <div style="margin-top: 14px; display: flex; flex-direction: column; align-items: center; justify-content: center; page-break-inside: avoid;">
+      <div style="margin-top: 14px; display: flex; flex-direction: column; align-items: center; justify-content: center; page-break-inside: avoid; break-inside: avoid;">
         ${generateCode39BarcodeSvg(meta.docNumber, 36)}
       </div>
       ` : ''}
 
       <!-- Thank You Message -->
-      <div style="margin-top: 20px; padding-top: 10px; border-top: 1px solid #cbd5e1; text-align: center; font-size: 11.5px; font-weight: 800; color: #475569;">
+      <div style="margin-top: 20px; padding-top: 10px; border-top: 1px solid #cbd5e1; text-align: center; font-size: 11.5px; font-weight: 800; color: #475569; page-break-inside: avoid; break-inside: avoid;">
         ${meta.footerText || (isRTL ? 'شكراً لتعاملكم معنا ومرحباً بكم في أي وقت!' : 'Thank you for your business!')}
       </div>
 
       <!-- Footer: Company Info (Address, Phone, Email, ICE) -->
-      <div style="margin-top: 8px; padding-top: 8px; border-top: 1px solid #e2e8f0; text-align: center; font-size: 11px; font-weight: 600; color: #475569; page-break-inside: avoid;">
-        <div style="font-weight: 800; color: #0f172a; margin-bottom: 2px;">${meta.storeName || 'Smart POS'}</div>
-        <div style="display: flex; flex-wrap: wrap; justify-content: center; gap: 4px 14px; color: #475569;">
-          ${meta.storeAddress ? `<span>${meta.storeAddress}</span>` : ''}
-          ${meta.storePhone ? `<span>${isRTL ? 'الهاتف:' : 'Tél:'} <b style="font-family: Tahoma, Arial, sans-serif; color: #0f172a;" dir="ltr">${meta.storePhone}</b></span>` : ''}
-          ${meta.storeEmail ? `<span>${isRTL ? 'البريد:' : 'Email:'} <b style="font-family: Tahoma, Arial, sans-serif; color: #0f172a;">${meta.storeEmail}</b></span>` : ''}
+      <div style="margin-top: 12px; padding-top: 8px; border-top: 1px solid #e2e8f0; text-align: center; font-size: 11px; font-weight: 600; color: #475569; page-break-inside: avoid; break-inside: avoid;">
+        <div style="font-weight: 800; color: #0f172a; margin-bottom: 3px;">${meta.storeName || 'Smart POS'}</div>
+        ${meta.storeAddress ? `<div style="color: #475569; margin-bottom: 4px;">${meta.storeAddress}</div>` : ''}
+        <div style="display: flex; flex-wrap: wrap; justify-content: center; gap: 6px 16px; color: #475569;" dir="ltr">
+          ${meta.storePhone ? `<span>Tél: <b style="font-family: Tahoma, Arial, sans-serif; color: #0f172a;">${meta.storePhone}</b></span>` : ''}
+          ${meta.storeEmail ? `<span>Email: <b style="font-family: Tahoma, Arial, sans-serif; color: #0f172a;">${meta.storeEmail}</b></span>` : ''}
           ${meta.storeRegNumber ? `<span>ICE: <b style="font-family: Tahoma, Arial, sans-serif; color: #0f172a;">${meta.storeRegNumber}</b></span>` : ''}
         </div>
       </div>
@@ -1072,6 +1081,19 @@ function paintDocumentContentOnContext(
   const endX = isRTL ? pad : logicalWidth - pad;
   const startAlign: CanvasTextAlign = isRTL ? 'right' : 'left';
   const endAlign: CanvasTextAlign = isRTL ? 'left' : 'right';
+
+  const a4PageHeight = 1123;
+  const ensureSpaceA4 = (neededHeight: number, onPageBreak?: () => void) => {
+    if (is80mm) return;
+    const currentYInPage = y % a4PageHeight;
+    if (currentYInPage + neededHeight > a4PageHeight - pad - 14) {
+      const curPage = Math.floor(y / a4PageHeight);
+      y = (curPage + 1) * a4PageHeight + pad;
+      if (onPageBreak) {
+        onPageBreak();
+      }
+    }
+  };
 
   if (is80mm) {
     // --- UNIFIED 80MM THERMAL RECEIPT LAYOUT (Matches attached photo model) ---
@@ -1466,8 +1488,8 @@ function paintDocumentContentOnContext(
 
       const storeDetails = [
         meta.showAddress !== false ? meta.storeAddress : '',
-        meta.showPhone !== false ? meta.storePhone : '',
-        meta.showEmail !== false ? meta.storeEmail : ''
+        meta.showPhone !== false && meta.storePhone ? `Tél: ${meta.storePhone}` : '',
+        meta.showEmail !== false && meta.storeEmail ? `Email: ${meta.storeEmail}` : ''
       ]
         .filter(Boolean)
         .join('  |  ');
@@ -1513,35 +1535,45 @@ function paintDocumentContentOnContext(
       y += 16;
 
       // Customer Card
+      const custCardHeight = meta.customerAddress ? 72 : 60;
       ctx.fillStyle = '#f8fafc';
-      ctx.fillRect(pad, y, contentWidth, 62);
+      ctx.fillRect(pad, y, contentWidth, custCardHeight);
       ctx.strokeStyle = activeA4.border;
       ctx.lineWidth = 1;
-      ctx.strokeRect(pad, y, contentWidth, 62);
+      ctx.strokeRect(pad, y, contentWidth, custCardHeight);
 
       const cardStartX = isRTL ? startX - 16 : startX + 16;
       const cardEndX = isRTL ? endX + 16 : endX - 16;
       drawText(
-        meta.customerLabel || (isRTL ? 'بيانات العميل / المورد:' : 'Client / Supplier:'),
+        meta.customerLabel || (isRTL ? 'بيانات الزبون / المورد:' : 'Client / Supplier:'),
         cardStartX,
-        y + 11,
+        y + 9,
         { size: 11, weight: '800', color: '#64748b', align: startAlign }
       );
-      drawText(formatCustomerDisplayName(meta.customerName), cardStartX, y + 31, {
-        size: 15,
+      drawText(formatCustomerDisplayName(meta.customerName), cardStartX, y + 27, {
+        size: 14.5,
         weight: '900',
         color: '#0f172a',
         align: startAlign,
       });
+      if (meta.customerAddress) {
+        drawText(meta.customerAddress, cardStartX, y + 47, {
+          size: 11,
+          weight: '600',
+          color: '#475569',
+          align: startAlign,
+          maxWidth: contentWidth * 0.58,
+        });
+      }
       if (meta.showPhone !== false && meta.customerPhone) {
-        drawText(`${isRTL ? 'الهاتف:' : 'Tel:'} ${meta.customerPhone}`, cardEndX, y + 31, {
-          size: 13,
+        drawText(`Tél: ${meta.customerPhone}`, cardEndX, y + 27, {
+          size: 12.5,
           weight: '700',
           color: '#334155',
           align: endAlign,
         });
       }
-      y += 80;
+      y += custCardHeight + 16;
     }
 
     // Optional Summary KPI Cards
@@ -1604,9 +1636,6 @@ function paintDocumentContentOnContext(
 
     // Items Table (for standard invoices)
     if (meta.items && meta.items.length > 0) {
-      ctx.fillStyle = headerBgColor;
-      ctx.fillRect(pad, y, contentWidth, 34);
-
       const hideQtyPrice = Boolean(meta.hideQuantityAndUnitPrice);
       const cIdx = isRTL ? startX - 14 : startX + 14;
       const cName = isRTL ? startX - 50 : startX + 50;
@@ -1614,36 +1643,45 @@ function paintDocumentContentOnContext(
       const cPrice = isRTL ? logicalWidth - pad - contentWidth * 0.72 : pad + contentWidth * 0.72;
       const cTotal = isRTL ? endX + 14 : endX - 14;
 
-      drawText('#', cIdx, y + 9, { size: 12, weight: '900', color: '#ffffff', align: startAlign });
-      drawText(
-        meta.customTableHeaders?.name || (isRTL ? 'البيان / المنتج' : 'Description'),
-        cName,
-        y + 9,
-        { size: 12, weight: '900', color: '#ffffff', align: startAlign }
-      );
-      if (!hideQtyPrice) {
-        drawText(meta.customTableHeaders?.qty || (isRTL ? 'الكمية' : 'Qty'), cQty, y + 9, {
+      const drawTableHeader = () => {
+        ctx.fillStyle = headerBgColor;
+        ctx.fillRect(pad, y, contentWidth, 34);
+
+        drawText('#', cIdx, y + 9, { size: 12, weight: '900', color: '#ffffff', align: startAlign });
+        drawText(
+          meta.customTableHeaders?.name || (isRTL ? 'البيان / المنتج' : 'Description'),
+          cName,
+          y + 9,
+          { size: 12, weight: '900', color: '#ffffff', align: startAlign }
+        );
+        if (!hideQtyPrice) {
+          drawText(meta.customTableHeaders?.qty || (isRTL ? 'الكمية' : 'Qty'), cQty, y + 9, {
+            size: 12,
+            weight: '900',
+            color: '#ffffff',
+            align: 'center',
+          });
+          drawText(
+            meta.customTableHeaders?.price || (isRTL ? 'سعر الوحدة' : 'Unit Price'),
+            cPrice,
+            y + 9,
+            { size: 12, weight: '900', color: '#ffffff', align: 'center' }
+          );
+        }
+        drawText(meta.customTableHeaders?.total || (isRTL ? 'الإجمالي' : 'Total'), cTotal, y + 9, {
           size: 12,
           weight: '900',
           color: '#ffffff',
-          align: 'center',
+          align: endAlign,
         });
-        drawText(
-          meta.customTableHeaders?.price || (isRTL ? 'سعر الوحدة' : 'Unit Price'),
-          cPrice,
-          y + 9,
-          { size: 12, weight: '900', color: '#ffffff', align: 'center' }
-        );
-      }
-      drawText(meta.customTableHeaders?.total || (isRTL ? 'الإجمالي' : 'Total'), cTotal, y + 9, {
-        size: 12,
-        weight: '900',
-        color: '#ffffff',
-        align: endAlign,
-      });
-      y += 34;
+        y += 34;
+      };
+
+      ensureSpaceA4(70);
+      drawTableHeader();
 
       meta.items.forEach((item, index) => {
+        ensureSpaceA4(34, drawTableHeader);
         if (index % 2 === 1) {
           ctx.fillStyle = '#f8fafc';
           ctx.fillRect(pad, y, contentWidth, 32);
@@ -1691,7 +1729,7 @@ function paintDocumentContentOnContext(
           isNumeric: true,
         });
         y += 32;
-        drawLine(y, false, '#e2e8f0');
+        drawLine(y, false, '#f1f5f9');
       });
 
       y += 18;
@@ -1768,6 +1806,7 @@ function paintDocumentContentOnContext(
 
     // Only paint payment totals, notes, and thank you footer for regular invoices (NOT financial reports)
     if (!meta.isReport) {
+      ensureSpaceA4(130);
       const sumRow = (label: string, val: string, bold = false, color = '#1e293b') => {
         drawText(label, startX, y, {
           size: bold ? 15 : 13,
@@ -1868,6 +1907,7 @@ function paintDocumentContentOnContext(
       }
 
       // Arrêtée la présente facture clause (Centered) with full written words
+      ensureSpaceA4(48);
       y += 10;
       const totalAmountWithPrev = Number(meta.total || 0) + prevBalA4;
       const boxHeight = 32;
@@ -1893,12 +1933,14 @@ function paintDocumentContentOnContext(
 
       // Barcode (Code-39) for Official Large Print / Invoices
       if (meta.showBarcode !== false && meta.docNumber) {
+        ensureSpaceA4(52);
         y += 6;
         y += drawCode39BarcodeOnCanvas(ctx, meta.docNumber, logicalWidth / 2, y, 36);
         y += 6;
       }
 
       // Thank you message
+      ensureSpaceA4(80);
       drawLine(y, false, '#cbd5e1');
       y += 10;
       drawText(
@@ -1919,21 +1961,37 @@ function paintDocumentContentOnContext(
         align: 'center',
       });
       y += 18;
-      const storeFooterParts = [
-        meta.storeAddress,
-        meta.storePhone ? `${isRTL ? 'الهاتف:' : 'Tél:'} ${meta.storePhone}` : '',
-        meta.storeEmail ? `${isRTL ? 'البريد:' : 'Email:'} ${meta.storeEmail}` : '',
-        meta.storeRegNumber ? `ICE: ${meta.storeRegNumber}` : '',
-      ].filter(Boolean).join('   |   ');
-      if (storeFooterParts) {
-        drawText(storeFooterParts, logicalWidth / 2, y, {
+
+      if (meta.storeAddress) {
+        drawText(meta.storeAddress, logicalWidth / 2, y, {
           size: 10.5,
-          weight: '700',
+          weight: '600',
           color: '#475569',
           align: 'center',
           maxWidth: contentWidth,
         });
-        y += 20;
+        y += 16;
+      }
+
+      const contactParts = [
+        meta.storePhone ? `Tél: ${meta.storePhone}` : '',
+        meta.storeEmail ? `Email: ${meta.storeEmail}` : '',
+        meta.storeRegNumber ? `ICE: ${meta.storeRegNumber}` : '',
+      ].filter(Boolean);
+
+      if (contactParts.length > 0) {
+        ctx.save();
+        ctx.direction = 'ltr';
+        const contactLine = contactParts.join('   |   ');
+        drawText(contactLine, logicalWidth / 2, y, {
+          size: 10.5,
+          weight: '700',
+          color: '#475569',
+          align: 'center',
+          fontFamily: numFontStack,
+        });
+        ctx.restore();
+        y += 18;
       }
     }
   }

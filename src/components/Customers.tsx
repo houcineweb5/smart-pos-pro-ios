@@ -6,7 +6,7 @@
 import React, { useState } from 'react';
 import { Customer, Invoice, Language, StoreConfig, ActivityLog } from '../types';
 import { languages } from '../languages';
-import { UserPlus, Search, Phone, Mail, DollarSign, Edit3, Trash2, X, Receipt, CheckCircle, MessageCircle, Printer, FileDown } from 'lucide-react';
+import { UserPlus, Search, Phone, Mail, DollarSign, Edit3, Trash2, X, Receipt, CheckCircle, MessageCircle, Printer, FileDown, MapPin } from 'lucide-react';
 import CustomerLedger from './CustomerLedger';
 import { parseDecimal, sanitizeDecimalInput } from '../utils/numberInput';
 import { printHtmlContent, exportStructuredPdf, PdfDocumentMeta } from '../utils/printService';
@@ -361,6 +361,12 @@ export default function Customers({ customers, invoices, onSaveCustomer, onDelet
                             {c.email}
                           </span>
                         )}
+                        {c.address && (
+                          <span className="flex items-center gap-1 text-slate-600">
+                            <MapPin className="w-3.5 h-3.5 text-slate-400" />
+                            <span>{c.address}</span>
+                          </span>
+                        )}
                         {c.ice && (
                           <span className="inline-flex items-center gap-1 px-1.5 py-0.5 bg-slate-100 text-slate-700 font-mono font-bold text-[10px] rounded border border-slate-200">
                             ICE: {c.ice}
@@ -567,6 +573,20 @@ export default function Customers({ customers, invoices, onSaveCustomer, onDelet
 
               <div>
                 <label className="block text-xs font-bold text-slate-500 uppercase mb-1.5">
+                  {lang === 'ar' ? 'العنوان' : 'Adresse'}
+                </label>
+                <input
+                  id="form-c-address"
+                  type="text"
+                  placeholder={lang === 'ar' ? 'عنوان الزبون (المدينة، الحي...)' : 'Adresse du client'}
+                  value={editingCustomer.address || ''}
+                  onChange={(e) => setEditingCustomer({ ...editingCustomer, address: e.target.value })}
+                  className="w-full px-3.5 py-2.5 border border-slate-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-indigo-500 text-slate-800 font-semibold"
+                />
+              </div>
+
+              <div>
+                <label className="block text-xs font-bold text-slate-500 uppercase mb-1.5">
                   {lang === 'ar' ? 'معرف المقاولة الضريبي (ICE)' : 'Identifiant ICE'}
                 </label>
                 <input
@@ -699,17 +719,17 @@ export default function Customers({ customers, invoices, onSaveCustomer, onDelet
             <div className={`flex items-center gap-3 text-rose-600 pb-2 border-b border-slate-100 ${isRTL ? 'flex-row-reverse' : 'flex-row'}`}>
               <Trash2 className="w-6 h-6 shrink-0" />
               <h3 className="text-lg font-black tracking-tight text-slate-800">
-                {lang === 'ar' ? 'تاكيد حذف العميل' : 'Confirm Customer Deletion'}
+                {lang === 'ar' ? 'تاكيد حذف الزبون' : 'Confirm Customer Deletion'}
               </h3>
             </div>
             <p className="text-sm text-slate-600 font-semibold leading-relaxed text-start">
               {lang === 'ar' 
-                ? `هل أنت متأكد تماماً من رغبتك في حذف العميل "${customers.find(customer => customer.id === deletingCustomerId)?.name || ''}" ؟`
+                ? `هل أنت متأكد تماماً من رغبتك في حذف الزبون "${customers.find(customer => customer.id === deletingCustomerId)?.name || ''}" ؟`
                 : `Are you absolutely sure you want to delete "${customers.find(customer => customer.id === deletingCustomerId)?.name || ''}" from the customer directory?`}
             </p>
             <div className="bg-rose-50 text-[11px] text-rose-800 p-3 rounded-xl border border-rose-100 font-medium leading-relaxed text-start">
               {lang === 'ar' 
-                ? 'تنبيه: لن يحذف هذا المعاملات المتعلقة بالعميل، ولكنه سيزيل العميل من السجلات الحالية.'
+                ? 'تنبيه: لن يحذف هذا المعاملات المتعلقة بالزبون، ولكنه سيزيل الزبون من السجلات الحالية.'
                 : 'Warning: This will permanent remove this profile, but past historical invoices remain unaffected.'}
             </div>
             <div className={`flex items-center justify-end gap-3 pt-2 ${isRTL ? 'flex-row-reverse' : ''}`}>

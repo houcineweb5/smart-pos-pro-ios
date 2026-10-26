@@ -7,7 +7,7 @@ import React, { useState, useEffect, useRef } from 'react';
 import { createPortal } from 'react-dom';
 import { ActiveTab, Customer, Invoice, Language, Product, SaleItem, StoreConfig } from '../types';
 import { languages } from '../languages';
-import { Receipt, Search, Eye, Printer, X, DollarSign, Calendar, CheckSquare, AlertTriangle, Clock, Trash2, RotateCcw, MessageCircle, Share2, CheckCircle2, User, FileSpreadsheet, FileDown, ArrowRight, TrendingUp, Edit, Plus, Save, Camera, ScanBarcode } from 'lucide-react';
+import { Receipt, Search, Eye, EyeOff, Printer, X, DollarSign, Calendar, CheckSquare, AlertTriangle, Clock, Trash2, RotateCcw, MessageCircle, Share2, CheckCircle2, User, FileSpreadsheet, FileDown, ArrowRight, TrendingUp, Edit, Plus, Save, Camera, ScanBarcode } from 'lucide-react';
 import { generateBarcodeSvg } from '../utils/barcode';
 import { parseDecimal, sanitizeDecimalInput } from '../utils/numberInput';
 import { printHtmlContent, exportStructuredPdf, PdfDocumentMeta, buildUnified80mmReceiptHtml, buildStructuredA4Html, A4_PRINT_THEMES } from '../utils/printService';
@@ -1696,11 +1696,23 @@ export default function Invoices({ invoices, products = [], customers = [], conf
                               <button
                                 type="button"
                                 onClick={() => setShowPaymentInOfficialInvoice(!showPaymentInOfficialInvoice)}
-                                className="text-[11px] font-bold text-indigo-600 hover:text-indigo-800 underline cursor-pointer"
+                                className={`inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-bold transition cursor-pointer border ${
+                                  showPaymentInOfficialInvoice
+                                    ? 'bg-amber-50 text-amber-800 border-amber-200 hover:bg-amber-100'
+                                    : 'bg-indigo-50 text-indigo-700 border-indigo-200 hover:bg-indigo-100'
+                                }`}
                               >
-                                {showPaymentInOfficialInvoice
-                                  ? (lang === 'ar' ? '👁️ إخفاء معطيات الدفع والباقي (رسمي)' : '👁️ Masquer paiement & reste (officiel)')
-                                  : (lang === 'ar' ? '👁️ إظهار معطيات الدفع والباقي' : '👁️ Afficher paiement & reste')}
+                                {showPaymentInOfficialInvoice ? (
+                                  <>
+                                    <EyeOff className="w-3.5 h-3.5 text-amber-600 shrink-0" />
+                                    <span>{lang === 'ar' ? 'إخفاء معطيات الدفع والباقي (رسمي)' : 'Masquer paiement & reste (officiel)'}</span>
+                                  </>
+                                ) : (
+                                  <>
+                                    <Eye className="w-3.5 h-3.5 text-indigo-600 shrink-0" />
+                                    <span>{lang === 'ar' ? 'إظهار معطيات الدفع والباقي' : 'Afficher paiement & reste'}</span>
+                                  </>
+                                )}
                               </button>
                             </div>
                             {showPaymentInOfficialInvoice && (
