@@ -893,7 +893,7 @@ export default function Settings({
                     </div>
                     {formConfig.showCashierOnInvoice !== false && (
                       <div className="text-[8.5px] text-slate-600 flex justify-between">
-                        <span>الزبون: زبون عابر</span>
+                        <span>الزبون: Client Divers</span>
                         <span>البائع: Admin</span>
                       </div>
                     )}

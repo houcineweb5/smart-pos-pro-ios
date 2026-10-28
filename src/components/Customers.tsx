@@ -68,7 +68,7 @@ export default function Customers({ customers, invoices, onSaveCustomer, onDelet
     e.preventDefault();
     if (!editingCustomer) return;
 
-    if (!editingCustomer.name || (!editingCustomer.phone && editingCustomer.id !== 'walk-in')) {
+    if (!editingCustomer.name || (!editingCustomer.phone && editingCustomer.id !== 'walk-in' && editingCustomer.name !== 'Client Divers' && editingCustomer.name !== 'زبون عابر')) {
       alert(t.common.requiredFields);
       return;
     }
@@ -342,7 +342,7 @@ export default function Customers({ customers, invoices, onSaveCustomer, onDelet
                     <div>
                       <div className="flex items-center gap-2">
                         <h3 className="text-base font-black text-slate-800">{c.name}</h3>
-                        {(c.id === 'walk-in' || c.name === 'زبون عابر') && (
+                        {(c.id === 'walk-in' || c.name === 'Client Divers' || c.name === 'زبون عابر') && (
                           <span className="px-2 py-0.5 bg-indigo-50 text-indigo-700 text-[10px] font-bold rounded-md border border-indigo-100">
                             {lang === 'ar' ? 'الزبون الافتراضي' : 'Default'}
                           </span>
@@ -384,7 +384,7 @@ export default function Customers({ customers, invoices, onSaveCustomer, onDelet
                       >
                         <Edit3 className="w-4 h-4" />
                       </button>
-                      {c.id !== 'walk-in' && c.name !== 'زبون عابر' && (
+                      {c.id !== 'walk-in' && c.name !== 'Client Divers' && c.name !== 'زبون عابر' && (
                         <button
                           id={`cust-del-${c.id}`}
                           onClick={() => {

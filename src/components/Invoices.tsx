@@ -1623,7 +1623,7 @@ export default function Invoices({ invoices, products = [], customers = [], conf
                     {viewInvoice.notes && (
                       <div className="p-3 bg-slate-50 rounded-xl border border-slate-100">
                         <p className="font-bold uppercase text-slate-500 tracking-wider text-[10px] mb-1">
-                          {lang === 'ar' ? 'ملاحظة:' : 'Note:'}
+                          Remarques :
                         </p>
                         <p className="text-slate-600 leading-relaxed font-medium">{viewInvoice.notes}</p>
                       </div>
@@ -1786,9 +1786,8 @@ export default function Invoices({ invoices, products = [], customers = [], conf
                   </div>
                 )}
 
-                {/* Company Info Footer Strip (Address, Phone, Email, ICE) */}
+                {/* Company Info Footer Strip (Address, Phone, Email, ICE) - without repeating company name at the bottom */}
                 <div className="pt-4 border-t border-slate-200 text-center text-[11px] text-slate-600 font-semibold space-y-1">
-                  <div className="font-bold text-slate-800 text-xs">{config.name}</div>
                   <div className="flex flex-wrap items-center justify-center gap-x-4 gap-y-1">
                     {config.showAddressOnInvoice !== false && config.address && <span>{config.address}</span>}
                     {config.showPhoneOnInvoice !== false && config.phone && <span>{lang === 'ar' ? 'الهاتف:' : 'Tél:'} <b className="font-mono text-slate-800" dir="ltr">{config.phone}</b></span>}
@@ -2106,7 +2105,7 @@ export default function Invoices({ invoices, products = [], customers = [], conf
                     }}
                     className="w-full px-2.5 py-2 bg-white border border-slate-200 rounded-xl text-xs font-bold focus:outline-none focus:ring-2 focus:ring-blue-500"
                   >
-                    <option value="">{lang === 'ar' ? '— زبون عابر / كتابة يدوية —' : '— Client passager —'}</option>
+                    <option value="">{lang === 'ar' ? '— Client Divers / كتابة يدوية —' : '— Client Divers / Manuel —'}</option>
                     {customers.map((c) => (
                       <option key={c.id} value={c.id}>{c.name}</option>
                     ))}

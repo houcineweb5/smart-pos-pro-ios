@@ -696,7 +696,7 @@ export default function POS({ products, customers, config, onAddTransaction, onR
     }
 
     if (paymentMethod === 'debt' && customerId === 'walk-in') {
-      alert('Walk-in Customer cannot purchase on debt! Please select a registered customer profile.');
+      alert(lang === 'ar' ? 'لا يمكن لـ Client Divers الشراء بالكريدي! يرجى اختيار زبون مسجل.' : 'Client Divers ne peut pas acheter à crédit! Veuillez sélectionner un client enregistré.');
       return;
     }
 

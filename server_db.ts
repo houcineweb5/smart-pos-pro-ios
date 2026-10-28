@@ -333,6 +333,9 @@ export async function initDB() {
     }
   }
 
+  // Ensure default customer is named 'Client Divers'
+  await db.run("UPDATE customers SET name = 'Client Divers' WHERE id = 'walk-in' OR name = 'زبون عابر' OR name = 'Walk-in'");
+
   // Ensure initial log exists if logs table is empty
   const logExists = await db.get('SELECT COUNT(*) as count FROM logs');
   if (!logExists || logExists.count === 0) {

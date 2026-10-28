@@ -201,8 +201,12 @@ function drawCode39BarcodeOnCanvas(
 }
 
 export function formatCustomerDisplayName(name?: string): string {
-  if (!name) return '';
-  return name
+  if (!name) return 'Client Divers';
+  const trimmed = name.trim();
+  if (trimmed === 'زبون عابر' || trimmed === 'Walk-in' || trimmed === 'Client de passage') {
+    return 'Client Divers';
+  }
+  return trimmed
     .replace(/\s*\(\s*ICE:\s*([^)]+)\s*\)/gi, ' - ICE: $1')
     .replace(/[()]/g, '')
     .trim();
@@ -276,15 +280,19 @@ export function buildUnified80mmReceiptHtml(
   thankYouText?: string
 ): string {
   const isRTL = lang === 'ar';
+  const docTitleLower = (inv.docTitle || '').toLowerCase();
+  const isNonFactureDoc = docTitleLower.includes('devis') || docTitleLower.includes('عرض') ||
+                          docTitleLower.includes('commande') || docTitleLower.includes('طلب') ||
+                          docTitleLower.includes('livraison') || docTitleLower.includes('تسليم');
   const safeItems = Array.isArray(inv.items) ? inv.items : [];
   const invSubtotal = Number(inv.subtotal) || 0;
   const invDiscount = Number(inv.discount) || 0;
   const invTax = Number(inv.tax) || 0;
   const invTotal = Number(inv.total) || 0;
-  const invPaid = inv.amountPaid !== undefined ? Number(inv.amountPaid) || 0 : invTotal;
-  const prevBal = Number(inv.previousBalance) || 0;
+  const invPaid = isNonFactureDoc ? invTotal : (inv.amountPaid !== undefined ? Number(inv.amountPaid) || 0 : invTotal);
+  const prevBal = isNonFactureDoc ? 0 : (Number(inv.previousBalance) || 0);
   const grandTotal = invTotal + prevBal;
-  const remaining = Math.max(0, invTotal - invPaid);
+  const remaining = isNonFactureDoc ? 0 : Math.max(0, invTotal - invPaid);
   const dateStr = inv.date
     ? isNaN(new Date(inv.date).getTime())
       ? inv.date
@@ -352,7 +360,7 @@ export function buildUnified80mmReceiptHtml(
           <span style="font-family: ${numFont}; color: #000000 !important;" dir="ltr">${dateStr}</span>
         </div>
         <div style="display: flex; justify-content: space-between; align-items: center; gap: 4px; margin-top: 3px;">
-          <span>${inv.partyLabel || (lang === 'ar' ? 'الزبون :' : 'Client :')} <b>${formatCustomerDisplayName(inv.customerName) || (lang === 'ar' ? 'زبون عابر' : 'Walk-in')}</b></span>
+          <span>${inv.partyLabel || (lang === 'ar' ? 'الزبون :' : 'Client :')} <b>${formatCustomerDisplayName(inv.customerName) || 'Client Divers'}</b></span>
           ${config.showCashierOnInvoice !== false ? `<span>${lang === 'ar' ? 'البائع:' : 'Vendeur:'} <b>${inv.sellerName || 'admin'}</b></span>` : ''}
         </div>
       </div>
@@ -437,7 +445,7 @@ export function buildUnified80mmReceiptHtml(
           <span style="font-family: ${numFont}; font-weight: 800;">${totalItemsCount}</span>
         </div>
         ${
-          config.showDebtOnInvoice !== false && remaining > 0
+          !isNonFactureDoc && config.showDebtOnInvoice !== false && remaining > 0
             ? `
         <div style="display: flex; justify-content: space-between; font-weight: 800; margin-bottom: 2px;">
           <span>${lang === 'ar' ? 'الباقي (كريدي):' : 'Reste (Crédit):'}</span>
@@ -545,6 +553,7 @@ export function buildStructuredA4Html(meta: PdfDocumentMeta): string {
   const isDevis = titleLower.includes('devis') || titleLower.includes('عرض');
   const isBonCommande = titleLower.includes('commande') || titleLower.includes('طلب');
   const isBonLivraison = titleLower.includes('livraison') || titleLower.includes('تسليم');
+  const isNonFactureDoc = isDevis || isBonCommande || isBonLivraison;
 
   const clausePrefix = isArabic
     ? (isDevis ? 'أوقف هذا العرض عند مبلغ : ' : isBonCommande ? 'أوقف سند الطلب عند مبلغ : ' : isBonLivraison ? 'أوقف سند التسليم عند مبلغ : ' : 'أوقفت هذه الفاتورة عند مبلغ : ')
@@ -766,7 +775,7 @@ export function buildStructuredA4Html(meta: PdfDocumentMeta): string {
             meta.notes
               ? `
             <div style="background: #f8fafc; border: 1px solid #cbd5e1; border-radius: 8px; padding: 10px 12px; font-size: 11.5px; color: #334155; font-weight: 700; line-height: 1.5;">
-              <div style="font-weight: 900; color: #0f172a; margin-bottom: 3px;">${isRTL ? 'ملاحظات:' : 'Notes:'}</div>
+              <div style="font-weight: 900; color: #0f172a; margin-bottom: 3px;">Remarques :</div>
               <div>${meta.notes}</div>
             </div>
           `
@@ -834,17 +843,17 @@ export function buildStructuredA4Html(meta: PdfDocumentMeta): string {
               : ''
           }
           ${
-            !meta.hidePaymentDetails && meta.amountPaid !== undefined
+            !isNonFactureDoc && !meta.hidePaymentDetails && meta.amountPaid !== undefined
               ? `
             <div style="display: flex; justify-content: space-between; margin-top: 6px; padding-top: 6px; border-top: 1px solid #cbd5e1; font-weight: 800; color: #047857; font-size: 12px;">
-              <span>${isRTL ? 'المبلغ المدفوع:' : 'Montant Payé:'}</span>
+              <span>${isRTL ? 'المبلغ المؤدى:' : 'Montant Payé:'}</span>
               <span style="font-family: Tahoma, Arial, sans-serif;" dir="ltr">${Number(meta.amountPaid).toFixed(2)} ${meta.currency}</span>
             </div>
           `
               : ''
           }
           ${
-            !meta.hidePaymentDetails && meta.showDebt !== false && meta.remainingDebt && meta.remainingDebt > 0
+            !isNonFactureDoc && !meta.hidePaymentDetails && meta.showDebt !== false && meta.remainingDebt && meta.remainingDebt > 0
               ? `
             <div style="display: flex; justify-content: space-between; margin-top: 4px; font-weight: 900; color: #e11d48; font-size: 12.5px;">
               <span>${isRTL ? 'الباقي (كريدي):' : 'Reste (Crédit):'}</span>
@@ -856,11 +865,13 @@ export function buildStructuredA4Html(meta: PdfDocumentMeta): string {
         </div>
       </div>
 
-      <!-- Arrêtée la présente facture clause (Centered) with full written words -->
+      <!-- Arrêtée la présente facture clause (Centered) with full written words - ONLY for Facture -->
+      ${!isNonFactureDoc ? `
       <div style="margin-top: 14px; padding: 10px 14px; background: #f8fafc; border: 1px solid #cbd5e1; border-radius: 8px; text-align: center; font-size: 11.5px; font-weight: 800; color: #0f172a; page-break-inside: avoid; line-height: 1.6;">
         <span>${clausePrefix}</span>
         <span style="color: #1e3a8a; font-weight: 900;">${isArabic ? amountToWordsAr(Number(meta.total || 0) + prevBal, meta.currency) : amountToWordsFr(Number(meta.total || 0) + prevBal, meta.currency)}</span>
       </div>
+      ` : ''}
 
       <!-- Barcode (Code-39) for Official Large Print / Invoices -->
       ${meta.showBarcode !== false && meta.docNumber ? `
@@ -876,7 +887,6 @@ export function buildStructuredA4Html(meta: PdfDocumentMeta): string {
 
       <!-- Footer: Company Info (Address, Phone, Email, ICE) -->
       <div style="margin-top: 12px; padding-top: 8px; border-top: 1px solid #e2e8f0; text-align: center; font-size: 11px; font-weight: 600; color: #475569; page-break-inside: avoid; break-inside: avoid;">
-        <div style="font-weight: 800; color: #0f172a; margin-bottom: 3px;">${meta.storeName || 'Smart POS'}</div>
         ${meta.storeAddress ? `<div style="color: #475569; margin-bottom: 4px;">${meta.storeAddress}</div>` : ''}
         <div style="display: flex; flex-wrap: wrap; justify-content: center; gap: 6px 16px; color: #475569;" dir="ltr">
           ${meta.storePhone ? `<span>Tél: <b style="font-family: Tahoma, Arial, sans-serif; color: #0f172a;">${meta.storePhone}</b></span>` : ''}
@@ -1021,6 +1031,7 @@ function paintDocumentContentOnContext(
   const isDevis = titleLower.includes('devis') || titleLower.includes('عرض');
   const isBonCommande = titleLower.includes('commande') || titleLower.includes('طلب');
   const isBonLivraison = titleLower.includes('livraison') || titleLower.includes('تسليم');
+  const isNonFactureDoc = isDevis || isBonCommande || isBonLivraison;
 
   const clausePrefix = isArabic
     ? (isDevis ? 'أوقف هذا العرض عند مبلغ : ' : isBonCommande ? 'أوقف سند الطلب عند مبلغ : ' : isBonLivraison ? 'أوقف سند التسليم عند مبلغ : ' : 'أوقفت هذه الفاتورة عند مبلغ : ')
@@ -1181,7 +1192,7 @@ function paintDocumentContentOnContext(
     y += 18;
 
     drawText(
-      `${meta.partyLabel || (isRTL ? 'الزبون :' : 'Client :')} ${formatCustomerDisplayName(meta.customerName) || (isRTL ? 'زبون عابر' : 'Walk-in')}`,
+      `${meta.partyLabel || (isRTL ? 'الزبون :' : 'Client :')} ${formatCustomerDisplayName(meta.customerName) || 'Client Divers'}`,
       startX,
       y,
       { size: 11, weight: '800', color: '#000000', align: startAlign }
@@ -1877,7 +1888,7 @@ function paintDocumentContentOnContext(
         );
       }
 
-      if (!meta.hidePaymentDetails && meta.amountPaid !== undefined) {
+      if (!isNonFactureDoc && !meta.hidePaymentDetails && meta.amountPaid !== undefined) {
         sumRow(
           isRTL ? 'المبلغ المؤدى:' : 'Amount Paid:',
           `${Number(meta.amountPaid).toFixed(2)} ${meta.currency}`,
@@ -1885,7 +1896,7 @@ function paintDocumentContentOnContext(
           '#059669'
         );
       }
-      if (!meta.hidePaymentDetails && meta.remainingDebt && meta.remainingDebt > 0) {
+      if (!isNonFactureDoc && !meta.hidePaymentDetails && meta.remainingDebt && meta.remainingDebt > 0) {
         sumRow(
           isRTL ? 'الباقي (كريدي):' : 'Reste (Crédit):',
           `${Number(meta.remainingDebt).toFixed(2)} ${meta.currency}`,
@@ -1896,7 +1907,7 @@ function paintDocumentContentOnContext(
 
       if (meta.notes) {
         y += 10;
-        drawText(`${isRTL ? 'ملاحظات:' : 'Notes:'} ${meta.notes}`, startX, y, {
+        drawText(`Remarques: ${meta.notes}`, startX, y, {
           size: 12,
           weight: '700',
           color: '#475569',
@@ -1906,30 +1917,32 @@ function paintDocumentContentOnContext(
         y += 26;
       }
 
-      // Arrêtée la présente facture clause (Centered) with full written words
-      ensureSpaceA4(48);
-      y += 10;
-      const totalAmountWithPrev = Number(meta.total || 0) + prevBalA4;
-      const boxHeight = 32;
-      ctx.fillStyle = '#f8fafc';
-      ctx.fillRect(pad, y, contentWidth, boxHeight);
-      ctx.strokeStyle = '#cbd5e1';
-      ctx.lineWidth = 1;
-      ctx.strokeRect(pad, y, contentWidth, boxHeight);
+      // Arrêtée la présente facture clause (Centered) with full written words - ONLY for Facture
+      if (!isNonFactureDoc) {
+        ensureSpaceA4(48);
+        y += 10;
+        const totalAmountWithPrev = Number(meta.total || 0) + prevBalA4;
+        const boxHeight = 32;
+        ctx.fillStyle = '#f8fafc';
+        ctx.fillRect(pad, y, contentWidth, boxHeight);
+        ctx.strokeStyle = '#cbd5e1';
+        ctx.lineWidth = 1;
+        ctx.strokeRect(pad, y, contentWidth, boxHeight);
 
-      const words = isArabic
-        ? amountToWordsAr(totalAmountWithPrev, meta.currency)
-        : amountToWordsFr(totalAmountWithPrev, meta.currency);
-      const clauseLine = `${clausePrefix}${words}`;
+        const words = isArabic
+          ? amountToWordsAr(totalAmountWithPrev, meta.currency)
+          : amountToWordsFr(totalAmountWithPrev, meta.currency);
+        const clauseLine = `${clausePrefix}${words}`;
 
-      drawText(clauseLine, logicalWidth / 2, y + 9, {
-        size: isArabic ? 11 : 10,
-        weight: '800',
-        color: '#0f172a',
-        align: 'center',
-        maxWidth: contentWidth - 16,
-      });
-      y += boxHeight + 10;
+        drawText(clauseLine, logicalWidth / 2, y + 9, {
+          size: isArabic ? 11 : 10,
+          weight: '800',
+          color: '#0f172a',
+          align: 'center',
+          maxWidth: contentWidth - 16,
+        });
+        y += boxHeight + 10;
+      }
 
       // Barcode (Code-39) for Official Large Print / Invoices
       if (meta.showBarcode !== false && meta.docNumber) {
@@ -1951,16 +1964,9 @@ function paintDocumentContentOnContext(
       );
       y += 24;
 
-      // Footer: Company Info (Address, Phone, Email, ICE)
+      // Footer: Company Info (Address, Phone, Email, ICE) - without repeating company name at the bottom
       drawLine(y, false, '#e2e8f0');
       y += 8;
-      drawText(meta.storeName || 'Smart POS', logicalWidth / 2, y, {
-        size: 12,
-        weight: '900',
-        color: '#0f172a',
-        align: 'center',
-      });
-      y += 18;
 
       if (meta.storeAddress) {
         drawText(meta.storeAddress, logicalWidth / 2, y, {

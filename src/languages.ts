@@ -232,7 +232,7 @@ export const languages: Record<Language, Translations> = {
     },
     pos: {
       selectCustomer: 'اختر الزبون',
-      walkInCustomer: 'زبون عابر',
+      walkInCustomer: 'Client Divers',
       searchProducts: 'ابحث عن منتج بالاسم أو الرمز (SKU)...',
       allCategories: 'جميع الفئات',
       cart: 'سلة المشتريات',
@@ -431,7 +431,7 @@ export const languages: Record<Language, Translations> = {
     },
     pos: {
       selectCustomer: 'Sélectionner Client',
-      walkInCustomer: 'Client de passage',
+      walkInCustomer: 'Client Divers',
       searchProducts: 'Rechercher produit par nom ou SKU...',
       allCategories: 'Toutes les catégories',
       cart: 'Panier',
@@ -630,7 +630,7 @@ export const languages: Record<Language, Translations> = {
     },
     pos: {
       selectCustomer: 'Select Customer',
-      walkInCustomer: 'Walk-in Customer',
+      walkInCustomer: 'Client Divers',
       searchProducts: 'Search product by name or SKU...',
       allCategories: 'All Categories',
       cart: 'Shopping Cart',

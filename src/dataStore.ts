@@ -10,7 +10,7 @@ export const INITIAL_EXPENSES: Expense[] = [];
 export const INITIAL_PRODUCTS: Product[] = [];
 
 export const INITIAL_CUSTOMERS: Customer[] = [
-  { id: 'walk-in', name: 'زبون عابر', phone: '', email: '', debt: 0, notes: 'الزبون الافتراضي للمبيعات النقدية المباشرة', createdAt: '2026-01-01T00:00:00Z' }
+  { id: 'walk-in', name: 'Client Divers', phone: '', email: '', debt: 0, notes: 'الزبون الافتراضي للمبيعات النقدية المباشرة', createdAt: '2026-01-01T00:00:00Z' }
 ];
 
 export const INITIAL_SUPPLIERS: Supplier[] = [];
@@ -135,9 +135,22 @@ export function getStoredData() {
       if (customers.some((c: Customer) => c.name === 'Ahmad Al-Mansour')) {
         customers = INITIAL_CUSTOMERS;
         localStorage.setItem(KEYS.customers, JSON.stringify(INITIAL_CUSTOMERS));
-      } else if (!customers.some((c: Customer) => c.id === 'walk-in' || c.name === 'زبون عابر')) {
-        customers = [INITIAL_CUSTOMERS[0], ...customers];
-        localStorage.setItem(KEYS.customers, JSON.stringify(customers));
+      } else {
+        let changed = false;
+        customers = customers.map((c: Customer) => {
+          if (c.id === 'walk-in' || c.name === 'زبون عابر' || c.name === 'Walk-in' || c.name === 'Client de passage') {
+            changed = true;
+            return { ...c, name: 'Client Divers' };
+          }
+          return c;
+        });
+        if (!customers.some((c: Customer) => c.id === 'walk-in' || c.name === 'Client Divers')) {
+          customers = [INITIAL_CUSTOMERS[0], ...customers];
+          changed = true;
+        }
+        if (changed) {
+          localStorage.setItem(KEYS.customers, JSON.stringify(customers));
+        }
       }
     } catch (e) {
       customers = INITIAL_CUSTOMERS;

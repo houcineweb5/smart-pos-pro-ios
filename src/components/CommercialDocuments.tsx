@@ -750,12 +750,12 @@ export default function CommercialDocuments({
     const taxVal = Number(doc?.tax || 0);
     const totalVal = Number(doc?.total || 0);
     const prevBalVal = Number(doc?.previousBalance || 0);
-    const paidVal = doc?.amountPaid !== undefined ? Number(doc.amountPaid) : totalVal;
-    const remDebt = doc?.docType === 'facture' ? Math.max(0, totalVal - paidVal) : 0;
     const isFacture = doc?.docType === 'facture';
     const effectiveHidePayment = hidePaymentDetails !== undefined
       ? hidePaymentDetails
-      : (isFacture && !showPaymentInOfficialInvoice);
+      : (!isFacture || !showPaymentInOfficialInvoice);
+    const paidVal = isFacture ? (doc?.amountPaid !== undefined ? Number(doc.amountPaid) : totalVal) : undefined;
+    const remDebt = isFacture ? Math.max(0, totalVal - (paidVal || 0)) : 0;
 
     return {
       title: getDocTypeLabel(doc?.docType || 'facture'),
@@ -816,7 +816,7 @@ export default function CommercialDocuments({
   const handleExportDocPdf = async (doc: CommercialDocument, mode: 'a4' | '80mm' = 'a4', withPayment?: boolean) => {
     try {
       const isFacture = doc.docType === 'facture';
-      const hidePay = isFacture ? (withPayment !== undefined ? !withPayment : !showPaymentInOfficialInvoice) : false;
+      const hidePay = isFacture ? (withPayment !== undefined ? !withPayment : !showPaymentInOfficialInvoice) : true;
       const meta = buildDocPdfMeta(doc, mode, hidePay);
       const prefix = mode === '80mm' ? 'RECEIPT' : getDocTypePrefix(doc.docType);
       await exportStructuredPdf(meta, `${prefix}-${doc.docNumber}.pdf`);
@@ -850,8 +850,8 @@ export default function CommercialDocuments({
           tax: Number(doc.tax || 0),
           taxRate: config.taxRate,
           total: Number(doc.total || 0),
-          amountPaid: doc.amountPaid !== undefined ? Number(doc.amountPaid) : Number(doc.total || 0),
-          previousBalance: Number(doc.previousBalance || 0),
+          amountPaid: doc.docType === 'facture' ? (doc.amountPaid !== undefined ? Number(doc.amountPaid) : Number(doc.total || 0)) : undefined,
+          previousBalance: doc.docType === 'facture' ? Number(doc.previousBalance || 0) : 0,
         },
         config,
         lang,
@@ -877,7 +877,7 @@ export default function CommercialDocuments({
       const doc = targetDoc || viewingDoc;
       if (!doc) return;
       const isFacture = doc.docType === 'facture';
-      const hidePay = isFacture ? (withPayment !== undefined ? !withPayment : !showPaymentInOfficialInvoice) : false;
+      const hidePay = isFacture ? (withPayment !== undefined ? !withPayment : !showPaymentInOfficialInvoice) : true;
       const meta = buildDocPdfMeta(doc, 'a4', hidePay);
       // Guarantee identical design between A4 print and PDF by strictly using buildStructuredA4Html
       const a4Html = buildStructuredA4Html(meta);
@@ -1046,7 +1046,7 @@ export default function CommercialDocuments({
                     onChange={(e) => handleSelectCustomer(e.target.value)}
                     className="w-full bg-slate-50 border border-slate-200 rounded-xl px-3 py-2 text-xs font-bold text-slate-800 focus:outline-none focus:ring-2 focus:ring-indigo-500 focus:bg-white"
                   >
-                    <option value="">-- {lang === 'ar' ? 'اختر زبون من القائمة (أو زبون عابر)' : 'Client libre / Saisie manuelle'} --</option>
+                    <option value="">-- {lang === 'ar' ? 'اختر زبون من القائمة (أو Client Divers)' : 'Client libre / Saisie manuelle'} --</option>
                     {customers.map(c => (
                       <option key={c.id} value={c.id}>
                         {c.name}
@@ -2804,7 +2804,7 @@ export default function CommercialDocuments({
                 <div className="text-xs text-slate-500 max-w-sm space-y-2 text-start">
                   {viewingDoc.notes && (
                     <div className="p-3.5 bg-slate-50 rounded-2xl border border-slate-200">
-                      <p className="font-black uppercase text-slate-600 text-[10px] mb-1">{lang === 'ar' ? 'ملاحظات وشروط:' : 'Conditions:'}</p>
+                      <p className="font-black uppercase text-slate-600 text-[10px] mb-1">Remarques :</p>
                       <p className="text-slate-700 leading-relaxed font-medium">{viewingDoc.notes}</p>
                     </div>
                   )}
@@ -2891,16 +2891,16 @@ export default function CommercialDocuments({
                 </div>
               </div>
 
-              {/* Arrêtée la présente facture clause (Centered) with full written words */}
-              {(() => {
+              {/* Arrêtée la présente facture clause (Centered) with full written words - ONLY for Facture */}
+              {viewingDoc.docType === 'facture' && (() => {
                 const totalWithPrev = Number(viewingDoc.total || 0) + Number(viewingDoc.previousBalance || 0);
                 const isArabic = lang === 'ar';
                 const words = isArabic
                   ? amountToWordsAr(totalWithPrev, config.currency)
                   : amountToWordsFr(totalWithPrev, config.currency);
                 const prefixLabel = isArabic
-                  ? (viewingDoc.docType === 'devis' ? 'أوقف هذا العرض عند مبلغ : ' : viewingDoc.docType === 'bon_commande' ? 'أوقف سند الطلب عند مبلغ : ' : viewingDoc.docType === 'bon_livraison' ? 'أوقف سند التسليم عند مبلغ : ' : 'أوقفت هذه الفاتورة عند مبلغ : ')
-                  : (viewingDoc.docType === 'devis' ? 'Arrêté le présent devis à la somme de : ' : viewingDoc.docType === 'bon_commande' ? 'Arrêté le présent bon de commande à la somme de : ' : viewingDoc.docType === 'bon_livraison' ? 'Arrêté le présent bon de livraison à la somme de : ' : 'Arrêtée la présente facture à la somme de : ');
+                  ? 'أوقفت هذه الفاتورة عند مبلغ : '
+                  : 'Arrêtée la présente facture à la somme de : ';
                 return (
                   <div className="p-3.5 bg-slate-50/80 rounded-2xl border border-slate-200 text-xs text-slate-800 font-bold text-center shadow-xs">
                     <div className="text-slate-900 font-extrabold text-[12px] leading-relaxed">
@@ -2941,9 +2941,8 @@ export default function CommercialDocuments({
                 </div>
               )}
 
-              {/* Company Info Footer Strip (Address, Phone, Email, ICE) */}
+              {/* Company Info Footer Strip (Address, Phone, Email, ICE) - without repeating company name at the bottom */}
               <div className="pt-4 border-t border-slate-200 text-center text-[11px] text-slate-600 font-semibold space-y-1">
-                <div className="font-bold text-slate-800 text-xs">{config.name}</div>
                 <div className="flex flex-wrap items-center justify-center gap-x-4 gap-y-1">
                   {config.address && <span>{config.address}</span>}
                   {config.phone && <span>{lang === 'ar' ? 'الهاتف:' : 'Tél:'} <b className="font-mono text-slate-800" dir="ltr">{config.phone}</b></span>}
