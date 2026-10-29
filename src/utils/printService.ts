@@ -34,6 +34,7 @@ export interface PdfDocumentMeta {
   customerLabel?: string;
   customerName: string;
   customerPhone?: string;
+  customerAddress?: string;
   sellerName?: string;
   currency: string;
   mode?: '80mm' | 'a4';

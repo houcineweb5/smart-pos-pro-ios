@@ -21,6 +21,7 @@ interface BackupManagementProps {
   invoicesCount?: number;
   customersCount?: number;
   suppliersCount?: number;
+  isAdmin?: boolean;
 }
 
 export default function BackupManagement({
@@ -33,6 +34,7 @@ export default function BackupManagement({
   invoicesCount = 0,
   customersCount = 0,
   suppliersCount = 0,
+  isAdmin = true,
 }: BackupManagementProps) {
   const t = languages[lang];
   const isRTL = t.direction === 'rtl';
@@ -302,15 +304,21 @@ export default function BackupManagement({
           </p>
         </div>
 
-        <button
-          id="btn-reset-db-trigger"
-          type="button"
-          onClick={() => setShowResetDialog(true)}
-          className="px-6 py-3 bg-rose-600 hover:bg-rose-700 text-white font-bold rounded-xl text-sm transition duration-150 shadow-xs cursor-pointer flex items-center justify-center gap-2 shrink-0 active:scale-95"
-        >
-          <RefreshCw className="w-4.5 h-4.5" />
-          <span>{lang === 'ar' ? 'فرمتة وإعادة تعيين البيانات' : 'Reset Database'}</span>
-        </button>
+        {isAdmin ? (
+          <button
+            id="btn-reset-db-trigger"
+            type="button"
+            onClick={() => setShowResetDialog(true)}
+            className="px-6 py-3 bg-rose-600 hover:bg-rose-700 text-white font-bold rounded-xl text-sm transition duration-150 shadow-xs cursor-pointer flex items-center justify-center gap-2 shrink-0 active:scale-95"
+          >
+            <RefreshCw className="w-4.5 h-4.5" />
+            <span>{lang === 'ar' ? 'فرمتة وإعادة تعيين البيانات' : 'Reset Database'}</span>
+          </button>
+        ) : (
+          <span className="px-4 py-2 bg-slate-200 text-slate-600 font-bold rounded-xl text-xs">
+            {lang === 'ar' ? 'صلاحية محصورة بالمدير فقط' : 'Admin privilege required'}
+          </span>
+        )}
       </div>
 
       {/* Reset Confirmation Modal */}

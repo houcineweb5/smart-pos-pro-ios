@@ -735,9 +735,25 @@ export default function POS({ products, customers, config, onAddTransaction, onR
       ? 'partial' 
       : 'unpaid';
 
+    // Generate sequential collision-free invoice number
+    let nextInvoiceSeq = 1001;
+    if (Array.isArray(invoices) && invoices.length > 0) {
+      invoices.forEach((inv) => {
+        if (inv && inv.invoiceNumber) {
+          const match = inv.invoiceNumber.match(/(\d+)$/);
+          if (match) {
+            const val = parseInt(match[1], 10);
+            if (!isNaN(val) && val >= nextInvoiceSeq) {
+              nextInvoiceSeq = val + 1;
+            }
+          }
+        }
+      });
+    }
+
     const newInvoice: Invoice = {
       id: 'inv_' + Date.now(),
-      invoiceNumber: 'INV-' + Math.floor(1000 + Math.random() * 9000),
+      invoiceNumber: 'INV-' + nextInvoiceSeq,
       date: new Date().toISOString(),
       customerId: customerId,
       customerName: customerName,

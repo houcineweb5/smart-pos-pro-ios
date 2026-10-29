@@ -136,9 +136,8 @@ export default function Dashboard({ invoices, products, customers, suppliers = [
   // Debt sum
   const totalDebt = customers.reduce((sum, c) => sum + Math.max(0, c.debt), 0);
 
-  // Supplier debt sum
+  // Supplier debt sum (Liabilities)
   const totalSupplierDebt = suppliers.reduce((sum, s) => sum + Math.max(0, s.debt), 0);
-  const realAdjustedProfit = totalProfit - totalSupplierDebt;
 
   // Operating Expenses calculation for selected period
   const getFilteredExpenses = () => {

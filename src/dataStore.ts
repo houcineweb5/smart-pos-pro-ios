@@ -3,9 +3,10 @@
  * SPDX-License-Identifier: Apache-2.0
  */
 
-import { Product, Customer, Invoice, StoreConfig, Supplier, Purchase, Employee, ActivityLog, RepairOrder, Expense, CommercialDocument } from './types';
+import { Product, Customer, CustomerPayment, Invoice, StoreConfig, Supplier, Purchase, Employee, ActivityLog, RepairOrder, Expense, CommercialDocument } from './types';
 
 export const INITIAL_EXPENSES: Expense[] = [];
+export const INITIAL_CUSTOMER_PAYMENTS: CustomerPayment[] = [];
 
 export const INITIAL_PRODUCTS: Product[] = [];
 
@@ -81,7 +82,8 @@ const KEYS = {
   logs: DB_PREFIX + 'logs',
   repairs: DB_PREFIX + 'repairs',
   expenses: DB_PREFIX + 'expenses',
-  commercialDocuments: DB_PREFIX + 'commercial_documents'
+  commercialDocuments: DB_PREFIX + 'commercial_documents',
+  customerPayments: DB_PREFIX + 'customer_payments'
 };
 
 export function getStoredData() {
@@ -264,6 +266,18 @@ export function getStoredData() {
     localStorage.setItem(KEYS.commercialDocuments, JSON.stringify(INITIAL_COMMERCIAL_DOCUMENTS));
   }
 
+  let customerPayments = INITIAL_CUSTOMER_PAYMENTS;
+  const storedPayments = localStorage.getItem(KEYS.customerPayments);
+  if (storedPayments) {
+    try {
+      customerPayments = JSON.parse(storedPayments);
+    } catch (e) {
+      customerPayments = INITIAL_CUSTOMER_PAYMENTS;
+    }
+  } else {
+    localStorage.setItem(KEYS.customerPayments, JSON.stringify(INITIAL_CUSTOMER_PAYMENTS));
+  }
+
   let deletedIds: string[] = [];
   const storedDeleted = localStorage.getItem('smartpos_deleted_ids_v1');
   if (storedDeleted) {
@@ -273,7 +287,7 @@ export function getStoredData() {
     } catch {}
   }
 
-  return { products, customers, suppliers, purchases, invoices, config, employees, logs, repairs, expenses, commercialDocuments, deletedIds };
+  return { products, customers, suppliers, purchases, invoices, config, employees, logs, repairs, expenses, commercialDocuments, customerPayments, deletedIds };
 }
 
 export function saveStoredData(data: {
@@ -288,6 +302,7 @@ export function saveStoredData(data: {
   repairs: RepairOrder[];
   expenses?: Expense[];
   commercialDocuments?: CommercialDocument[];
+  customerPayments?: CustomerPayment[];
   deletedIds?: string[];
 }) {
   if (typeof window === 'undefined') return;
@@ -318,6 +333,9 @@ export function saveStoredData(data: {
   }
   if (data.commercialDocuments) {
     safeSet(KEYS.commercialDocuments, data.commercialDocuments);
+  }
+  if (data.customerPayments) {
+    safeSet(KEYS.customerPayments, data.customerPayments);
   }
   if (Array.isArray(data.deletedIds)) {
     safeSet('smartpos_deleted_ids_v1', data.deletedIds.slice(-1000));

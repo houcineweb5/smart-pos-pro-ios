@@ -4,7 +4,7 @@
  */
 
 import React, { useState, useEffect } from 'react';
-import { Product, Customer, Supplier, Purchase, Invoice, InvoiceReturnItem, StoreConfig, Language, ActiveTab, PaymentStatus, Employee, ActivityLog, RepairOrder, Expense, CommercialDocument, CommercialDocType } from './types';
+import { Product, Customer, CustomerPayment, Supplier, Purchase, Invoice, InvoiceReturnItem, StoreConfig, Language, ActiveTab, PaymentStatus, Employee, ActivityLog, RepairOrder, Expense, CommercialDocument, CommercialDocType } from './types';
 import { getStoredData, saveStoredData, resetStoredToDefaults } from './dataStore';
 import { languages } from './languages';
 import POS from './components/POS';
@@ -43,6 +43,7 @@ export default function App() {
     repairs: RepairOrder[];
     expenses?: Expense[];
     commercialDocuments?: CommercialDocument[];
+    customerPayments?: CustomerPayment[];
     deletedIds?: string[];
   } | null>(null);
 
@@ -187,27 +188,20 @@ export default function App() {
             if (!parsed.allowedTabs.includes('home')) {
               parsed.allowedTabs = ['home', ...parsed.allowedTabs];
             }
-            ['devis', 'bon-commande', 'bon-livraison', 'commercial-documents', 'backup', 'mobile-sync'].forEach((tab: any) => {
+            ['devis', 'bon-commande', 'bon-livraison', 'commercial-documents'].forEach((tab: any) => {
               if (!parsed.allowedTabs.includes(tab)) {
                 parsed.allowedTabs.push(tab);
               }
             });
             if (parsed.role === 'admin' || parsed.username === 'admin') {
+              ['backup', 'mobile-sync', 'repairs', 'logs', 'expenses', 'purchase-entry'].forEach((tab: any) => {
+                if (!parsed.allowedTabs.includes(tab)) {
+                  parsed.allowedTabs.push(tab);
+                }
+              });
               parsed.photoUrl = '/sp-icon.png';
               if (parsed.passwordHash === 'admin') {
                 parsed.passwordHash = 'smartpos';
-              }
-              if (!parsed.allowedTabs.includes('repairs')) {
-                parsed.allowedTabs.push('repairs');
-              }
-              if (!parsed.allowedTabs.includes('logs')) {
-                parsed.allowedTabs.push('logs');
-              }
-              if (!parsed.allowedTabs.includes('expenses')) {
-                parsed.allowedTabs.push('expenses');
-              }
-              if (!parsed.allowedTabs.includes('purchase-entry')) {
-                parsed.allowedTabs.push('purchase-entry');
               }
             }
           }
@@ -623,25 +617,18 @@ export default function App() {
     if (!finalEmp.allowedTabs.includes('home')) {
       finalEmp.allowedTabs = ['home', ...finalEmp.allowedTabs];
     }
-    ['devis', 'bon-commande', 'bon-livraison', 'commercial-documents', 'backup', 'mobile-sync'].forEach((tab: any) => {
+    ['devis', 'bon-commande', 'bon-livraison', 'commercial-documents'].forEach((tab: any) => {
       if (!finalEmp.allowedTabs.includes(tab)) {
         finalEmp.allowedTabs.push(tab);
       }
     });
     if (finalEmp.role === 'admin' || finalEmp.username === 'admin') {
+      ['backup', 'mobile-sync', 'repairs', 'logs', 'expenses', 'purchase-entry'].forEach((tab: any) => {
+        if (!finalEmp.allowedTabs.includes(tab)) {
+          finalEmp.allowedTabs.push(tab);
+        }
+      });
       finalEmp.photoUrl = '/sp-icon.png';
-      if (!finalEmp.allowedTabs.includes('repairs')) {
-        finalEmp.allowedTabs = [...finalEmp.allowedTabs, 'repairs'];
-      }
-      if (!finalEmp.allowedTabs.includes('logs')) {
-        finalEmp.allowedTabs = [...finalEmp.allowedTabs, 'logs'];
-      }
-      if (!finalEmp.allowedTabs.includes('expenses')) {
-        finalEmp.allowedTabs = [...finalEmp.allowedTabs, 'expenses'];
-      }
-      if (!finalEmp.allowedTabs.includes('purchase-entry')) {
-        finalEmp.allowedTabs = [...finalEmp.allowedTabs, 'purchase-entry'];
-      }
     }
     setCurrentUser(finalEmp);
     localStorage.setItem('sales_app_current_user', JSON.stringify(finalEmp));
@@ -1591,8 +1578,19 @@ export default function App() {
         return inv;
       });
 
-      // 4. Record audit log
+      // 4. Record permanent CustomerPayment and audit log
       const targetCustomer = prev.customers.find((c) => c.id === customerId);
+      const newPayment: CustomerPayment = {
+        id: 'pay_' + Date.now() + '_' + Math.random().toString(36).slice(2, 6),
+        customerId,
+        customerName: targetCustomer?.name || 'Customer',
+        amount,
+        date: new Date().toISOString(),
+        notes: lang === 'ar' ? `تسوية دفعة ديون بقيمة ${amount} ${prev.config.currency}` : `Debt payment of ${amount} ${prev.config.currency}`,
+        receivedByName: currentUser?.name || 'System'
+      };
+      const nextCustomerPayments = [newPayment, ...(prev.customerPayments || [])];
+
       const newLog: ActivityLog = {
         id: 'log_' + Date.now() + '_' + Math.random().toString(36).slice(2, 6),
         timestamp: new Date().toISOString(),
@@ -1608,6 +1606,7 @@ export default function App() {
         ...prev,
         customers: updatedCusts,
         invoices: updatedInvs,
+        customerPayments: nextCustomerPayments,
         logs: [newLog, ...prev.logs].slice(0, 800)
       };
     });
@@ -2519,6 +2518,7 @@ export default function App() {
               lang={lang}
               config={config}
               logs={logs}
+              customerPayments={data?.customerPayments || []}
             />
           )}
 
@@ -2588,6 +2588,7 @@ export default function App() {
               invoicesCount={invoices.length}
               customersCount={customers.length}
               suppliersCount={suppliers.length}
+              isAdmin={currentUser?.role === 'admin'}
             />
           )}
 

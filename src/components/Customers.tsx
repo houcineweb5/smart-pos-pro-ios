@@ -4,7 +4,7 @@
  */
 
 import React, { useState } from 'react';
-import { Customer, Invoice, Language, StoreConfig, ActivityLog } from '../types';
+import { Customer, CustomerPayment, Invoice, Language, StoreConfig, ActivityLog } from '../types';
 import { languages } from '../languages';
 import { UserPlus, Search, Phone, Mail, DollarSign, Edit3, Trash2, X, Receipt, CheckCircle, MessageCircle, Printer, FileDown, MapPin } from 'lucide-react';
 import CustomerLedger from './CustomerLedger';
@@ -20,9 +20,10 @@ interface CustomersProps {
   lang: Language;
   config: StoreConfig;
   logs: ActivityLog[];
+  customerPayments?: CustomerPayment[];
 }
 
-export default function Customers({ customers, invoices, onSaveCustomer, onDeleteCustomer, onSettleDebt, lang, config, logs }: CustomersProps) {
+export default function Customers({ customers, invoices, onSaveCustomer, onDeleteCustomer, onSettleDebt, lang, config, logs, customerPayments = [] }: CustomersProps) {
   const t = languages[lang];
   const isRTL = t.direction === 'rtl';
 
@@ -112,6 +113,7 @@ export default function Customers({ customers, invoices, onSaveCustomer, onDelet
         customer={selectedLedgerCustomer}
         invoices={invoices}
         logs={logs}
+        customerPayments={customerPayments}
         config={config}
         lang={lang}
         onClose={() => setSelectedLedgerCustomerId(null)}

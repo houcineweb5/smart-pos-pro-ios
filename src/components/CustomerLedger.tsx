@@ -4,7 +4,7 @@
  */
 
 import React, { useState } from 'react';
-import { Customer, Invoice, ActivityLog, Language, StoreConfig } from '../types';
+import { Customer, CustomerPayment, Invoice, ActivityLog, Language, StoreConfig } from '../types';
 import { 
   ArrowLeft, Calendar, FileText, Printer, Search, TrendingUp, DollarSign, 
   CreditCard, CreditCard as DebtIcon, ChevronDown, ChevronUp, Clock, CheckCircle, AlertCircle, FileDown
@@ -15,6 +15,7 @@ interface CustomerLedgerProps {
   customer: Customer;
   invoices: Invoice[];
   logs: ActivityLog[];
+  customerPayments?: CustomerPayment[];
   onClose: () => void;
   lang: Language;
   config: StoreConfig;
@@ -22,7 +23,7 @@ interface CustomerLedgerProps {
 
 type FilterType = 'all' | 'invoices' | 'payments';
 
-export default function CustomerLedger({ customer, invoices, logs, onClose, lang, config }: CustomerLedgerProps) {
+export default function CustomerLedger({ customer, invoices, logs, customerPayments = [], onClose, lang, config }: CustomerLedgerProps) {
   const isRTL = lang === 'ar';
   
   const [filter, setFilter] = useState<FilterType>('all');
@@ -59,14 +60,46 @@ export default function CustomerLedger({ customer, invoices, logs, onClose, lang
   const clientInvoices = invoices.filter((inv) => inv.customerId === customer.id);
   const dateFilteredClientInvoices = clientInvoices.filter((inv) => matchesDateFilter(inv.date));
 
-  // 2. Extract debt settlements for this customer from raw activity logs
-  const clientRepayments = logs.filter((log) => {
+  // 2. Extract debt settlements from permanent customerPayments table with fallback to activity logs
+  const dedicatedPayments = (customerPayments || []).filter((p) => p.customerId === customer.id);
+  const legacyRepayments = logs.filter((log) => {
     const isDebtAction = log.action === 'customer_debt_settled';
     const mentionsCustomer = log.details.toLowerCase().includes(customer.name.toLowerCase()) || 
                              log.details.includes(customer.id);
     return isDebtAction && mentionsCustomer;
   });
-  const dateFilteredRepayments = clientRepayments.filter((log) => matchesDateFilter(log.timestamp));
+
+  const parsedRepaymentItems = dedicatedPayments.length > 0
+    ? dedicatedPayments.map((p) => ({
+        id: p.id,
+        date: p.date,
+        type: 'payment' as const,
+        reference: p.id.slice(-6).toUpperCase(),
+        title: isRTL ? 'سداد ديون / دفعه حساب' : lang === 'fr' ? 'Règlement de Dette' : 'Debt Repayment',
+        subtitle: p.notes || (isRTL ? 'تسوية حساب الزبون' : 'Client ledger adjustment'),
+        total: 0,
+        amountPaid: Number(p.amount || 0),
+        debtCreated: -Number(p.amount || 0),
+        raw: p,
+      }))
+    : legacyRepayments.map((log) => {
+        const numMatch = log.details.match(/[\d.]+/);
+        const parsedAmount = numMatch ? parseFloat(numMatch[0]) : 0;
+        return {
+          id: log.id,
+          date: log.timestamp,
+          type: 'payment' as const,
+          reference: log.id.slice(-6).toUpperCase(),
+          title: isRTL ? 'سداد ديون / دفعه حساب' : lang === 'fr' ? 'Règlement de Dette' : 'Debt Repayment',
+          subtitle: isRTL ? 'تسوية حساب الزبون' : 'Client ledger adjustment',
+          total: 0,
+          amountPaid: parsedAmount,
+          debtCreated: -parsedAmount,
+          raw: log,
+        };
+      });
+
+  const dateFilteredRepayments = parsedRepaymentItems.filter((item) => matchesDateFilter(item.date));
 
   // 3. Construct unified ledger timeline
   const ledgerItems = [
@@ -84,23 +117,7 @@ export default function CustomerLedger({ customer, invoices, logs, onClose, lang
       debtCreated: inv.total - inv.amountPaid,
       raw: inv,
     })),
-    ...clientRepayments.map((log) => {
-      // Try to parse amount from details, e.g., "تسوية دفعة ديون بقيمة 150" or "payment of 150"
-      const numMatch = log.details.match(/[\d.]+/);
-      const parsedAmount = numMatch ? parseFloat(numMatch[0]) : 0;
-      return {
-        id: log.id,
-        date: log.timestamp,
-        type: 'payment' as const,
-        reference: log.id.slice(-6).toUpperCase(),
-        title: isRTL ? 'سداد ديون / دفعه حساب' : lang === 'fr' ? 'Règlement de Dette' : 'Debt Repayment',
-        subtitle: isRTL ? 'تسوية حساب الزبون' : 'Client ledger adjustment',
-        total: 0,
-        amountPaid: parsedAmount,
-        debtCreated: -parsedAmount,
-        raw: log,
-      };
-    })
+    ...parsedRepaymentItems
   ].sort((a, b) => {
     return new Date(b.date).getTime() - new Date(a.date).getTime(); // Newest first
   });
@@ -124,14 +141,11 @@ export default function CustomerLedger({ customer, invoices, logs, onClose, lang
 
   // Math metrics sums (respects date/month filter when active)
   const activeInvoicesForStats = hasDateFilter ? dateFilteredClientInvoices : clientInvoices;
-  const activeRepaymentsForStats = hasDateFilter ? dateFilteredRepayments : clientRepayments;
+  const activeRepaymentsForStats = hasDateFilter ? dateFilteredRepayments : parsedRepaymentItems;
   const totalInvoicedSum = activeInvoicesForStats.reduce((sum, inv) => sum + inv.total, 0);
   const totalInvoicedPaidSum = activeInvoicesForStats.reduce((sum, inv) => sum + inv.amountPaid, 0);
   const totalOutstandingBillDebt = activeInvoicesForStats.reduce((sum, inv) => sum + (inv.total - inv.amountPaid), 0);
-  const totalDirectRepayments = activeRepaymentsForStats.reduce((sum, log) => {
-    const match = log.details.match(/[\d.]+/);
-    return sum + (match ? parseFloat(match[0]) : 0);
-  }, 0);
+  const totalDirectRepayments = activeRepaymentsForStats.reduce((sum, it) => sum + Number(it.amountPaid || 0), 0);
 
   // Profit earned from this customer's invoices (Total - Purchase Cost)
   const totalCustomerProfit = activeInvoicesForStats.reduce((sum, inv) => {

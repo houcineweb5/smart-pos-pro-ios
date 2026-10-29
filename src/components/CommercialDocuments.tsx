@@ -152,8 +152,20 @@ export default function CommercialDocuments({
   const generateNextDocNumber = (type: CommercialDocType) => {
     const prefix = getDocTypePrefix(type);
     const year = new Date().getFullYear();
-    const count = documents.filter(d => d.docType === type).length + 1;
-    return `${prefix}-${year}-${String(count).padStart(3, '0')}`;
+    let maxSeq = 0;
+    (documents || []).forEach((d) => {
+      if (d && d.docType === type && d.docNumber) {
+        const parts = d.docNumber.split('-');
+        if (parts.length >= 3 && parts[1] === String(year)) {
+          const num = parseInt(parts[2], 10);
+          if (!isNaN(num) && num > maxSeq) {
+            maxSeq = num;
+          }
+        }
+      }
+    });
+    const nextSeq = maxSeq + 1;
+    return `${prefix}-${year}-${String(nextSeq).padStart(3, '0')}`;
   };
 
   const getSafeDocItems = (doc?: CommercialDocument | null) => {

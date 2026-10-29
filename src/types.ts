@@ -78,6 +78,16 @@ export interface Customer {
   createdAt: string;
 }
 
+export interface CustomerPayment {
+  id: string;
+  customerId: string;
+  customerName: string;
+  amount: number;
+  date: string;
+  notes?: string;
+  receivedByName?: string;
+}
+
 export interface Supplier {
   id: string;
   name: string;
