@@ -9,7 +9,7 @@ import { languages } from '../languages';
 import { 
   Search, ShoppingCart, Trash2, Plus, Minus, User, PlusCircle, CreditCard, Wallet, 
   AlertCircle, Sparkles, Printer, X, Edit2, Check, RotateCcw, ScanBarcode, CheckCircle2, Volume2, Lock,
-  Eye, Package, Layers, ChevronDown, Camera, FileDown, ArrowRight, MessageCircle
+  Eye, Package, Layers, ChevronDown, Camera, FileDown, ArrowRight, MessageCircle, Monitor
 } from 'lucide-react';
 import CashRegisterModal from './CashRegisterModal';
 import CameraBarcodeModal from './CameraBarcodeModal';
@@ -548,6 +548,45 @@ export default function POS({ products, customers, config, onAddTransaction, onR
   const previousBalanceAmount = Math.max(0, parseDecimal(previousBalanceInput, 0));
   const grandTotalWithPrevious = total + previousBalanceAmount;
 
+  // Broadcast live cart state to Customer Dual Display Screen
+  useEffect(() => {
+    try {
+      const payload = {
+        storeName: config.name || 'Smart POS',
+        currency: config.currency || 'د.ج',
+        items: cart.map((it) => {
+          const defaultPrice = isWholesale ? (it.product.wholesalePrice ?? it.product.sellingPrice) : it.product.sellingPrice;
+          const unitPrice = it.customPrice !== undefined && it.customPrice !== '' ? parseDecimal(it.customPrice, defaultPrice) : defaultPrice;
+          const disc = parseDecimal(it.discount, 0);
+          const priceAfterDisc = unitPrice * (1 - disc / 100);
+          const qty = parseDecimal(it.quantity, 1);
+          return {
+            name: it.product.name,
+            quantity: qty,
+            unitPrice,
+            total: priceAfterDisc * qty
+          };
+        }),
+        subtotal,
+        discount: generalDiscountAmount,
+        total,
+        amountPaid: parseDecimal(amountPaid, 0),
+        changeDue: Math.max(0, (parseDecimal(amountPaid, 0) || total) - total),
+        timestamp: Date.now()
+      };
+      localStorage.setItem('smartpos_customer_display_data', JSON.stringify(payload));
+      if (typeof BroadcastChannel !== 'undefined') {
+        const bc = new BroadcastChannel('smartpos_customer_display');
+        bc.postMessage(payload);
+        bc.close();
+      }
+    } catch {}
+  }, [cart, total, subtotal, generalDiscountAmount, amountPaid, isWholesale, config]);
+
+  const handleOpenCustomerDisplay = () => {
+    window.open('?customer-display=true', 'SmartPOSCustomerDisplay', 'width=1020,height=720,menubar=no,toolbar=no');
+  };
+
   // Dynamic quick cash denominations
   const getQuickCashDenominations = (totalAmount: number) => {
     const denominations = [20, 50, 100, 200, 500];
@@ -695,6 +734,25 @@ export default function POS({ products, customers, config, onAddTransaction, onR
     if (paymentMethod === 'debt' && customerId === 'walk-in') {
       alert(lang === 'ar' ? 'لا يمكن لـ Client Divers الشراء بالكريدي! يرجى اختيار زبون مسجل.' : 'Client Divers ne peut pas acheter à crédit! Veuillez sélectionner un client enregistré.');
       return;
+    }
+
+    // Customer Credit Limit Guard
+    if (paymentMethod === 'debt' && customerId !== 'walk-in') {
+      const selectedCust = customers.find((c) => c.id === customerId);
+      if (selectedCust && Number(selectedCust.creditLimit) > 0) {
+        const curDebt = Number(selectedCust.debt) || 0;
+        const newInvoiceDebt = Math.max(0, total - (parseDecimal(amountPaid) || 0));
+        const projectedTotalDebt = curDebt + newInvoiceDebt;
+        const limit = Number(selectedCust.creditLimit);
+        if (projectedTotalDebt > limit) {
+          const proceed = window.confirm(
+            lang === 'ar'
+              ? `⚠️ تحذير سقف الائتمان!\n\nدين الزبون الحالي (${curDebt.toLocaleString()} ${config.currency}) + دين هذه الفاتورة (${newInvoiceDebt.toLocaleString()} ${config.currency}) = (${projectedTotalDebt.toLocaleString()} ${config.currency}).\n\nهذا المبلغ يتجاوز سقف الائتمان المسموح به (${limit.toLocaleString()} ${config.currency})!\n\nهل تؤكد المتابعة والموافقة استثنائياً؟`
+              : `⚠️ Credit Limit Exceeded!\n\nTotal debt will be ${projectedTotalDebt.toLocaleString()} ${config.currency}, exceeding the credit limit of ${limit.toLocaleString()} ${config.currency}!\n\nDo you want to proceed anyway?`
+          );
+          if (!proceed) return;
+        }
+      }
     }
 
     // Amount validation
@@ -1069,6 +1127,17 @@ export default function POS({ products, customers, config, onAddTransaction, onR
               >
                 <Camera className="w-4 h-4" />
                 <span>{lang === 'ar' ? 'مسح بالكاميرا' : 'Scan Camera'}</span>
+              </button>
+
+              <button
+                id="btn-pos-customer-screen"
+                type="button"
+                onClick={handleOpenCustomerDisplay}
+                className="flex items-center justify-center gap-1.5 px-3 py-2.5 bg-purple-600 hover:bg-purple-700 text-white rounded-xl text-xs font-black transition shadow-xs cursor-pointer shrink-0"
+                title={lang === 'ar' ? 'فتح شاشة عرض الزبون المزدوجة' : 'Open Customer Display Screen'}
+              >
+                <Monitor className="w-4 h-4 text-purple-200" />
+                <span className="hidden sm:inline">{lang === 'ar' ? 'شاشة الزبون' : 'Display'}</span>
               </button>
 
               <button

@@ -55,6 +55,7 @@ export default function Customers({ customers, invoices, onSaveCustomer, onDelet
       email: '',
       ice: '',
       debt: 0,
+      creditLimit: undefined,
       notes: '',
     });
     setIsEditing(true);
@@ -81,6 +82,7 @@ export default function Customers({ customers, invoices, onSaveCustomer, onDelet
       email: editingCustomer.email || '',
       ice: editingCustomer.ice ? editingCustomer.ice.trim() : '',
       debt: parseDecimal(editingCustomer.debt),
+      creditLimit: editingCustomer.creditLimit !== undefined && String(editingCustomer.creditLimit).trim() !== '' ? parseDecimal(editingCustomer.creditLimit) : undefined,
       notes: editingCustomer.notes || '',
       createdAt: editingCustomer.createdAt || new Date().toISOString(),
     };
@@ -418,6 +420,11 @@ export default function Customers({ customers, invoices, onSaveCustomer, onDelet
                       <span className={`text-base font-black ${c.debt > 0 ? 'text-rose-600' : 'text-emerald-600'}`}>
                         {c.debt.toFixed(2)} {config.currency}
                       </span>
+                      {Number(c.creditLimit) > 0 && (
+                        <span className="block text-[10px] font-bold text-slate-500">
+                          {lang === 'ar' ? 'سقف الائتمان:' : 'Limit:'} {Number(c.creditLimit).toLocaleString()}
+                        </span>
+                      )}
                     </div>
 
                     <div className="h-6 w-px bg-slate-200"></div>
@@ -618,6 +625,24 @@ export default function Customers({ customers, invoices, onSaveCustomer, onDelet
                     Use debt reimbursement module below to settle accounts.
                   </span>
                 )}
+              </div>
+
+              <div>
+                <label className="block text-xs font-bold text-slate-500 uppercase mb-1.5">
+                  {lang === 'ar' ? `سقف الائتمان / أقصى دين مسموح (${config.currency})` : `Credit Limit (${config.currency})`}
+                </label>
+                <input
+                  id="form-c-credit-limit"
+                  type="text"
+                  inputMode="decimal"
+                  placeholder={lang === 'ar' ? 'اختياري (مثال: 50000)' : 'Optional (e.g. 50000)'}
+                  value={editingCustomer.creditLimit ?? ''}
+                  onChange={(e) => setEditingCustomer({ ...editingCustomer, creditLimit: sanitizeDecimalInput(e.target.value) as any })}
+                  className="w-full px-3.5 py-2.5 border border-slate-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-indigo-500 text-indigo-700 font-bold font-mono"
+                />
+                <span className="text-[10px] text-slate-400 mt-1 block">
+                  {lang === 'ar' ? 'تنبيه الكاشير تلقائياً عند تجاوز الزبون لهذا الحد في المبيعات بالآجل.' : 'Warns cashier when total debt exceeds this limit.'}
+                </span>
               </div>
 
               <div>

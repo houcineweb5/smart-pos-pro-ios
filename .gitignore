@@ -12,4 +12,5 @@ iOS-Release/
 installer/IconGenerator.exe
 SmartPOS.exe
 database.rar
-database.sqlite
+database.sqlite*
+*.bak*

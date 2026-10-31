@@ -1,9 +1,10 @@
 import React, { useState, useRef } from 'react';
-import { Product, Language, StoreConfig } from '../types';
+import { Product, Language, StoreConfig, Warehouse } from '../types';
 import { languages } from '../languages';
 import { parseDecimal, sanitizeDecimalInput } from '../utils/numberInput';
 import { printHtmlContent, exportCsvFile } from '../utils/printService';
 import { compressImageFile } from '../utils/cloudSync';
+import { INITIAL_WAREHOUSES } from '../dataStore';
 import {
   Plus,
   Search,
@@ -30,6 +31,8 @@ import {
   PackageX,
   DollarSign,
   Layers,
+  Building2,
+  FileText
 } from 'lucide-react';
 import CameraBarcodeModal from './CameraBarcodeModal';
 
@@ -39,9 +42,12 @@ interface InventoryProps {
   onSaveProduct: (product: Product) => void;
   onDeleteProduct: (id: string) => void;
   lang: Language;
+  warehouses?: Warehouse[];
+  onSaveWarehouse?: (warehouse: Warehouse) => void;
+  onDeleteWarehouse?: (id: string) => void;
 }
 
-export default function Inventory({ products, config, onSaveProduct, onDeleteProduct, lang }: InventoryProps) {
+export default function Inventory({ products, config, onSaveProduct, onDeleteProduct, lang, warehouses: initialWarehouses, onSaveWarehouse, onDeleteWarehouse }: InventoryProps) {
   const t = languages[lang];
   const isRTL = t.direction === 'rtl';
   const currency = config?.currency || 'DH';
@@ -80,6 +86,57 @@ export default function Inventory({ products, config, onSaveProduct, onDeletePro
   // Extract unique categories
   const categories = ['all', ...Array.from(new Set(products.map((p) => p.category)))];
 
+  // Warehouses State
+  const [localWarehouses, setLocalWarehouses] = useState<Warehouse[]>(() => {
+    if (initialWarehouses && initialWarehouses.length > 0) return initialWarehouses;
+    try {
+      const saved = localStorage.getItem('sales_app_warehouses');
+      return saved ? JSON.parse(saved) : INITIAL_WAREHOUSES;
+    } catch {
+      return INITIAL_WAREHOUSES;
+    }
+  });
+
+  const [selectedWarehouse, setSelectedWarehouse] = useState<string>('all');
+  const [showWarehouseModal, setShowWarehouseModal] = useState(false);
+  const [newWhName, setNewWhName] = useState('');
+  const [newWhLocation, setNewWhLocation] = useState('');
+  const [showReorderModal, setShowReorderModal] = useState(false);
+
+  const handleAddWarehouse = () => {
+    if (!newWhName.trim()) {
+      alert(lang === 'ar' ? 'يرجى كتابة اسم المخزن!' : 'Please enter warehouse name!');
+      return;
+    }
+    const wh: Warehouse = {
+      id: 'wh_' + Date.now(),
+      name: newWhName.trim(),
+      location: newWhLocation.trim() || undefined,
+      isDefault: false
+    };
+    const updated = [...localWarehouses, wh];
+    setLocalWarehouses(updated);
+    try {
+      localStorage.setItem('sales_app_warehouses', JSON.stringify(updated));
+    } catch {}
+    if (onSaveWarehouse) onSaveWarehouse(wh);
+    setNewWhName('');
+    setNewWhLocation('');
+  };
+
+  const handleDeleteWh = (whId: string) => {
+    if (whId === 'wh-main' || localWarehouses.length <= 1) {
+      alert(lang === 'ar' ? 'لا يمكن حذف المخزن الرئيسي الافتراضي!' : 'Cannot delete default main warehouse!');
+      return;
+    }
+    const updated = localWarehouses.filter((w) => w.id !== whId);
+    setLocalWarehouses(updated);
+    try {
+      localStorage.setItem('sales_app_warehouses', JSON.stringify(updated));
+    } catch {}
+    if (onDeleteWarehouse) onDeleteWarehouse(whId);
+  };
+
   // Filters
   const filteredProducts = products.filter((p) => {
     const matchSearch =
@@ -101,7 +158,9 @@ export default function Inventory({ products, config, onSaveProduct, onDeletePro
       (stockStatusFilter === 'low_stock' && stockNum > 0 && stockNum <= minStockNum) ||
       (stockStatusFilter === 'expiring_soon' && isExpiringSoon);
 
-    return matchSearch && matchCat && matchStockStatus;
+    const matchWarehouse = selectedWarehouse === 'all' || (p.warehouseId || 'wh-main') === selectedWarehouse;
+
+    return matchSearch && matchCat && matchStockStatus && matchWarehouse;
   });
 
   // Safe sorting
@@ -224,6 +283,8 @@ export default function Inventory({ products, config, onSaveProduct, onDeletePro
       minStock: parsedMinStock,
       unit: editingProduct.unit || 'pcs',
       imageUrl: editingProduct.imageUrl || undefined,
+      expiryDate: editingProduct.expiryDate || undefined,
+      warehouseId: editingProduct.warehouseId || 'wh-main',
     };
 
     onSaveProduct(productToSave);
@@ -632,6 +693,30 @@ export default function Inventory({ products, config, onSaveProduct, onDeletePro
             <span>{lang === 'ar' ? 'إحصائيات المخزن' : 'Statistiques Stock'}</span>
           </button>
 
+          {/* Manage Warehouses Button */}
+          <button
+            id="btn-manage-warehouses"
+            onClick={() => setShowWarehouseModal(true)}
+            className="flex items-center gap-1.5 px-3.5 py-2.5 bg-purple-50 hover:bg-purple-100 text-purple-700 font-bold rounded-xl transition text-xs cursor-pointer border border-purple-200 shadow-2xs"
+            title={lang === 'ar' ? 'إدارة المستودعات والمخازن المتعددة' : 'Manage Multiple Warehouses'}
+          >
+            <Building2 className="w-4 h-4 text-purple-600" />
+            <span>{lang === 'ar' ? `المخازن (${localWarehouses.length})` : `Warehouses (${localWarehouses.length})`}</span>
+          </button>
+
+          {/* Auto Reorder Low Stock Button */}
+          {lowStockProducts.length > 0 && (
+            <button
+              id="btn-auto-reorder-low-stock"
+              onClick={() => setShowReorderModal(true)}
+              className="flex items-center gap-1.5 px-3.5 py-2.5 bg-amber-500 hover:bg-amber-600 text-white font-bold rounded-xl transition text-xs cursor-pointer shadow-xs animate-pulse"
+              title={lang === 'ar' ? 'توليد سند طلب شراء للموردين بجميع النواقص' : 'Generate Purchase Order for Low Stock'}
+            >
+              <FileText className="w-4 h-4" />
+              <span>{lang === 'ar' ? `طلب شراء نواقص (${lowStockProducts.length})` : `Reorder (${lowStockProducts.length})`}</span>
+            </button>
+          )}
+
           {/* Barcode Stickers Modal Button */}
           <button
             id="btn-open-barcode-stickers"
@@ -764,6 +849,23 @@ export default function Inventory({ products, config, onSaveProduct, onDeletePro
             <ChevronLeft className={`w-4 h-4 ${isRTL ? '' : 'rotate-180'}`} />
           </button>
         </div>
+
+        {/* Warehouse Filter */}
+        {localWarehouses.length > 1 && (
+          <div className="flex items-center gap-1.5 bg-white px-3.5 py-2 rounded-2xl border border-slate-200 text-xs font-bold text-slate-700 shrink-0 shadow-2xs">
+            <Building2 className="w-4 h-4 text-purple-600" />
+            <select
+              value={selectedWarehouse}
+              onChange={(e) => setSelectedWarehouse(e.target.value)}
+              className="bg-transparent border-none focus:outline-none cursor-pointer font-bold text-slate-800"
+            >
+              <option value="all">{lang === 'ar' ? '🏢 كل المستودعات' : '🏢 All Warehouses'}</option>
+              {localWarehouses.map((wh) => (
+                <option key={wh.id} value={wh.id}>📍 {wh.name}</option>
+              ))}
+            </select>
+          </div>
+        )}
       </div>
 
       {/* Active Stock Status Filter Chip */}
@@ -1353,6 +1455,24 @@ export default function Inventory({ products, config, onSaveProduct, onDeletePro
                       onChange={(e) => setEditingProduct({ ...editingProduct, expiryDate: e.target.value })}
                       className="w-full px-3.5 py-2.5 border border-slate-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-indigo-500 text-slate-700 font-semibold"
                     />
+                  </div>
+
+                  <div className="col-span-2 sm:col-span-1">
+                    <label className="block text-xs font-bold text-slate-500 uppercase mb-1.5">
+                      {lang === 'ar' ? 'المستودع / المخزن' : 'Warehouse'}
+                    </label>
+                    <select
+                      id="form-p-warehouse"
+                      value={editingProduct.warehouseId || 'wh-main'}
+                      onChange={(e) => setEditingProduct({ ...editingProduct, warehouseId: e.target.value })}
+                      className="w-full px-3.5 py-2.5 border border-slate-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-indigo-500 text-slate-700 font-bold bg-white"
+                    >
+                      {localWarehouses.map((wh) => (
+                        <option key={wh.id} value={wh.id}>
+                          {wh.name} {wh.location ? `(${wh.location})` : ''}
+                        </option>
+                      ))}
+                    </select>
                   </div>
                 </div>
 
@@ -1961,6 +2081,236 @@ export default function Inventory({ products, config, onSaveProduct, onDeletePro
           </div>
         );
       })()}
+
+      {/* Manage Warehouses Modal */}
+      {showWarehouseModal && (
+        <div className="fixed inset-0 bg-slate-900/60 backdrop-blur-xs flex items-center justify-center p-3 sm:p-5 z-50 safe-modal-overlay">
+          <div className="bg-white rounded-3xl shadow-2xl border border-slate-100 w-full max-w-lg overflow-hidden animate-fade-in flex flex-col max-h-[90vh]">
+            <div className="bg-slate-900 text-white px-6 py-4 flex items-center justify-between shrink-0">
+              <div className="flex items-center gap-2.5">
+                <Building2 className="w-5 h-5 text-purple-400" />
+                <h3 className="font-black text-base">
+                  {lang === 'ar' ? 'إدارة المخازن والمستودعات' : 'Warehouses & Depots'}
+                </h3>
+              </div>
+              <button
+                type="button"
+                onClick={() => setShowWarehouseModal(false)}
+                className="p-1.5 hover:bg-slate-800 text-slate-400 hover:text-white rounded-lg transition cursor-pointer"
+              >
+                <X className="w-5 h-5" />
+              </button>
+            </div>
+
+            <div className="p-5 overflow-y-auto space-y-5 flex-1">
+              {/* Add New Warehouse Form */}
+              <div className="bg-slate-50 border border-slate-200 p-3.5 rounded-2xl space-y-3">
+                <span className="text-xs font-black text-slate-700 block">
+                  {lang === 'ar' ? '+ إضافة مستودع أو مخزن جديد' : '+ Add New Warehouse'}
+                </span>
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
+                  <input
+                    type="text"
+                    placeholder={lang === 'ar' ? 'اسم المخزن (مثال: مخزن 2)' : 'Warehouse Name'}
+                    value={newWhName}
+                    onChange={(e) => setNewWhName(e.target.value)}
+                    className="px-3 py-2 bg-white border border-slate-200 rounded-xl text-xs font-bold focus:outline-none focus:ring-2 focus:ring-purple-500"
+                  />
+                  <input
+                    type="text"
+                    placeholder={lang === 'ar' ? 'الموقع / العنوان (اختياري)' : 'Location (Optional)'}
+                    value={newWhLocation}
+                    onChange={(e) => setNewWhLocation(e.target.value)}
+                    className="px-3 py-2 bg-white border border-slate-200 rounded-xl text-xs font-medium focus:outline-none focus:ring-2 focus:ring-purple-500"
+                  />
+                </div>
+                <button
+                  type="button"
+                  onClick={handleAddWarehouse}
+                  className="w-full py-2 bg-purple-600 hover:bg-purple-700 text-white rounded-xl text-xs font-black transition cursor-pointer shadow-xs"
+                >
+                  {lang === 'ar' ? 'حفظ وإضافة المخزن' : 'Add Warehouse'}
+                </button>
+              </div>
+
+              {/* Existing Warehouses List */}
+              <div className="space-y-2">
+                <span className="text-xs font-bold text-slate-500 uppercase tracking-wider block">
+                  {lang === 'ar' ? 'المستودعات المسجلة في النظام:' : 'Registered Warehouses:'}
+                </span>
+                {localWarehouses.map((wh) => {
+                  const prodCount = products.filter((p) => (p.warehouseId || 'wh-main') === wh.id).length;
+                  return (
+                    <div
+                      key={wh.id}
+                      className="flex items-center justify-between p-3 bg-white border border-slate-200 rounded-xl shadow-2xs"
+                    >
+                      <div className="flex items-center gap-2.5">
+                        <div className="w-8 h-8 rounded-lg bg-purple-100 text-purple-700 flex items-center justify-center font-black text-xs shrink-0">
+                          <Building2 className="w-4 h-4" />
+                        </div>
+                        <div>
+                          <div className="text-xs font-black text-slate-900 flex items-center gap-2">
+                            <span>{wh.name}</span>
+                            {wh.id === 'wh-main' && (
+                              <span className="text-[10px] bg-slate-100 text-slate-600 px-1.5 py-0.5 rounded font-bold">
+                                {lang === 'ar' ? 'الرئيسي' : 'Default'}
+                              </span>
+                            )}
+                          </div>
+                          <div className="text-[11px] text-slate-500">
+                            {wh.location ? `${wh.location} • ` : ''}
+                            <b className="text-purple-700 font-mono">{prodCount}</b> {lang === 'ar' ? 'منتج مسجل' : 'products'}
+                          </div>
+                        </div>
+                      </div>
+
+                      {wh.id !== 'wh-main' && (
+                        <button
+                          type="button"
+                          onClick={() => handleDeleteWh(wh.id)}
+                          className="p-1.5 text-slate-400 hover:text-rose-600 hover:bg-rose-50 rounded-lg transition cursor-pointer"
+                          title={lang === 'ar' ? 'حذف المخزن' : 'Delete'}
+                        >
+                          <Trash2 className="w-4 h-4" />
+                        </button>
+                      )}
+                    </div>
+                  );
+                })}
+              </div>
+            </div>
+
+            <div className="bg-slate-50 px-6 py-3 border-t border-slate-100 flex justify-end shrink-0">
+              <button
+                type="button"
+                onClick={() => setShowWarehouseModal(false)}
+                className="px-5 py-2 bg-slate-800 hover:bg-slate-900 text-white text-xs font-black rounded-xl transition cursor-pointer"
+              >
+                {lang === 'ar' ? 'تم (إغلاق)' : 'Close'}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Auto Reorder Low Stock Modal */}
+      {showReorderModal && (
+        <div className="fixed inset-0 bg-slate-900/60 backdrop-blur-xs flex items-center justify-center p-3 sm:p-5 z-50 safe-modal-overlay">
+          <div className="bg-white rounded-3xl shadow-2xl border border-slate-100 w-full max-w-2xl overflow-hidden animate-fade-in flex flex-col max-h-[92vh]">
+            <div className="bg-slate-900 text-white px-6 py-4 flex items-center justify-between shrink-0">
+              <div className="flex items-center gap-2.5">
+                <FileText className="w-5 h-5 text-amber-400" />
+                <div>
+                  <h3 className="font-black text-base">
+                    {lang === 'ar' ? 'سند طلب شراء تلقائي للنواقص للموردين' : 'Auto Purchase Order (Low Stock)'}
+                  </h3>
+                  <p className="text-[11px] text-slate-400">
+                    {lang === 'ar' ? `حصر تلقائي لـ ${lowStockProducts.length} منتج وصل للحد الأدنى من المخزون` : `Reorder list for ${lowStockProducts.length} items below minimum stock`}
+                  </p>
+                </div>
+              </div>
+              <button
+                type="button"
+                onClick={() => setShowReorderModal(false)}
+                className="p-1.5 hover:bg-slate-800 text-slate-400 hover:text-white rounded-lg transition cursor-pointer"
+              >
+                <X className="w-5 h-5" />
+              </button>
+            </div>
+
+            <div className="p-5 overflow-y-auto space-y-4 flex-1">
+              <div className="border border-slate-200 rounded-2xl overflow-hidden">
+                <table className="w-full text-xs text-start">
+                  <thead className="bg-slate-50 border-b border-slate-200 font-black text-slate-600">
+                    <tr>
+                      <th className="p-3 text-start">{lang === 'ar' ? 'المنتج' : 'Product'}</th>
+                      <th className="p-3 text-center">{lang === 'ar' ? 'المخزون الحالي' : 'Stock'}</th>
+                      <th className="p-3 text-center">{lang === 'ar' ? 'الحد الأدنى' : 'Min'}</th>
+                      <th className="p-3 text-center">{lang === 'ar' ? 'الكمية المقترحة' : 'Order Qty'}</th>
+                      <th className="p-3 text-end">{lang === 'ar' ? 'سعر الشراء' : 'Cost'}</th>
+                    </tr>
+                  </thead>
+                  <tbody className="divide-y divide-slate-100 font-bold">
+                    {lowStockProducts.map((p) => {
+                      const suggested = Math.max(1, p.minStock * 2 - p.stock);
+                      return (
+                        <tr key={p.id} className="hover:bg-slate-50/50">
+                          <td className="p-3">
+                            <span className="font-black text-slate-900 block">{p.name}</span>
+                            <span className="text-[10px] text-slate-400 font-mono">SKU: {p.sku}</span>
+                          </td>
+                          <td className="p-3 text-center font-mono font-black text-rose-600">{p.stock} {p.unit}</td>
+                          <td className="p-3 text-center font-mono text-slate-500">{p.minStock}</td>
+                          <td className="p-3 text-center font-mono font-black text-indigo-700">+{suggested} {p.unit}</td>
+                          <td className="p-3 text-end font-mono text-slate-800">{p.purchasePrice.toFixed(2)} {currency}</td>
+                        </tr>
+                      );
+                    })}
+                  </tbody>
+                </table>
+              </div>
+            </div>
+
+            <div className="bg-slate-50 px-6 py-4 border-t border-slate-100 flex flex-wrap items-center justify-between gap-3 shrink-0">
+              <span className="text-xs font-bold text-slate-600">
+                {lang === 'ar' ? 'إجمالي الأصناف المطلوبة:' : 'Total items:'} <b className="font-mono text-slate-900">{lowStockProducts.length}</b>
+              </span>
+              <div className="flex items-center gap-2">
+                <button
+                  type="button"
+                  onClick={() => {
+                    const printHtml = `
+                      <div style="font-family: Arial, sans-serif; padding: 20px; direction: ${isRTL ? 'rtl' : 'ltr'};">
+                        <h2 style="margin: 0 0 10px 0; border-bottom: 2px solid #000; padding-bottom: 8px;">
+                          ${config?.name || 'Smart POS'} - ${lang === 'ar' ? 'سند طلب شراء مواد ناقصة (Bon de Commande)' : 'Purchase Order'}
+                        </h2>
+                        <p style="font-size: 12px; color: #555; margin-bottom: 15px;">
+                          ${lang === 'ar' ? 'التاريخ:' : 'Date:'} ${new Date().toLocaleDateString('fr-FR')} | ${lang === 'ar' ? 'عدد البنود:' : 'Items:'} ${lowStockProducts.length}
+                        </p>
+                        <table style="width: 100%; border-collapse: collapse; font-size: 12px;">
+                          <thead>
+                            <tr style="background: #f1f5f9; border-bottom: 1px solid #cbd5e1;">
+                              <th style="padding: 8px; text-align: ${isRTL ? 'right' : 'left'};">#</th>
+                              <th style="padding: 8px; text-align: ${isRTL ? 'right' : 'left'};">${lang === 'ar' ? 'اسم المنتج' : 'Item'}</th>
+                              <th style="padding: 8px; text-align: center;">${lang === 'ar' ? 'المخزون الحالي' : 'Stock'}</th>
+                              <th style="padding: 8px; text-align: center;">${lang === 'ar' ? 'الكمية المطلوبة' : 'Qty'}</th>
+                              <th style="padding: 8px; text-align: ${isRTL ? 'left' : 'right'};">${lang === 'ar' ? 'سعر الشراء' : 'Cost'}</th>
+                            </tr>
+                          </thead>
+                          <tbody>
+                            ${lowStockProducts.map((p, idx) => `
+                              <tr style="border-bottom: 1px solid #e2e8f0;">
+                                <td style="padding: 8px;">${idx + 1}</td>
+                                <td style="padding: 8px;"><b>${p.name}</b> (${p.sku})</td>
+                                <td style="padding: 8px; text-align: center;">${p.stock} ${p.unit}</td>
+                                <td style="padding: 8px; text-align: center; font-weight: bold;">${Math.max(1, p.minStock * 2 - p.stock)} ${p.unit}</td>
+                                <td style="padding: 8px; text-align: ${isRTL ? 'left' : 'right'}; font-family: monospace;">${p.purchasePrice.toFixed(2)} ${currency}</td>
+                              </tr>
+                            `).join('')}
+                          </tbody>
+                        </table>
+                      </div>
+                    `;
+                    printHtmlContent({ html: printHtml, title: 'PURCHASE-ORDER-LOW-STOCK', isRTL, mode: 'a4' });
+                  }}
+                  className="flex items-center gap-1.5 px-4 py-2 bg-indigo-600 hover:bg-indigo-700 text-white rounded-xl text-xs font-black transition cursor-pointer shadow-xs"
+                >
+                  <Printer className="w-4 h-4" />
+                  <span>{lang === 'ar' ? 'طباعة سند الطلب' : 'Print Order'}</span>
+                </button>
+                <button
+                  type="button"
+                  onClick={() => setShowReorderModal(false)}
+                  className="px-4 py-2 bg-slate-200 hover:bg-slate-300 text-slate-800 rounded-xl text-xs font-black transition cursor-pointer"
+                >
+                  {lang === 'ar' ? 'إغلاق' : 'Close'}
+                </button>
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 }

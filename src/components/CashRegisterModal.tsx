@@ -4,11 +4,11 @@
  */
 
 import React, { useState } from 'react';
-import { Invoice, StoreConfig, Language, Expense, Employee } from '../types';
+import { Invoice, StoreConfig, Language, Expense, Employee, CashMovement } from '../types';
 import { 
   Lock, Printer, X, DollarSign, Calculator, AlertTriangle, 
-  CheckCircle2, TrendingUp, TrendingDown, ArrowUpRight, 
-  Calendar, Clock, User, FileDown, ArrowRight
+  CheckCircle2, TrendingUp, TrendingDown, ArrowUpRight, ArrowDownRight,
+  Calendar, Clock, User, FileDown, ArrowRight, PlusCircle
 } from 'lucide-react';
 import { parseDecimal, sanitizeDecimalInput } from '../utils/numberInput';
 import { printHtmlContent, exportStructuredPdf } from '../utils/printService';
@@ -38,9 +38,53 @@ export default function CashRegisterModal({
   const now = new Date();
 
   // State
+  const todayKey = now.toISOString().slice(0, 10);
   const [openingBalance, setOpeningBalance] = useState<string>('0');
   const [actualCash, setActualCash] = useState<string>('');
   const [notes, setNotes] = useState<string>('');
+
+  // Cash In / Cash Out Movements
+  const [cashMovements, setCashMovements] = useState<CashMovement[]>(() => {
+    try {
+      const saved = localStorage.getItem(`pos_cash_movements_${todayKey}`);
+      return saved ? JSON.parse(saved) : [];
+    } catch {
+      return [];
+    }
+  });
+
+  const [movementType, setMovementType] = useState<'in' | 'out'>('in');
+  const [movementAmount, setMovementAmount] = useState<string>('');
+  const [movementReason, setMovementReason] = useState<string>('');
+  const [showMovementForm, setShowMovementForm] = useState(false);
+
+  const handleAddMovement = () => {
+    const amt = parseDecimal(movementAmount);
+    if (amt <= 0 || !movementReason.trim()) {
+      alert(lang === 'ar' ? 'يرجى إدخال المبلغ وسبب الحركة النقدية!' : 'Please enter amount and reason!');
+      return;
+    }
+    const newMv: CashMovement = {
+      id: 'cm_' + Date.now(),
+      type: movementType,
+      amount: amt,
+      reason: movementReason.trim(),
+      date: new Date().toISOString(),
+      performedBy: currentUser?.name || 'Cashier'
+    };
+    const updated = [...cashMovements, newMv];
+    setCashMovements(updated);
+    localStorage.setItem(`pos_cash_movements_${todayKey}`, JSON.stringify(updated));
+    setMovementAmount('');
+    setMovementReason('');
+    setShowMovementForm(false);
+  };
+
+  const handleDeleteMovement = (id: string) => {
+    const updated = cashMovements.filter((m) => m.id !== id);
+    setCashMovements(updated);
+    localStorage.setItem(`pos_cash_movements_${todayKey}`, JSON.stringify(updated));
+  };
 
   // Filter today's transactions
   const todayInvoices = invoices.filter((inv) => {
@@ -70,10 +114,14 @@ export default function CashRegisterModal({
   });
   const totalCashExpensesToday = todayExpenses.reduce((sum, e) => sum + e.amount, 0);
 
+  // Cash In / Out totals
+  const totalCashIn = cashMovements.filter((m) => m.type === 'in').reduce((s, m) => s + m.amount, 0);
+  const totalCashOut = cashMovements.filter((m) => m.type === 'out').reduce((s, m) => s + m.amount, 0);
+
   // Mathematics
   const openingVal = parseDecimal(openingBalance, 0);
   const actualVal = actualCash.trim() !== '' ? parseDecimal(actualCash, 0) : null;
-  const expectedCash = openingVal + cashSales - totalCashExpensesToday;
+  const expectedCash = openingVal + cashSales + totalCashIn - totalCashExpensesToday - totalCashOut;
   const difference = actualVal !== null ? actualVal - expectedCash : null;
 
   const buildZReportPdfMeta = () => ({
@@ -91,9 +139,11 @@ export default function CashRegisterModal({
     items: [
       { name: lang === 'ar' ? 'رصيد بداية اليوم (+)' : 'Fond de caisse (+)', quantity: 1, unitPrice: openingVal, total: openingVal },
       { name: lang === 'ar' ? 'مبيعات نقدية (+)' : 'Ventes Espèces (+)', quantity: todayInvoices.filter(i => i.paymentMethod === 'cash').length, unitPrice: cashSales, total: cashSales },
+      ...(totalCashIn > 0 ? [{ name: lang === 'ar' ? 'إيداع سيولة إضافية (+)' : 'Cash In (+)', quantity: cashMovements.filter(m => m.type === 'in').length, unitPrice: totalCashIn, total: totalCashIn }] : []),
       { name: lang === 'ar' ? 'مبيعات بطاقة (•)' : 'Ventes Carte (•)', quantity: todayInvoices.filter(i => i.paymentMethod === 'card').length, unitPrice: cardSales, total: cardSales },
       { name: lang === 'ar' ? 'ديون مؤجلة (•)' : 'Ventes Crédit (•)', quantity: todayInvoices.filter(i => i.paymentMethod === 'debt' || i.total > i.amountPaid).length, unitPrice: debtSales, total: debtSales },
       { name: lang === 'ar' ? 'مصاريف الصندوق (-)' : 'Dépenses (-)', quantity: todayExpenses.length, unitPrice: totalCashExpensesToday, total: -totalCashExpensesToday },
+      ...(totalCashOut > 0 ? [{ name: lang === 'ar' ? 'سحب سيولة من الدرج (-)' : 'Cash Out (-)', quantity: cashMovements.filter(m => m.type === 'out').length, unitPrice: totalCashOut, total: -totalCashOut }] : []),
     ],
     subtotal: expectedCash,
     total: expectedCash,
@@ -239,6 +289,96 @@ export default function CashRegisterModal({
 
           {/* Opening balance & Actual cash Inputs */}
           <div className="space-y-4 pt-1">
+            {/* Quick Cash In / Cash Out Section */}
+            <div className="bg-slate-50 border border-slate-200/80 p-3.5 rounded-xl space-y-2.5">
+              <div className="flex items-center justify-between">
+                <span className="text-[11px] font-black text-slate-700 flex items-center gap-1.5">
+                  <DollarSign className="w-3.5 h-3.5 text-indigo-600" />
+                  <span>{lang === 'ar' ? 'حركات الصندوق السريعة (إيداع / سحب سيولة)' : 'Quick Cash In / Cash Out'}</span>
+                </span>
+                <button
+                  type="button"
+                  onClick={() => setShowMovementForm((prev) => !prev)}
+                  className="text-xs font-bold text-indigo-600 hover:text-indigo-800 flex items-center gap-1 cursor-pointer"
+                >
+                  <PlusCircle className="w-3.5 h-3.5" />
+                  <span>{showMovementForm ? (lang === 'ar' ? 'إغلاق' : 'Close') : (lang === 'ar' ? 'تسجيل حركة' : 'Add')}</span>
+                </button>
+              </div>
+
+              {showMovementForm && (
+                <div className="p-3 bg-white border border-slate-200 rounded-lg space-y-2 animate-fade-in">
+                  <div className="flex gap-2">
+                    <button
+                      type="button"
+                      onClick={() => setMovementType('in')}
+                      className={`flex-1 py-1.5 text-xs font-bold rounded-md transition ${movementType === 'in' ? 'bg-emerald-600 text-white' : 'bg-slate-100 text-slate-700'}`}
+                    >
+                      {lang === 'ar' ? '+ إيداع سيولة (Cash In)' : '+ Cash In'}
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => setMovementType('out')}
+                      className={`flex-1 py-1.5 text-xs font-bold rounded-md transition ${movementType === 'out' ? 'bg-rose-600 text-white' : 'bg-slate-100 text-slate-700'}`}
+                    >
+                      {lang === 'ar' ? '- سحب سيولة (Cash Out)' : '- Cash Out'}
+                    </button>
+                  </div>
+                  <div className="grid grid-cols-2 gap-2">
+                    <input
+                      type="text"
+                      inputMode="decimal"
+                      placeholder={lang === 'ar' ? 'المبلغ' : 'Amount'}
+                      value={movementAmount}
+                      onChange={(e) => setMovementAmount(sanitizeDecimalInput(e.target.value))}
+                      className="w-full px-2.5 py-1.5 border border-slate-200 rounded-md text-xs font-bold font-mono"
+                    />
+                    <input
+                      type="text"
+                      placeholder={lang === 'ar' ? 'السبب (مثال: صرف صباحي، نقل...)' : 'Reason'}
+                      value={movementReason}
+                      onChange={(e) => setMovementReason(e.target.value)}
+                      className="w-full px-2.5 py-1.5 border border-slate-200 rounded-md text-xs font-medium"
+                    />
+                  </div>
+                  <button
+                    type="button"
+                    onClick={handleAddMovement}
+                    className="w-full py-1.5 bg-slate-900 hover:bg-slate-800 text-white text-xs font-bold rounded-md transition cursor-pointer"
+                  >
+                    {lang === 'ar' ? 'تأكيد وحفظ الحركة' : 'Save Movement'}
+                  </button>
+                </div>
+              )}
+
+              {cashMovements.length > 0 && (
+                <div className="space-y-1.5 max-h-28 overflow-y-auto">
+                  {cashMovements.map((m) => (
+                    <div key={m.id} className="flex items-center justify-between text-xs p-1.5 bg-white border border-slate-200/60 rounded-md">
+                      <div className="flex items-center gap-1.5">
+                        <span className={`text-[10px] font-black px-1 rounded ${m.type === 'in' ? 'bg-emerald-100 text-emerald-800' : 'bg-rose-100 text-rose-800'}`}>
+                          {m.type === 'in' ? '+' : '-'}
+                        </span>
+                        <span className="font-bold text-slate-800">{m.reason}</span>
+                      </div>
+                      <div className="flex items-center gap-2">
+                        <span className={`font-mono font-black ${m.type === 'in' ? 'text-emerald-700' : 'text-rose-700'}`}>
+                          {m.type === 'in' ? '+' : '-'}{m.amount.toFixed(2)} {config.currency}
+                        </span>
+                        <button
+                          type="button"
+                          onClick={() => handleDeleteMovement(m.id)}
+                          className="text-slate-400 hover:text-rose-600 font-black cursor-pointer text-xs"
+                        >
+                          ×
+                        </button>
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              )}
+            </div>
+
             {/* Opening Cash Input */}
             <div>
               <label className="block text-[11px] font-bold text-slate-600 uppercase tracking-wider mb-1">

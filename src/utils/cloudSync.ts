@@ -327,6 +327,7 @@ export async function pushDataToCloud(
         repairs: finalData.repairs || [],
         expenses: finalData.expenses || [],
         commercialDocuments: finalData.commercialDocuments || [],
+        warehouses: finalData.warehouses || [],
         deletedIds: combinedDeletedIds,
         logs: (finalData.logs || []).slice(0, 120),
       },
@@ -1011,6 +1012,26 @@ export function mergeStoreDatasets(
     (a: any, b: any) => new Date(b.date || 0).getTime() - new Date(a.date || 0).getTime()
   );
 
+  // 12. Merge Warehouses
+  const localWhs: any[] = checkAndFilter(localData.warehouses || [], false);
+  const cloudWhs: any[] = checkAndFilter(cloudData.warehouses || [], true);
+  const localWhMap = new Map(localWhs.map((w: any) => [w.id, w]));
+  const cloudWhMap = new Map(cloudWhs.map((w: any) => [w.id, w]));
+  for (const lw of localWhs) {
+    if (lw && lw.id && !cloudWhMap.has(lw.id)) hasLocalChangesForCloud = true;
+  }
+  for (const cw of cloudWhs) {
+    if (!cw || !cw.id || deletedSet.has(cw.id)) continue;
+    if (!localWhMap.has(cw.id)) {
+      localWhMap.set(cw.id, cw);
+      hasNewFromCloud = true;
+    } else if (preferRemoteEdits) {
+      localWhMap.set(cw.id, { ...localWhMap.get(cw.id), ...cw });
+      hasNewFromCloud = true;
+    }
+  }
+  const mergedWarehouses = Array.from(localWhMap.values());
+
   return {
     hasNewFromCloud,
     hasLocalChangesForCloud,
@@ -1027,6 +1048,7 @@ export function mergeStoreDatasets(
       employees: mergedEmployees,
       config: mergedConfig,
       logs: mergedLogs,
+      warehouses: mergedWarehouses.length > 0 ? mergedWarehouses : (localData.warehouses || []),
       deletedIds: mergedDeletedIds,
     },
   };

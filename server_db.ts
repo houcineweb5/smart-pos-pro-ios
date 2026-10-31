@@ -16,6 +16,7 @@ import {
   INITIAL_REPAIRS,
   INITIAL_EXPENSES,
   INITIAL_COMMERCIAL_DOCUMENTS,
+  INITIAL_WAREHOUSES,
   getInitialInvoices
 } from './src/dataStore.js';
 
@@ -79,6 +80,12 @@ export async function initDB() {
     // Column already exists
   }
 
+  try {
+    await db.exec('ALTER TABLE products ADD COLUMN warehouseId TEXT');
+  } catch (e) {
+    // Column already exists
+  }
+
   // 2. customers
   await db.exec(`
     CREATE TABLE IF NOT EXISTS customers (
@@ -102,6 +109,12 @@ export async function initDB() {
 
   try {
     await db.exec('ALTER TABLE customers ADD COLUMN address TEXT');
+  } catch (e) {
+    // Column already exists
+  }
+
+  try {
+    await db.exec('ALTER TABLE customers ADD COLUMN creditLimit REAL');
   } catch (e) {
     // Column already exists
   }
@@ -344,6 +357,27 @@ export async function initDB() {
     // Indexes might already exist or legacy collision
   }
 
+  // 14. warehouses
+  await db.exec(`
+    CREATE TABLE IF NOT EXISTS warehouses (
+      id TEXT PRIMARY KEY,
+      name TEXT NOT NULL,
+      location TEXT,
+      isDefault INTEGER DEFAULT 0,
+      notes TEXT
+    )
+  `);
+
+  const whExists = await db.get('SELECT COUNT(*) as count FROM warehouses');
+  if (!whExists || whExists.count === 0) {
+    for (const w of INITIAL_WAREHOUSES) {
+      await db.run(
+        'INSERT OR REPLACE INTO warehouses (id, name, location, isDefault, notes) VALUES (?, ?, ?, ?, ?)',
+        [w.id, w.name, w.location || '', w.isDefault ? 1 : 0, w.notes || '']
+      );
+    }
+  }
+
   // Ensure default store config exists
   const configExists = await db.get('SELECT COUNT(*) as count FROM config WHERE key = ?', ['store_config']);
   if (!configExists || configExists.count === 0) {
@@ -452,6 +486,15 @@ export async function getData() {
 
   const customerPayments = await database.all('SELECT * FROM customer_payments ORDER BY date DESC');
 
+  const rawWarehouses = await database.all('SELECT * FROM warehouses');
+  let warehouses = (rawWarehouses || []).map((w: any) => ({
+    ...w,
+    isDefault: Boolean(w.isDefault)
+  }));
+  if (warehouses.length === 0) {
+    warehouses = INITIAL_WAREHOUSES;
+  }
+
   const deletedRow = await database.get('SELECT value FROM config WHERE key = ?', ['deleted_ids']);
   let deletedIds: string[] = [];
   if (deletedRow && deletedRow.value) {
@@ -474,6 +517,7 @@ export async function getData() {
     expenses: expenses || [],
     commercialDocuments: commercialDocuments || [],
     customerPayments: customerPayments || [],
+    warehouses,
     deletedIds
   };
 }
@@ -519,6 +563,7 @@ export async function saveData(data: any) {
         await database.run('DELETE FROM expenses WHERE id = ?', [delId]);
         await database.run('DELETE FROM employees WHERE id = ?', [delId]);
         await database.run('DELETE FROM customer_payments WHERE id = ?', [delId]);
+        await database.run('DELETE FROM warehouses WHERE id = ?', [delId]);
       }
     }
 
@@ -533,8 +578,8 @@ export async function saveData(data: any) {
       }
       for (const p of data.products) {
         await database.run(
-          'INSERT OR REPLACE INTO products (id, sku, name, category, purchasePrice, sellingPrice, wholesalePrice, stock, minStock, unit, imageUrl) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)',
-          [p.id, p.sku, p.name, p.category, p.purchasePrice, p.sellingPrice, p.wholesalePrice || p.sellingPrice, p.stock, p.minStock, p.unit, p.imageUrl || '']
+          'INSERT OR REPLACE INTO products (id, sku, name, category, purchasePrice, sellingPrice, wholesalePrice, stock, minStock, unit, imageUrl, warehouseId) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)',
+          [p.id, p.sku, p.name, p.category, p.purchasePrice, p.sellingPrice, p.wholesalePrice || p.sellingPrice, p.stock, p.minStock, p.unit, p.imageUrl || '', p.warehouseId || '']
         );
       }
     }
@@ -550,8 +595,8 @@ export async function saveData(data: any) {
       }
       for (const c of data.customers) {
         await database.run(
-          'INSERT OR REPLACE INTO customers (id, name, phone, email, ice, address, debt, notes, createdAt) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)',
-          [c.id, c.name, c.phone, c.email, c.ice || '', c.address || '', c.debt, c.notes, c.createdAt]
+          'INSERT OR REPLACE INTO customers (id, name, phone, email, ice, address, debt, notes, createdAt, creditLimit) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)',
+          [c.id, c.name, c.phone, c.email, c.ice || '', c.address || '', c.debt, c.notes, c.createdAt, c.creditLimit !== undefined ? c.creditLimit : null]
         );
       }
     }
@@ -738,6 +783,23 @@ export async function saveData(data: any) {
         await database.run(
           'INSERT OR REPLACE INTO customer_payments (id, customerId, customerName, amount, date, notes, receivedByName) VALUES (?, ?, ?, ?, ?, ?, ?)',
           [cp.id, cp.customerId, cp.customerName, cp.amount, cp.date, cp.notes || '', cp.receivedByName || '']
+        );
+      }
+    }
+
+    // 13. Warehouses (Safe Upsert)
+    if (data.warehouses && Array.isArray(data.warehouses)) {
+      const newIds = new Set(data.warehouses.map((w: any) => w.id));
+      const existing = await database.all('SELECT id FROM warehouses');
+      for (const row of existing) {
+        if (!newIds.has(row.id)) {
+          await database.run('DELETE FROM warehouses WHERE id = ?', [row.id]);
+        }
+      }
+      for (const w of data.warehouses) {
+        await database.run(
+          'INSERT OR REPLACE INTO warehouses (id, name, location, isDefault, notes) VALUES (?, ?, ?, ?, ?)',
+          [w.id, w.name, w.location || '', w.isDefault ? 1 : 0, w.notes || '']
         );
       }
     }

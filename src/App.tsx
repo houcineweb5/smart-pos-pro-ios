@@ -4,11 +4,12 @@
  */
 
 import React, { useState, useEffect } from 'react';
-import { Product, Customer, CustomerPayment, Supplier, Purchase, Invoice, InvoiceReturnItem, StoreConfig, Language, ActiveTab, PaymentStatus, Employee, ActivityLog, RepairOrder, Expense, CommercialDocument, CommercialDocType } from './types';
+import { Product, Customer, CustomerPayment, Supplier, Purchase, Invoice, InvoiceReturnItem, StoreConfig, Language, ActiveTab, PaymentStatus, Employee, ActivityLog, RepairOrder, Expense, CommercialDocument, CommercialDocType, Warehouse } from './types';
 import { getStoredData, saveStoredData, resetStoredToDefaults } from './dataStore';
 import { languages } from './languages';
 import POS from './components/POS';
 import Inventory from './components/Inventory';
+import CustomerDisplay from './components/CustomerDisplay';
 import Customers from './components/Customers';
 import Suppliers from './components/Suppliers';
 import Purchases from './components/Purchases';
@@ -39,6 +40,10 @@ export const authFetch = async (url: string, options: RequestInit = {}) => {
 };
 
 export default function App() {
+  if (typeof window !== 'undefined' && window.location.search.includes('customer-display=true')) {
+    return <CustomerDisplay />;
+  }
+
   // Load database once on mount
   const [data, setData] = useState<{
     products: Product[];
@@ -54,6 +59,7 @@ export default function App() {
     commercialDocuments?: CommercialDocument[];
     customerPayments?: CustomerPayment[];
     deletedIds?: string[];
+    warehouses?: Warehouse[];
   } | null>(null);
 
   const [lang, setLang] = useState<Language>('ar'); // default is Arabic, matching Arabic query primary intent
@@ -1363,6 +1369,34 @@ export default function App() {
     }, false, true);
   };
 
+  const handleSaveWarehouse = (warehouse: Warehouse) => {
+    updateDataState((prev) => {
+      if (!prev) return prev;
+      const list = prev.warehouses || [];
+      const idx = list.findIndex((w) => w.id === warehouse.id);
+      let nextList = [...list];
+      if (idx > -1) {
+        nextList[idx] = warehouse;
+      } else {
+        nextList.push(warehouse);
+      }
+      return { ...prev, warehouses: nextList };
+    });
+  };
+
+  const handleDeleteWarehouse = (id: string) => {
+    updateDataState((prev) => {
+      if (!prev) return prev;
+      const list = prev.warehouses || [];
+      const nextDeletedIds = addDeletedIds([...(prev.deletedIds || []), id]);
+      return {
+        ...prev,
+        warehouses: list.filter((w) => w.id !== id),
+        deletedIds: nextDeletedIds,
+      };
+    }, false, true);
+  };
+
   const handleSaveCustomer = (customer: Customer) => {
     updateDataState((prev) => {
       if (!prev) return prev;
@@ -2522,6 +2556,9 @@ export default function App() {
               onSaveProduct={handleSaveProduct}
               onDeleteProduct={handleDeleteProduct}
               lang={lang}
+              warehouses={data?.warehouses}
+              onSaveWarehouse={handleSaveWarehouse}
+              onDeleteWarehouse={handleDeleteWarehouse}
             />
           )}
 

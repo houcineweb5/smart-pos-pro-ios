@@ -3,7 +3,11 @@
  * SPDX-License-Identifier: Apache-2.0
  */
 
-import { Product, Customer, CustomerPayment, Invoice, StoreConfig, Supplier, Purchase, Employee, ActivityLog, RepairOrder, Expense, CommercialDocument } from './types';
+import { Product, Customer, CustomerPayment, Invoice, StoreConfig, Supplier, Purchase, Employee, ActivityLog, RepairOrder, Expense, CommercialDocument, Warehouse } from './types';
+
+export const INITIAL_WAREHOUSES: Warehouse[] = [
+  { id: 'wh-main', name: 'المستودع الرئيسي', location: 'المقر الرئيسي', isDefault: true }
+];
 
 export const INITIAL_EXPENSES: Expense[] = [];
 export const INITIAL_CUSTOMER_PAYMENTS: CustomerPayment[] = [];
@@ -83,7 +87,8 @@ const KEYS = {
   repairs: DB_PREFIX + 'repairs',
   expenses: DB_PREFIX + 'expenses',
   commercialDocuments: DB_PREFIX + 'commercial_documents',
-  customerPayments: DB_PREFIX + 'customer_payments'
+  customerPayments: DB_PREFIX + 'customer_payments',
+  warehouses: DB_PREFIX + 'warehouses'
 };
 
 export function getStoredData() {
@@ -99,7 +104,8 @@ export function getStoredData() {
       logs: INITIAL_LOGS,
       repairs: INITIAL_REPAIRS,
       expenses: INITIAL_EXPENSES,
-      commercialDocuments: INITIAL_COMMERCIAL_DOCUMENTS
+      commercialDocuments: INITIAL_COMMERCIAL_DOCUMENTS,
+      warehouses: INITIAL_WAREHOUSES
     };
   }
 
@@ -278,6 +284,21 @@ export function getStoredData() {
     localStorage.setItem(KEYS.customerPayments, JSON.stringify(INITIAL_CUSTOMER_PAYMENTS));
   }
 
+  let warehouses = INITIAL_WAREHOUSES;
+  const storedWarehouses = localStorage.getItem(KEYS.warehouses);
+  if (storedWarehouses) {
+    try {
+      warehouses = JSON.parse(storedWarehouses);
+      if (!Array.isArray(warehouses) || warehouses.length === 0) {
+        warehouses = INITIAL_WAREHOUSES;
+      }
+    } catch (e) {
+      warehouses = INITIAL_WAREHOUSES;
+    }
+  } else {
+    localStorage.setItem(KEYS.warehouses, JSON.stringify(INITIAL_WAREHOUSES));
+  }
+
   let deletedIds: string[] = [];
   const storedDeleted = localStorage.getItem('smartpos_deleted_ids_v1');
   if (storedDeleted) {
@@ -287,7 +308,7 @@ export function getStoredData() {
     } catch {}
   }
 
-  return { products, customers, suppliers, purchases, invoices, config, employees, logs, repairs, expenses, commercialDocuments, customerPayments, deletedIds };
+  return { products, customers, suppliers, purchases, invoices, config, employees, logs, repairs, expenses, commercialDocuments, customerPayments, warehouses, deletedIds };
 }
 
 export function saveStoredData(data: {
@@ -303,6 +324,7 @@ export function saveStoredData(data: {
   expenses?: Expense[];
   commercialDocuments?: CommercialDocument[];
   customerPayments?: CustomerPayment[];
+  warehouses?: Warehouse[];
   deletedIds?: string[];
 }) {
   if (typeof window === 'undefined') return;
@@ -336,6 +358,9 @@ export function saveStoredData(data: {
   }
   if (data.customerPayments) {
     safeSet(KEYS.customerPayments, data.customerPayments);
+  }
+  if (data.warehouses) {
+    safeSet(KEYS.warehouses, data.warehouses);
   }
   if (Array.isArray(data.deletedIds)) {
     safeSet('smartpos_deleted_ids_v1', data.deletedIds.slice(-1000));

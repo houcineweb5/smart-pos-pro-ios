@@ -16,6 +16,15 @@ export interface Product {
   unit: string; // Pcs, Kg, Box, etc.
   imageUrl?: string;
   expiryDate?: string; // Optional expiry date for perishable products (YYYY-MM-DD)
+  warehouseId?: string; // Target warehouse ID (defaults to 'wh-main')
+}
+
+export interface Warehouse {
+  id: string;
+  name: string;
+  location?: string;
+  isDefault?: boolean;
+  notes?: string;
 }
 
 export type PaymentMethod = 'cash' | 'card' | 'debt';
@@ -75,6 +84,7 @@ export interface Customer {
   ice?: string; // Tax Identifier / ICE
   address?: string;
   debt: number; // Positive means they owe money
+  creditLimit?: number; // Optional maximum credit limit threshold
   notes?: string;
   createdAt: string;
 }
@@ -225,6 +235,15 @@ export interface Expense {
   createdByName?: string;
 }
 
+export interface CashMovement {
+  id: string;
+  type: 'in' | 'out'; // 'in' = إيداع سيولة (fond de caisse / إضافة), 'out' = سحب سيولة (مصروف عاجل / سحب)
+  amount: number;
+  reason: string;
+  date: string;
+  performedBy?: string;
+}
+
 export interface CashRegisterSession {
   id: string;
   openedAt: string;
@@ -240,6 +259,7 @@ export interface CashRegisterSession {
   difference?: number;    // الفارق = فعلي - متوقع
   status: 'open' | 'closed';
   notes?: string;
+  cashMovements?: CashMovement[];
 }
 
 export type CommercialDocType = 'devis' | 'bon_commande' | 'bon_livraison' | 'facture';
