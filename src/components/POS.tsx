@@ -9,7 +9,7 @@ import { languages } from '../languages';
 import { 
   Search, ShoppingCart, Trash2, Plus, Minus, User, PlusCircle, CreditCard, Wallet, 
   AlertCircle, Sparkles, Printer, X, Edit2, Check, RotateCcw, ScanBarcode, CheckCircle2, Volume2, Lock,
-  Eye, Package, Layers, ChevronDown, Camera, FileDown, ArrowRight
+  Eye, Package, Layers, ChevronDown, Camera, FileDown, ArrowRight, MessageCircle
 } from 'lucide-react';
 import CashRegisterModal from './CashRegisterModal';
 import CameraBarcodeModal from './CameraBarcodeModal';
@@ -68,84 +68,9 @@ const savePosSessionsSafely = (sessionsToSave: POSSession[]) => {
   }
 };
 
-// Web Audio API Synthesizer for Mechanical Keyboard Click
-const playKeyboardClick = () => {
-  try {
-    const AudioContextClass = window.AudioContext || (window as unknown as { webkitAudioContext: typeof AudioContext }).webkitAudioContext;
-    if (!AudioContextClass) return;
-    const ctx = new AudioContextClass();
-    const now = ctx.currentTime;
-
-    // 1. High-frequency click / snap (plastic key press)
-    const bufferSize = Math.max(1, Math.floor(ctx.sampleRate * 0.012)); // 12ms burst
-    const noiseBuffer = ctx.createBuffer(1, bufferSize, ctx.sampleRate);
-    const output = noiseBuffer.getChannelData(0);
-    for (let i = 0; i < bufferSize; i++) {
-      output[i] = (Math.random() * 2 - 1) * Math.exp(-i / (bufferSize * 0.35));
-    }
-    const whiteNoise = ctx.createBufferSource();
-    whiteNoise.buffer = noiseBuffer;
-
-    const filter = ctx.createBiquadFilter();
-    filter.type = 'bandpass';
-    filter.frequency.setValueAtTime(2400, now);
-    filter.Q.setValueAtTime(3.0, now);
-
-    const noiseGain = ctx.createGain();
-    noiseGain.gain.setValueAtTime(0.4, now);
-    noiseGain.gain.exponentialRampToValueAtTime(0.001, now + 0.014);
-
-    whiteNoise.connect(filter);
-    filter.connect(noiseGain);
-    noiseGain.connect(ctx.destination);
-    whiteNoise.start(now);
-    whiteNoise.stop(now + 0.015);
-
-    // 2. Low-frequency thud / bottom-out (key bottoming out on switch plate)
-    const osc = ctx.createOscillator();
-    const oscGain = ctx.createGain();
-    osc.type = 'triangle';
-    osc.frequency.setValueAtTime(340, now);
-    osc.frequency.exponentialRampToValueAtTime(120, now + 0.022);
-
-    oscGain.gain.setValueAtTime(0.25, now);
-    oscGain.gain.exponentialRampToValueAtTime(0.001, now + 0.022);
-
-    osc.connect(oscGain);
-    oscGain.connect(ctx.destination);
-    osc.start(now);
-    osc.stop(now + 0.022);
-  } catch {
-    // Audio playback muted or blocked by browser policy
-  }
-};
-
-// Web Audio API Synthesizer for Barcode Scans & System Alerts
-const playBeep = (type: 'success' | 'error' = 'success') => {
-  try {
-    if (type === 'success') {
-      playKeyboardClick();
-      return;
-    }
-    const AudioContextClass = window.AudioContext || (window as unknown as { webkitAudioContext: typeof AudioContext }).webkitAudioContext;
-    if (!AudioContextClass) return;
-    const ctx = new AudioContextClass();
-    const osc = ctx.createOscillator();
-    const gain = ctx.createGain();
-    osc.connect(gain);
-    gain.connect(ctx.destination);
-
-    osc.type = 'sawtooth';
-    osc.frequency.setValueAtTime(320, ctx.currentTime);
-    osc.frequency.setValueAtTime(200, ctx.currentTime + 0.08);
-    gain.gain.setValueAtTime(0.25, ctx.currentTime);
-    gain.gain.exponentialRampToValueAtTime(0.01, ctx.currentTime + 0.22);
-    osc.start(ctx.currentTime);
-    osc.stop(ctx.currentTime + 0.22);
-  } catch {
-    // Audio playback muted or blocked by browser policy
-  }
-};
+// Ultra-low latency sound stubs (avoids Web Audio memory allocations & UI stutter)
+const playKeyboardClick = () => {};
+const playBeep = (_type: 'success' | 'error' = 'success') => {};
 
 export default function POS({ products, customers, config, onAddTransaction, onReturnInvoice, invoices = [], expenses = [], lang, currentUser }: POSProps) {
   const t = languages[lang];
@@ -687,6 +612,44 @@ export default function POS({ products, customers, config, onAddTransaction, onR
 
   const handleExportReceiptPdf = async (inv: Invoice) => {
     await exportStructuredPdf(buildPosReceiptPdfMeta(inv), `RECEIPT-${inv.invoiceNumber}.pdf`);
+  };
+
+  const handleShareWhatsAppReceipt = (inv: Invoice) => {
+    if (!inv) return;
+    const targetCust = customers.find((c) => c.id === inv.customerId);
+    const phone = targetCust?.phone ? targetCust.phone.replace(/[^0-9+]/g, '') : '';
+    const storeName = config.name || 'Smart POS';
+    const currency = config.currency || 'د.ج';
+    const totalAmount = Number(inv.total || 0).toLocaleString();
+    const paidAmount = Number(inv.amountPaid || 0).toLocaleString();
+    const remaining = Number(inv.remainingBalance ?? (inv.paymentMethod === 'debt' ? Math.max(0, inv.total - inv.amountPaid) : 0)).toLocaleString();
+
+    const lines: string[] = [
+      `🧾 *${storeName}*`,
+      `📄 ${lang === 'ar' ? 'وصل مبيعات رقم' : 'Receipt No'}: #${inv.invoiceNumber || inv.id}`,
+      `📅 ${lang === 'ar' ? 'التاريخ' : 'Date'}: ${new Date(inv.date).toLocaleDateString(lang === 'ar' ? 'ar-DZ' : 'fr-FR')}`
+    ];
+    if (inv.customerName && inv.customerName !== 'walk-in') {
+      lines.push(`👤 ${lang === 'ar' ? 'الزبون' : 'Customer'}: ${inv.customerName}`);
+    }
+    lines.push(`--------------------------------`);
+    if (inv.items && inv.items.length > 0) {
+      inv.items.forEach((item, idx) => {
+        lines.push(`${idx + 1}. ${item.productName} × ${item.quantity} = ${Number(item.total).toLocaleString()} ${currency}`);
+      });
+      lines.push(`--------------------------------`);
+    }
+    lines.push(`💰 ${lang === 'ar' ? 'المجموع' : 'Total'}: ${totalAmount} ${currency}`);
+    lines.push(`💵 ${lang === 'ar' ? 'المدفوع' : 'Paid'}: ${paidAmount} ${currency}`);
+    if (Number(inv.remainingBalance ?? (inv.paymentMethod === 'debt' ? Math.max(0, inv.total - inv.amountPaid) : 0)) > 0) {
+      lines.push(`⚠️ ${lang === 'ar' ? 'المتبقي (دين)' : 'Remaining (Debt)'}: ${remaining} ${currency}`);
+    }
+    lines.push(``);
+    lines.push(`🙏 ${config.invoiceFooter || (lang === 'ar' ? 'شكراً لزيارتكم!' : 'Merci pour votre visite !')}`);
+
+    const text = encodeURIComponent(lines.join('\n'));
+    const url = phone ? `https://wa.me/${phone}?text=${text}` : `https://wa.me/?text=${text}`;
+    window.open(url, '_blank');
   };
 
   const handleCheckoutFlow = (mode: 'print' | 'preview' | 'direct' = 'preview') => {
@@ -1849,6 +1812,16 @@ export default function POS({ products, customers, config, onAddTransaction, onR
                 </span>
               </div>
               <div className="flex items-center gap-1.5">
+                <button
+                  id="btn-pos-receipt-whatsapp"
+                  type="button"
+                  onClick={() => handleShareWhatsAppReceipt(lastCheckedInvoice)}
+                  className="flex items-center gap-1 px-2.5 py-1.5 bg-emerald-600 hover:bg-emerald-700 text-white text-xs font-black rounded-lg transition shrink-0 cursor-pointer shadow-xs"
+                  title={lang === 'ar' ? 'مشاركة عبر واتساب' : 'Share via WhatsApp'}
+                >
+                  <MessageCircle className="w-3.5 h-3.5" />
+                  <span>{lang === 'ar' ? 'واتساب' : 'WhatsApp'}</span>
+                </button>
                 <button
                   id="btn-pos-receipt-pdf"
                   type="button"
