@@ -29,6 +29,15 @@ import { getCloudSyncConfig, saveCloudSyncConfig, loadCloudSyncConfigFromServer,
 import { exportDatabaseBackupFile } from './utils/printService';
 import { Pin, ChevronLeft, ChevronRight, Home as SmartHome, LayoutDashboard, ShoppingCart, Receipt, Package, Users, Truck, ShoppingBag, Settings as SettingsIcon, Globe, PhoneCall, Shield, LogOut, ClipboardList, PenTool, ReceiptText, Moon, Sun, FileText, ScrollText, CheckSquare, FileSpreadsheet, Database, Smartphone, Menu, X, RefreshCw, Cloud } from 'lucide-react';
 
+export const authFetch = async (url: string, options: RequestInit = {}) => {
+  const token = typeof window !== 'undefined' ? localStorage.getItem('smartpos_auth_token') : null;
+  const headers = new Headers(options.headers || {});
+  if (token && !headers.has('Authorization')) {
+    headers.set('Authorization', `Bearer ${token}`);
+  }
+  return fetch(url, { ...options, headers, credentials: 'include' });
+};
+
 export default function App() {
   // Load database once on mount
   const [data, setData] = useState<{
@@ -360,7 +369,7 @@ export default function App() {
       const apiBase = cloudCfg.provider === 'server' && cloudCfg.serverUrl ? cloudCfg.serverUrl.replace(/\/+$/, '') : '';
 
       try {
-        const res = await fetch(`${apiBase}/api/data`, { cache: 'no-store' });
+        const res = await authFetch(`${apiBase}/api/data`, { cache: 'no-store' });
         if (!res.ok) throw new Error('Failed to fetch stats');
         const loaded = await res.json();
         if (loaded?.config?.logoUrl?.includes('images.unsplash.com')) {
@@ -373,7 +382,7 @@ export default function App() {
             const { merged, hasNewFromCloud, hasLocalChangesForCloud } = mergeStoreDatasets(finalData, cloudRes.payload.data, true);
             finalData = reconcileFacturesDataset(merged);
             if (hasNewFromCloud) {
-              fetch(`${apiBase}/api/save`, {
+              authFetch(`${apiBase}/api/save`, {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json' },
                 body: JSON.stringify(finalData),
@@ -471,7 +480,7 @@ export default function App() {
       const cloudCfg = getCloudSyncConfig();
       const apiBase = cloudCfg.provider === 'server' && cloudCfg.serverUrl ? cloudCfg.serverUrl.replace(/\/+$/, '') : '';
 
-      fetch(`${apiBase}/api/save`, {
+      authFetch(`${apiBase}/api/save`, {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
@@ -488,7 +497,7 @@ export default function App() {
             if (res.ok && res.mergedData) {
               const reconciled = reconcileFacturesDataset(res.mergedData);
               saveStoredData(reconciled);
-              fetch(`${apiBase}/api/save`, {
+              authFetch(`${apiBase}/api/save`, {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json' },
                 body: JSON.stringify(reconciled),
@@ -527,7 +536,7 @@ export default function App() {
           const reconciled = reconcileFacturesDataset(merged);
           if (hasNewFromCloud || hasLocalChangesForCloud || showFeedback) {
             saveStoredData(reconciled);
-            fetch('/api/save', {
+            authFetch('/api/save', {
               method: 'POST',
               headers: { 'Content-Type': 'application/json' },
               body: JSON.stringify(reconciled),
@@ -644,6 +653,14 @@ export default function App() {
   const handleLogout = () => {
     if (currentUser) {
       addLogMessage('logout', `Employee ${currentUser.name} signed out`, true);
+    }
+    const token = typeof window !== 'undefined' ? localStorage.getItem('smartpos_auth_token') : null;
+    if (token) {
+      fetch('/api/auth/logout', {
+        method: 'POST',
+        headers: { Authorization: `Bearer ${token}` }
+      }).catch(() => {});
+      localStorage.removeItem('smartpos_auth_token');
     }
     setCurrentUser(null);
     localStorage.removeItem('sales_app_current_user');
@@ -1821,7 +1838,7 @@ export default function App() {
     saveStoredData(imported);
     const cloudCfg = getCloudSyncConfig();
     const apiBase = cloudCfg.provider === 'server' && cloudCfg.serverUrl ? cloudCfg.serverUrl.replace(/\/+$/, '') : '';
-    fetch(`${apiBase}/api/save`, {
+    authFetch(`${apiBase}/api/save`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify(imported),
@@ -1841,13 +1858,13 @@ export default function App() {
 
     if (apiBase) {
       try {
-        await fetch(`${apiBase}/api/reset`, {
+        await authFetch(`${apiBase}/api/reset`, {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify(zeroData),
         });
       } catch {
-        fetch(`${apiBase}/api/save`, {
+        authFetch(`${apiBase}/api/save`, {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify(zeroData),
@@ -2629,7 +2646,7 @@ export default function App() {
                 const reconciled = reconcileFacturesDataset(merged);
                 setData(reconciled);
                 saveStoredData(reconciled);
-                fetch('/api/save', {
+                authFetch('/api/save', {
                   method: 'POST',
                   headers: { 'Content-Type': 'application/json' },
                   body: JSON.stringify(reconciled),

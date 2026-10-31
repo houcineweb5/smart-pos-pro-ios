@@ -4,6 +4,7 @@
  */
 
 import path from 'path';
+import { hashPassword, isHashed } from './server_src/security.js';
 import { 
   INITIAL_PRODUCTS, 
   INITIAL_CUSTOMERS, 
@@ -314,6 +315,35 @@ export async function initDB() {
     )
   `);
 
+  // 13. stock_movements (Inventory movement ledger)
+  await db.exec(`
+    CREATE TABLE IF NOT EXISTS stock_movements (
+      id TEXT PRIMARY KEY,
+      productId TEXT NOT NULL,
+      productName TEXT,
+      delta INTEGER NOT NULL,
+      type TEXT NOT NULL,
+      referenceId TEXT,
+      referenceNumber TEXT,
+      timestamp TEXT NOT NULL,
+      userId TEXT,
+      userName TEXT,
+      notes TEXT
+    )
+  `);
+
+  // Create performance indexes & unique constraint safeguards safely
+  try {
+    await db.exec('CREATE INDEX IF NOT EXISTS idx_stock_movements_prod ON stock_movements(productId)');
+    await db.exec('CREATE INDEX IF NOT EXISTS idx_stock_movements_time ON stock_movements(timestamp)');
+    await db.exec('CREATE INDEX IF NOT EXISTS idx_customer_payments_cust ON customer_payments(customerId)');
+    await db.exec('CREATE INDEX IF NOT EXISTS idx_invoices_cust ON invoices(customerId)');
+    await db.exec('CREATE INDEX IF NOT EXISTS idx_invoices_date ON invoices(date)');
+    await db.exec('CREATE UNIQUE INDEX IF NOT EXISTS idx_invoices_num ON invoices(invoiceNumber)');
+  } catch (e) {
+    // Indexes might already exist or legacy collision
+  }
+
   // Ensure default store config exists
   const configExists = await db.get('SELECT COUNT(*) as count FROM config WHERE key = ?', ['store_config']);
   if (!configExists || configExists.count === 0) {
@@ -324,15 +354,25 @@ export async function initDB() {
   const empExists = await db.get('SELECT COUNT(*) as count FROM employees');
   if (!empExists || empExists.count === 0) {
     for (const e of INITIAL_EMPLOYEES) {
+      const hashed = await hashPassword(e.passwordHash);
       await db.run(
         'INSERT OR REPLACE INTO employees (id, username, name, role, passwordHash, allowedTabs, createdAt, photoUrl) VALUES (?, ?, ?, ?, ?, ?, ?, ?)',
-        [e.id, e.username, e.name, e.role, e.passwordHash, JSON.stringify(e.allowedTabs), e.createdAt, e.photoUrl || '']
+        [e.id, e.username, e.name, e.role, hashed, JSON.stringify(e.allowedTabs), e.createdAt, e.photoUrl || '']
       );
     }
   } else {
-    await db.run(
-      `UPDATE employees SET photoUrl = '/sp-icon.png', passwordHash = CASE WHEN passwordHash = 'admin' THEN 'smartpos' ELSE passwordHash END WHERE id = 'emp-admin' OR username = 'admin'`
-    );
+    // Migrate any legacy plaintext employee passwords to secure scrypt hashes
+    const existingEmployees = await db.all('SELECT id, username, passwordHash FROM employees');
+    for (const emp of existingEmployees) {
+      let pwd = emp.passwordHash;
+      if (emp.id === 'emp-admin' || emp.username === 'admin') {
+        if (!pwd || pwd === 'admin') pwd = 'smartpos';
+      }
+      if (!isHashed(pwd)) {
+        const hashed = await hashPassword(pwd);
+        await db.run('UPDATE employees SET passwordHash = ?, photoUrl = CASE WHEN id = ? THEN \'/sp-icon.png\' ELSE photoUrl END WHERE id = ?', [hashed, emp.id, emp.id]);
+      }
+    }
   }
 
   // Ensure default walk-in customer exists if customers table is empty
@@ -392,6 +432,7 @@ export async function getData() {
   const rawEmployees = await database.all('SELECT * FROM employees');
   const employees = rawEmployees.map((e: any) => ({
     ...e,
+    passwordHash: '', // Never leak password hashes over API
     allowedTabs: JSON.parse(e.allowedTabs)
   }));
 
@@ -594,9 +635,16 @@ export async function saveData(data: any) {
         }
       }
       for (const e of data.employees) {
+        let effectiveHash = e.passwordHash;
+        if (!effectiveHash) {
+          const old = await database.get('SELECT passwordHash FROM employees WHERE id = ?', [e.id]);
+          effectiveHash = old?.passwordHash || '';
+        } else if (!isHashed(effectiveHash)) {
+          effectiveHash = await hashPassword(effectiveHash);
+        }
         await database.run(
           'INSERT OR REPLACE INTO employees (id, username, name, role, passwordHash, allowedTabs, createdAt, photoUrl) VALUES (?, ?, ?, ?, ?, ?, ?, ?)',
-          [e.id, e.username, e.name, e.role, e.passwordHash, JSON.stringify(e.allowedTabs), e.createdAt, e.photoUrl || '']
+          [e.id, e.username, e.name, e.role, effectiveHash, JSON.stringify(e.allowedTabs), e.createdAt, e.photoUrl || '']
         );
       }
     }
@@ -715,6 +763,8 @@ export async function resetDB(zeroPayload?: any) {
     await database.run('DELETE FROM repairs');
     await database.run('DELETE FROM expenses');
     await database.run('DELETE FROM commercial_documents');
+    await database.run('DELETE FROM customer_payments');
+    await database.run('DELETE FROM stock_movements');
     await database.run('DELETE FROM logs');
 
     const customersToInsert = Array.isArray(zeroPayload?.customers) && zeroPayload.customers.length > 0
@@ -740,3 +790,56 @@ export async function resetDB(zeroPayload?: any) {
     throw error;
   }
 }
+
+export async function getEmployeeByUsername(username: string) {
+  const database = await initDB();
+  return database.get('SELECT * FROM employees WHERE LOWER(username) = LOWER(?)', [username.trim()]);
+}
+
+export async function getEmployeeById(id: string) {
+  const database = await initDB();
+  return database.get('SELECT * FROM employees WHERE id = ?', [id]);
+}
+
+export async function addStockMovement(movement: {
+  id?: string;
+  productId: string;
+  productName?: string;
+  delta: number;
+  type: string;
+  referenceId?: string;
+  referenceNumber?: string;
+  userId?: string;
+  userName?: string;
+  notes?: string;
+}) {
+  const database = await initDB();
+  const id = movement.id || 'mov_' + Date.now() + '_' + Math.random().toString(36).slice(2, 6);
+  const timestamp = new Date().toISOString();
+  await database.run(
+    'INSERT INTO stock_movements (id, productId, productName, delta, type, referenceId, referenceNumber, timestamp, userId, userName, notes) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)',
+    [
+      id,
+      movement.productId,
+      movement.productName || '',
+      movement.delta,
+      movement.type,
+      movement.referenceId || '',
+      movement.referenceNumber || '',
+      timestamp,
+      movement.userId || 'system',
+      movement.userName || 'System',
+      movement.notes || ''
+    ]
+  );
+  return { id, timestamp };
+}
+
+export async function getStockMovements(limit = 100, productId?: string) {
+  const database = await initDB();
+  if (productId) {
+    return database.all('SELECT * FROM stock_movements WHERE productId = ? ORDER BY timestamp DESC LIMIT ?', [productId, limit]);
+  }
+  return database.all('SELECT * FROM stock_movements ORDER BY timestamp DESC LIMIT ?', [limit]);
+}
+

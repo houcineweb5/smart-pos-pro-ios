@@ -7,7 +7,30 @@ import express from 'express';
 import path from 'path';
 import os from 'os';
 import fs from 'fs';
-import { initDB, getData, saveData, resetDB, getCloudConfigFromDB, saveCloudConfigToDB } from './server_db.js';
+import { 
+  initDB, 
+  getData, 
+  saveData, 
+  resetDB, 
+  getCloudConfigFromDB, 
+  saveCloudConfigToDB,
+  getEmployeeByUsername,
+  getEmployeeById,
+  addStockMovement,
+  getStockMovements
+} from './server_db.js';
+import { verifyPassword, hashPassword } from './server_src/security.js';
+import { 
+  createSession, 
+  revokeSession, 
+  getSession, 
+  requireAuth, 
+  requireAdmin, 
+  extractToken,
+  checkLoginRateLimit, 
+  recordFailedLogin, 
+  resetLoginAttempts 
+} from './server_src/auth.js';
 
 let remoteBarcodeQueue: string[] = [];
 
@@ -24,15 +47,24 @@ function getLocalIPv4Addresses(): string[] {
   return ips;
 }
 
-async function startServer() {
+export function createExpressApp() {
   const app = express();
-  const PORT = Number(process.env.PORT) || 3000;
 
-  // Enable CORS so standalone mobile app files can sync with server
+  // Security Headers
   app.use((req, res, next) => {
-    res.header('Access-Control-Allow-Origin', '*');
+    res.setHeader('X-Content-Type-Options', 'nosniff');
+    res.setHeader('X-Frame-Options', 'SAMEORIGIN');
+    res.setHeader('X-XSS-Protection', '1; mode=block');
+    res.setHeader('Referrer-Policy', 'strict-origin-when-cross-origin');
+    next();
+  });
+
+  // CORS: Allow local network and paired origins
+  app.use((req, res, next) => {
+    res.header('Access-Control-Allow-Origin', req.headers.origin || '*');
     res.header('Access-Control-Allow-Methods', 'GET, POST, PUT, DELETE, OPTIONS');
     res.header('Access-Control-Allow-Headers', 'Content-Type, Authorization');
+    res.header('Access-Control-Allow-Credentials', 'true');
     if (req.method === 'OPTIONS') {
       res.sendStatus(200);
       return;
@@ -40,27 +72,101 @@ async function startServer() {
     next();
   });
 
-  // Middlewares
+  // Body parser with rational limit
   app.use(express.json({ limit: '50mb' }));
 
-  // Initialize SQLite database
-  try {
-    await initDB();
-    console.log('SQLite database initialized successfully');
-  } catch (err) {
-    console.error('Failed to initialize SQLite database:', err);
-  }
+  // PUBLIC ENDPOINT: Login
+  app.post('/api/auth/login', async (req, res) => {
+    const { username, password } = req.body || {};
+    const clientIp = (req.headers['x-forwarded-for'] as string) || req.socket.remoteAddress || '127.0.0.1';
+    const rateCheck = checkLoginRateLimit(`${clientIp}_${username}`);
 
-  // API: Local Network IPs for Smartphone QR Pairing
+    if (!rateCheck.allowed) {
+      return res.status(429).json({
+        ok: false,
+        error: `Too many login attempts. Please try again in ${rateCheck.retryAfterSec || 60} seconds.`
+      });
+    }
+
+    if (!username || !password || typeof username !== 'string' || typeof password !== 'string') {
+      return res.status(400).json({ ok: false, error: 'Username and password required' });
+    }
+
+    try {
+      const emp = await getEmployeeByUsername(username);
+      if (!emp) {
+        recordFailedLogin(`${clientIp}_${username}`);
+        return res.status(401).json({ ok: false, error: 'Invalid username or password' });
+      }
+
+      const valid = await verifyPassword(password, emp.passwordHash);
+      if (!valid) {
+        recordFailedLogin(`${clientIp}_${username}`);
+        return res.status(401).json({ ok: false, error: 'Invalid username or password' });
+      }
+
+      // Successful login
+      resetLoginAttempts(`${clientIp}_${username}`);
+      const allowedTabs = typeof emp.allowedTabs === 'string' ? JSON.parse(emp.allowedTabs) : (emp.allowedTabs || []);
+      const session = createSession({
+        id: emp.id,
+        username: emp.username,
+        name: emp.name,
+        role: emp.role,
+        allowedTabs,
+      });
+
+      // Set cookie for browser sessions
+      res.cookie('smartpos_token', session.token, {
+        httpOnly: true,
+        sameSite: 'lax',
+        maxAge: 24 * 60 * 60 * 1000,
+      });
+
+      res.json({
+        ok: true,
+        token: session.token,
+        user: {
+          id: emp.id,
+          username: emp.username,
+          name: emp.name,
+          role: emp.role,
+          photoUrl: emp.photoUrl || (emp.role === 'admin' ? '/sp-icon.png' : ''),
+          allowedTabs,
+        }
+      });
+    } catch (err: any) {
+      console.error('Login error:', err);
+      res.status(500).json({ ok: false, error: 'Internal server error' });
+    }
+  });
+
+  // PUBLIC ENDPOINT: Logout
+  app.post('/api/auth/logout', (req, res) => {
+    const token = extractToken(req);
+    if (token) {
+      revokeSession(token);
+    }
+    res.clearCookie('smartpos_token');
+    res.json({ ok: true });
+  });
+
+  // PROTECTED: Current session info
+  app.get('/api/auth/me', requireAuth, (req, res) => {
+    const user = (req as any).user;
+    res.json({ ok: true, user });
+  });
+
+  // PUBLIC: Network IP list for pairing
   app.get('/api/network-info', (req, res) => {
     res.json({
       ips: getLocalIPv4Addresses(),
-      port: PORT,
+      port: Number(process.env.PORT) || 3000,
     });
   });
 
-  // API: Cloud Sync Configuration stored in SQLite so PC browser sessions never lose Firebase settings
-  app.get('/api/cloud-config', async (req, res) => {
+  // PROTECTED: Cloud Sync Configuration
+  app.get('/api/cloud-config', requireAuth, async (req, res) => {
     try {
       const cfg = await getCloudConfigFromDB();
       res.json({ ok: true, config: cfg });
@@ -69,7 +175,7 @@ async function startServer() {
     }
   });
 
-  app.post('/api/cloud-config', async (req, res) => {
+  app.post('/api/cloud-config', requireAuth, requireAdmin, async (req, res) => {
     try {
       await saveCloudConfigToDB(req.body);
       res.json({ ok: true });
@@ -78,7 +184,7 @@ async function startServer() {
     }
   });
 
-  // API: Wireless Barcode Scanner Relay (Phone -> PC POS)
+  // Barcode Relay (Phone -> PC POS)
   app.post('/api/remote-barcode', (req, res) => {
     const code = req.body?.code ? String(req.body.code).trim() : '';
     if (code) {
@@ -92,8 +198,8 @@ async function startServer() {
     res.json({ code: nextCode });
   });
 
-  // API: Get unified ledger and records
-  app.get('/api/data', async (req, res) => {
+  // PROTECTED: Full Store Data
+  app.get('/api/data', requireAuth, async (req, res) => {
     try {
       const data = await getData();
       res.json(data);
@@ -103,8 +209,8 @@ async function startServer() {
     }
   });
 
-  // API: Save and rewrite records safely
-  app.post('/api/save', async (req, res) => {
+  // PROTECTED: Incremental safe save
+  app.post('/api/save', requireAuth, async (req, res) => {
     try {
       await saveData(req.body);
       res.json({ success: true });
@@ -114,8 +220,34 @@ async function startServer() {
     }
   });
 
-  // API: Hard reset database back to factory zero
-  app.post('/api/reset', async (req, res) => {
+  // PROTECTED: Stock Movements
+  app.get('/api/stock-movements', requireAuth, async (req, res) => {
+    try {
+      const { limit, productId } = req.query;
+      const movements = await getStockMovements(Number(limit) || 100, productId as string);
+      res.json({ ok: true, movements });
+    } catch (err: any) {
+      res.status(500).json({ ok: false, error: err.message });
+    }
+  });
+
+  app.post('/api/stock-movements', requireAuth, async (req, res) => {
+    try {
+      const user = (req as any).user;
+      const movement = {
+        ...req.body,
+        userId: user.userId,
+        userName: user.name,
+      };
+      const result = await addStockMovement(movement);
+      res.json({ ok: true, ...result });
+    } catch (err: any) {
+      res.status(500).json({ ok: false, error: err.message });
+    }
+  });
+
+  // ADMIN-ONLY: Hard reset database back to factory zero
+  app.post('/api/reset', requireAuth, requireAdmin, async (req, res) => {
     try {
       await resetDB(req.body);
       res.json({ success: true });
@@ -137,6 +269,21 @@ async function startServer() {
       res.status(404).send('Mobile app not found');
     }
   });
+
+  return app;
+}
+
+async function startServer() {
+  const PORT = Number(process.env.PORT) || 3000;
+  const app = createExpressApp();
+
+  // Initialize SQLite database
+  try {
+    await initDB();
+    console.log('SQLite database initialized successfully');
+  } catch (err) {
+    console.error('Failed to initialize SQLite database:', err);
+  }
 
   // Vite middleware for development vs static serve for production
   const distPath = path.join(process.cwd(), 'dist');
@@ -166,4 +313,7 @@ async function startServer() {
   });
 }
 
-startServer();
+// Only auto-start when executed directly
+if (process.argv[1] && (process.argv[1].endsWith('server.ts') || process.argv[1].endsWith('server.cjs') || process.argv[1].endsWith('server.js'))) {
+  startServer();
+}

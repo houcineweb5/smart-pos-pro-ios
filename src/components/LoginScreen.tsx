@@ -59,11 +59,38 @@ export default function LoginScreen({ employees, onLogin, lang, onSetLang }: Log
   const t = translations[lang] || translations.en;
   const isRTL = lang === 'ar';
 
-  const handleSubmit = (e: React.FormEvent) => {
+  const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     setError('');
 
     const trimmedUser = username.trim().toLowerCase();
+    
+    // First attempt server-authoritative API login
+    try {
+      const res = await fetch('/api/auth/login', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ username: trimmedUser, password }),
+      });
+      if (res.ok) {
+        const data = await res.json();
+        if (data.ok && data.user) {
+          if (data.token) {
+            localStorage.setItem('smartpos_auth_token', data.token);
+          }
+          onLogin(data.user);
+          return;
+        }
+      } else if (res.status === 429) {
+        const errJson = await res.json().catch(() => ({}));
+        setError(errJson.error || 'Too many attempts. Please wait.');
+        return;
+      }
+    } catch {
+      // Offline fallback for standalone mobile app
+    }
+
+    // Offline / Standalone Capacitor fallback
     const found = employees.find((emp) => {
       if (emp.username.toLowerCase() !== trimmedUser) return false;
       const effectivePwd =
@@ -79,11 +106,10 @@ export default function LoginScreen({ employees, onLogin, lang, onSetLang }: Log
         found.id === 'emp-admin' || found.username.toLowerCase() === 'admin'
           ? {
               ...found,
-              passwordHash:
-                !found.passwordHash || found.passwordHash === 'admin' ? 'smartpos' : found.passwordHash,
+              passwordHash: '',
               photoUrl: '/sp-icon.png',
             }
-          : found
+          : { ...found, passwordHash: '' }
       );
     } else {
       setError(t.errorMsg);
