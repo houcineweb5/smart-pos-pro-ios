@@ -247,6 +247,21 @@ export default function Dashboard({ invoices, products, customers, suppliers = [
 
   const topProducts = getTopProducts();
 
+  // Compute Dead Stock (products in stock with 0 recorded sales)
+  const getDeadStockProducts = () => {
+    const soldProductNames = new Set<string>();
+    invoices.forEach((inv) => {
+      (inv.items || []).forEach((it) => {
+        if (it.productId) soldProductNames.add(it.productId);
+        if (it.productName) soldProductNames.add(it.productName.trim().toLowerCase());
+      });
+    });
+
+    return products
+      .filter((p) => (Number(p.stock) || 0) > 0 && !soldProductNames.has(p.id) && !soldProductNames.has((p.name || '').trim().toLowerCase()))
+      .slice(0, 4);
+  };
+
   // Compute Categories share distribution
   const getCategoryShare = () => {
     const shares: Record<string, number> = {};
@@ -926,6 +941,41 @@ export default function Dashboard({ invoices, products, customers, suppliers = [
           </div>
         </div>
       </div>
+
+      {/* Dead Stock & Capital Liquidation Alert */}
+      {(() => {
+        const deadStock = getDeadStockProducts();
+        if (deadStock.length === 0) return null;
+        return (
+          <div className="bg-white border border-slate-100 p-5 rounded-2xl shadow-xs mt-5">
+            <div className="flex items-center justify-between mb-3">
+              <div>
+                <h3 className="text-sm font-bold text-slate-800 flex items-center gap-2">
+                  <Package className="w-4 h-4 text-purple-600" />
+                  <span>{lang === 'ar' ? 'تنبيه المنتجات الراكدة (أموال مجمدة في المخزن)' : 'Dead Stock & Liquidation Alerts'}</span>
+                </h3>
+                <p className="text-[11px] text-slate-400">
+                  {lang === 'ar' ? 'منتجات متوفرة في المخزن ولم يتم بيع أي قطعة منها في الفواتير المسجلة لتنبيه التاجر لتصفيتها.' : 'Items in stock that have generated 0 sales.'}
+                </p>
+              </div>
+            </div>
+            <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-3">
+              {deadStock.map((p) => (
+                <div key={p.id} className="p-3 bg-slate-50 border border-slate-150 rounded-xl flex flex-col justify-between">
+                  <div>
+                    <h4 className="font-bold text-slate-800 text-xs truncate">{p.name}</h4>
+                    <span className="text-[10px] text-slate-500 font-mono">SKU: {p.sku} | {p.category}</span>
+                  </div>
+                  <div className="flex items-center justify-between mt-2 pt-2 border-t border-slate-200 text-xs">
+                    <span className="text-slate-600 font-bold">{p.stock} {p.unit}</span>
+                    <span className="text-purple-700 font-black font-mono">{(p.stock * p.purchasePrice).toFixed(2)} {config.currency}</span>
+                  </div>
+                </div>
+              ))}
+            </div>
+          </div>
+        );
+      })()}
     </div>
   );
 }

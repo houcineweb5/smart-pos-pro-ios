@@ -15,6 +15,7 @@ export interface Product {
   minStock: number; // For low stock alerts
   unit: string; // Pcs, Kg, Box, etc.
   imageUrl?: string;
+  expiryDate?: string; // Optional expiry date for perishable products (YYYY-MM-DD)
 }
 
 export type PaymentMethod = 'cash' | 'card' | 'debt';

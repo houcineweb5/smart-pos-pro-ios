@@ -312,11 +312,43 @@ export default function POS({ products, customers, config, onAddTransaction, onR
     }, 2500);
   };
 
-  // Barcode quick add handler: matches exact SKU or exact Name
+  // Barcode quick add handler: matches electronic scale barcodes or exact SKU / Name
   const handleBarcodeScan = (code: string) => {
     const clean = code.trim();
     if (!clean) return;
 
+    // 1. Electronic Scale Barcode Parser (EAN-13 starting with 20, 21, or 22)
+    // Format: PP(2 digits) + IIIII(5-digit product code) + WWWWW(5-digit weight in grams) + C(check digit)
+    if (clean.length === 13 && /^(20|21|22)\d{11}$/.test(clean)) {
+      const itemCode = clean.substring(2, 7);
+      const itemCodeNum = String(parseInt(itemCode, 10));
+      const weightGrams = parseInt(clean.substring(7, 12), 10);
+      const weightKg = Number((weightGrams / 1000).toFixed(3));
+
+      const scaleProduct = products.find((p) => {
+        const pSku = (p.sku || '').trim().toLowerCase();
+        return (
+          pSku === itemCode.toLowerCase() ||
+          pSku === itemCodeNum.toLowerCase() ||
+          pSku === clean.substring(0, 7).toLowerCase() ||
+          pSku.endsWith(itemCode.toLowerCase())
+        );
+      });
+
+      if (scaleProduct && weightKg > 0) {
+        addToCart(scaleProduct, weightKg);
+        setSearch('');
+        showScanNotice(
+          lang === 'ar'
+            ? `⚖️ باركود ميزان: تمت إضافة "${scaleProduct.name}" (${weightKg} كغ)`
+            : `⚖️ Scale barcode: Added "${scaleProduct.name}" (${weightKg} kg)`,
+          'success'
+        );
+        return;
+      }
+    }
+
+    // 2. Standard Barcode Match by SKU or exact Name
     const found = products.find(
       (p) => p.sku.toLowerCase() === clean.toLowerCase() || p.name.toLowerCase() === clean.toLowerCase()
     );
@@ -363,18 +395,20 @@ export default function POS({ products, customers, config, onAddTransaction, onR
     return matchesSearch && matchesCat;
   });
 
-  const addToCart = (product: Product) => {
+  const addToCart = (product: Product, quantityToAdd: number = 1) => {
     if (!product || !product.id) return;
     playKeyboardClick();
+    const qtyVal = Number(quantityToAdd) > 0 ? Number(quantityToAdd) : 1;
     setCart((prevCart) => {
       const safeCart = Array.isArray(prevCart) ? prevCart.filter((it) => it && it.product && it.product.id) : [];
       const existingIndex = safeCart.findIndex((item) => item.product.id === product.id);
       if (existingIndex > -1) {
         const existingItem = safeCart[existingIndex];
         const curQty = parseDecimal(existingItem.quantity, 1);
+        const nextQty = curQty + qtyVal;
         const updatedItem = {
           ...existingItem,
-          quantity: Number.isInteger(curQty + 1) ? curQty + 1 : Number((curQty + 1).toFixed(3))
+          quantity: Number.isInteger(nextQty) ? nextQty : Number(nextQty.toFixed(3))
         };
         return [updatedItem, ...safeCart.filter((_, idx) => idx !== existingIndex)];
       } else {
@@ -387,7 +421,7 @@ export default function POS({ products, customers, config, onAddTransaction, onR
           minStock: Number(product.minStock) || 0,
           imageUrl: undefined
         };
-        return [{ product: lightProduct, quantity: 1, discount: 0 }, ...safeCart];
+        return [{ product: lightProduct, quantity: Number.isInteger(qtyVal) ? qtyVal : Number(qtyVal.toFixed(3)), discount: 0 }, ...safeCart];
       }
     });
   };
@@ -822,14 +856,21 @@ export default function POS({ products, customers, config, onAddTransaction, onR
         }
       }
 
-      // F9 focuses the barcode search input
-      if (e.key === 'F9') {
+      // F9 or F1 (if not bound to sell) or / focuses the barcode search input
+      if (e.key === 'F9' || (e.key === '/' && !isInput)) {
         e.preventDefault();
         const searchInput = document.getElementById('search-pos-products') as HTMLInputElement | null;
         if (searchInput) {
           searchInput.focus();
           searchInput.select();
         }
+        return;
+      }
+
+      // F3 toggles between Retail and Wholesale pricing mode
+      if (e.key === 'F3' && !isInput) {
+        e.preventDefault();
+        setIsWholesale((prev) => !prev);
         return;
       }
 
@@ -861,6 +902,13 @@ export default function POS({ products, customers, config, onAddTransaction, onR
 
       // Never trigger checkout shortcuts if actively typing in an input
       if (isInput) return;
+
+      // Spacebar quick cash checkout if cart is non-empty
+      if (upperKey === 'SPACE' && cart.length > 0 && !showReceiptModal) {
+        e.preventDefault();
+        handleCheckoutFlow('print');
+        return;
+      }
 
       if (upperKey === activeSellAndPrintKey) {
         e.preventDefault();

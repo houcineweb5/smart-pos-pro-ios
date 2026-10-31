@@ -71,7 +71,7 @@ export default function Inventory({ products, config, onSaveProduct, onDeletePro
 
   // Inventory Statistics Modal & Stock Status Filter
   const [showStatsModal, setShowStatsModal] = useState(false);
-  const [stockStatusFilter, setStockStatusFilter] = useState<'all' | 'in_stock' | 'out_of_stock' | 'low_stock'>('all');
+  const [stockStatusFilter, setStockStatusFilter] = useState<'all' | 'in_stock' | 'out_of_stock' | 'low_stock' | 'expiring_soon'>('all');
 
   // CSV Import status
   const fileInputRef = useRef<HTMLInputElement>(null);
@@ -89,11 +89,17 @@ export default function Inventory({ products, config, onSaveProduct, onDeletePro
     const matchCat = selectedCategory === 'all' || p.category === selectedCategory;
     const stockNum = Number(p.stock) || 0;
     const minStockNum = Number(p.minStock) || 0;
+
+    const now = Date.now();
+    const diffDays = p.expiryDate ? Math.ceil((new Date(p.expiryDate).getTime() - now) / (1000 * 60 * 60 * 24)) : null;
+    const isExpiringSoon = diffDays !== null && diffDays <= 30;
+
     const matchStockStatus =
       stockStatusFilter === 'all' ||
       (stockStatusFilter === 'in_stock' && stockNum > 0) ||
       (stockStatusFilter === 'out_of_stock' && stockNum <= 0) ||
-      (stockStatusFilter === 'low_stock' && stockNum > 0 && stockNum <= minStockNum);
+      (stockStatusFilter === 'low_stock' && stockNum > 0 && stockNum <= minStockNum) ||
+      (stockStatusFilter === 'expiring_soon' && isExpiringSoon);
 
     return matchSearch && matchCat && matchStockStatus;
   });
@@ -237,7 +243,8 @@ export default function Inventory({ products, config, onSaveProduct, onDeletePro
       lang === 'ar' ? 'سعر الجملة' : 'Prix Gros',
       lang === 'ar' ? 'المخزون' : 'Stock',
       lang === 'ar' ? 'الحد الادنى' : 'Min Stock',
-      lang === 'ar' ? 'الوحدة' : 'Unite'
+      lang === 'ar' ? 'الوحدة' : 'Unite',
+      lang === 'ar' ? 'تاريخ انتهاء الصلاحية' : 'Date Expiration'
     ];
     const rows = products.map(p => [
       `"${(p.sku || '').replace(/"/g, '""')}"`,
@@ -248,7 +255,8 @@ export default function Inventory({ products, config, onSaveProduct, onDeletePro
       Number(p.wholesalePrice ?? p.sellingPrice ?? 0).toFixed(2),
       Number(p.stock || 0),
       Number(p.minStock || 0),
-      `"${(p.unit || 'pcs').replace(/"/g, '""')}"`
+      `"${(p.unit || 'pcs').replace(/"/g, '""')}"`,
+      `"${p.expiryDate || ''}"`
     ]);
 
     // sep=;\r\n informs Microsoft Excel directly to use semicolon separator so each column is in its own cell!
@@ -765,6 +773,7 @@ export default function Inventory({ products, config, onSaveProduct, onDeletePro
             {lang === 'ar' ? 'تصفية المخزن حسب:' : 'Filter:'} <b className="text-indigo-950 font-black">{
               stockStatusFilter === 'in_stock' ? (lang === 'ar' ? 'المنتجات المتوفرة فقط' : 'In Stock only') :
               stockStatusFilter === 'out_of_stock' ? (lang === 'ar' ? 'المنتجات المنتهية (غير المتوفرة) فقط' : 'Out of Stock only') :
+              stockStatusFilter === 'expiring_soon' ? (lang === 'ar' ? 'المنتجات قريبة من انتهاء الصلاحية (خلال 30 يوم)' : 'Expiring Soon only') :
               (lang === 'ar' ? 'المنتجات قريبة من النفاد' : 'Low Stock only')
             }</b>
           </span>
@@ -810,13 +819,25 @@ export default function Inventory({ products, config, onSaveProduct, onDeletePro
                       <h4 className="font-black text-slate-900 text-sm truncate leading-snug">
                         {p.name}
                       </h4>
-                      <div className="flex items-center gap-1.5 mt-1">
+                      <div className="flex flex-wrap items-center gap-1.5 mt-1">
                         <span className="font-mono text-[10px] text-slate-500 bg-slate-100 px-2 py-0.5 rounded-md font-semibold">
                           {p.sku}
                         </span>
                         <span className="text-[10px] text-indigo-700 bg-indigo-50 px-2 py-0.5 rounded-md font-bold">
                           {p.category}
                         </span>
+                        {p.expiryDate && (() => {
+                          const diffDays = Math.ceil((new Date(p.expiryDate).getTime() - Date.now()) / (1000 * 60 * 60 * 24));
+                          const isExpired = diffDays <= 0;
+                          const isNear = diffDays > 0 && diffDays <= 30;
+                          return (
+                            <span className={`text-[10px] font-black px-1.5 py-0.5 rounded-md ${
+                              isExpired ? 'bg-rose-100 text-rose-700' : isNear ? 'bg-amber-100 text-amber-800' : 'bg-slate-100 text-slate-500'
+                            }`}>
+                              {isExpired ? (lang === 'ar' ? '⚠️ منتهي' : '⚠️ Exp') : isNear ? (lang === 'ar' ? `⏳ ${diffDays} يوم` : `⏳ ${diffDays}d`) : `📅 ${p.expiryDate}`}
+                            </span>
+                          );
+                        })()}
                       </div>
                     </div>
                   </div>
@@ -950,7 +971,21 @@ export default function Inventory({ products, config, onSaveProduct, onDeletePro
                               <Package className="w-4 h-4" />
                             </div>
                           )}
-                          <span className="font-bold text-slate-900">{p.name}</span>
+                          <div className="flex flex-col">
+                            <span className="font-bold text-slate-900">{p.name}</span>
+                            {p.expiryDate && (() => {
+                              const diffDays = Math.ceil((new Date(p.expiryDate).getTime() - Date.now()) / (1000 * 60 * 60 * 24));
+                              const isExpired = diffDays <= 0;
+                              const isNear = diffDays > 0 && diffDays <= 30;
+                              return (
+                                <span className={`inline-flex items-center gap-1 text-[10px] font-black px-1.5 py-0.5 rounded-md w-fit mt-0.5 ${
+                                  isExpired ? 'bg-rose-100 text-rose-700' : isNear ? 'bg-amber-100 text-amber-800' : 'bg-slate-100 text-slate-500'
+                                }`}>
+                                  {isExpired ? (lang === 'ar' ? '⚠️ منتهي الصلاحية' : '⚠️ Expired') : isNear ? (lang === 'ar' ? `⏳ ينتهي بعد ${diffDays} يوم` : `⏳ Exp: ${diffDays}d`) : `📅 ${p.expiryDate}`}
+                                </span>
+                              );
+                            })()}
+                          </div>
                         </div>
                       </td>
                       <td className="px-6 py-4 text-start">
@@ -1304,6 +1339,19 @@ export default function Inventory({ products, config, onSaveProduct, onDeletePro
                       value={editingProduct.unit || 'pcs'}
                       onChange={(e) => setEditingProduct({ ...editingProduct, unit: e.target.value })}
                       className="w-full px-3.5 py-2.5 border border-slate-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-indigo-500 text-slate-600"
+                    />
+                  </div>
+
+                  <div className="col-span-2 sm:col-span-1">
+                    <label className="block text-xs font-bold text-slate-500 uppercase mb-1.5">
+                      {lang === 'ar' ? 'تاريخ انتهاء الصلاحية' : 'Expiry Date'}
+                    </label>
+                    <input
+                      id="form-p-expiry"
+                      type="date"
+                      value={editingProduct.expiryDate || ''}
+                      onChange={(e) => setEditingProduct({ ...editingProduct, expiryDate: e.target.value })}
+                      className="w-full px-3.5 py-2.5 border border-slate-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-indigo-500 text-slate-700 font-semibold"
                     />
                   </div>
                 </div>
