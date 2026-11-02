@@ -48,6 +48,7 @@ export interface Translations {
     cash: string;
     card: string;
     debt: string;
+    split: string;
     addDiscount: string;
     itemAdded: string;
     stockDetails: string;
@@ -249,6 +250,7 @@ export const languages: Record<Language, Translations> = {
       cash: 'نقداً',
       card: 'بطاقة ائتمان',
       debt: 'دفع مؤجل (دين)',
+      split: 'دفع مجزّأ',
       addDiscount: 'إضافة خصم (%)',
       itemAdded: 'تم إضافة المنتج إلى السلة',
       stockDetails: 'المخزون المتوفر',
@@ -448,6 +450,7 @@ export const languages: Record<Language, Translations> = {
       cash: 'Espèces',
       card: 'Carte bancaire',
       debt: 'Dette / Crédit',
+      split: 'Paiement mixte',
       addDiscount: 'Ajouter Remise (%)',
       itemAdded: 'Produit ajouté au panier',
       stockDetails: 'Stock disponible',
@@ -647,6 +650,7 @@ export const languages: Record<Language, Translations> = {
       cash: 'Cash',
       card: 'Credit Card',
       debt: 'Delayed (On Debt)',
+      split: 'Split Payment',
       addDiscount: 'Add Discount (%)',
       itemAdded: 'Product added to cart',
       stockDetails: 'Available stock',

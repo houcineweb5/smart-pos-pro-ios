@@ -9,7 +9,7 @@ import { languages } from '../languages';
 import { 
   Search, ShoppingCart, Trash2, Plus, Minus, User, PlusCircle, CreditCard, Wallet, 
   AlertCircle, Sparkles, Printer, X, Edit2, Check, RotateCcw, ScanBarcode, CheckCircle2, Volume2, Lock,
-  Eye, Package, Layers, ChevronDown, Camera, FileDown, ArrowRight, MessageCircle, Monitor
+  Eye, Package, Layers, ChevronDown, Camera, FileDown, ArrowRight, MessageCircle, Monitor, SlidersHorizontal
 } from 'lucide-react';
 import CashRegisterModal from './CashRegisterModal';
 import CameraBarcodeModal from './CameraBarcodeModal';
@@ -86,6 +86,8 @@ export default function POS({ products, customers, config, onAddTransaction, onR
   const [cart, setCart] = useState<CartItem[]>([]);
   const [customerId, setCustomerId] = useState<string>('walk-in');
   const [paymentMethod, setPaymentMethod] = useState<PaymentMethod>('cash');
+  const [splitCash, setSplitCash] = useState<string>('');
+  const [splitCard, setSplitCard] = useState<string>('');
   const [amountPaid, setAmountPaid] = useState<string>('');
   const [generalDiscount, setGeneralDiscount] = useState<string>('');
   const [previousBalanceInput, setPreviousBalanceInput] = useState<string>('');
@@ -695,7 +697,8 @@ export default function POS({ products, customers, config, onAddTransaction, onR
     const currency = config.currency || 'د.ج';
     const totalAmount = Number(inv.total || 0).toLocaleString();
     const paidAmount = Number(inv.amountPaid || 0).toLocaleString();
-    const remaining = Number(inv.remainingBalance ?? (inv.paymentMethod === 'debt' ? Math.max(0, inv.total - inv.amountPaid) : 0)).toLocaleString();
+    const remVal = Math.max(0, Number(inv.total || 0) - Number(inv.amountPaid || 0));
+    const remaining = remVal.toLocaleString();
 
     const lines: string[] = [
       `🧾 *${storeName}*`,
@@ -714,11 +717,11 @@ export default function POS({ products, customers, config, onAddTransaction, onR
     }
     lines.push(`💰 ${lang === 'ar' ? 'المجموع' : 'Total'}: ${totalAmount} ${currency}`);
     lines.push(`💵 ${lang === 'ar' ? 'المدفوع' : 'Paid'}: ${paidAmount} ${currency}`);
-    if (Number(inv.remainingBalance ?? (inv.paymentMethod === 'debt' ? Math.max(0, inv.total - inv.amountPaid) : 0)) > 0) {
+    if (remVal > 0) {
       lines.push(`⚠️ ${lang === 'ar' ? 'المتبقي (دين)' : 'Remaining (Debt)'}: ${remaining} ${currency}`);
     }
     lines.push(``);
-    lines.push(`🙏 ${config.invoiceFooter || (lang === 'ar' ? 'شكراً لزيارتكم!' : 'Merci pour votre visite !')}`);
+    lines.push(`🙏 ${config.receiptFooterMessage || (lang === 'ar' ? 'شكراً لزيارتكم!' : 'Merci pour votre visite !')}`);
 
     const text = encodeURIComponent(lines.join('\n'));
     const url = phone ? `https://wa.me/${phone}?text=${text}` : `https://wa.me/?text=${text}`;
@@ -756,9 +759,26 @@ export default function POS({ products, customers, config, onAddTransaction, onR
     }
 
     // Amount validation
-    const verifiedPaid = paymentMethod === 'debt' 
-      ? parseDecimal(amountPaid)
-      : paidVal;
+    let verifiedPaid = paidVal;
+    let splitObj: { cash?: number; card?: number; debt?: number } | undefined = undefined;
+
+    if (paymentMethod === 'debt') {
+      verifiedPaid = parseDecimal(amountPaid, 0);
+    } else if (paymentMethod === 'split') {
+      const cPart = parseDecimal(splitCash, 0);
+      const cardPart = parseDecimal(splitCard, 0);
+      verifiedPaid = cPart + cardPart;
+      const remDebt = Math.max(0, total - verifiedPaid);
+      splitObj = {
+        cash: cPart,
+        card: cardPart,
+        debt: remDebt > 0 ? remDebt : undefined
+      };
+      if (remDebt > 0 && (customerId === 'walk-in' || customerName === 'Client Divers' || customerName === 'زبون عابر')) {
+        alert(lang === 'ar' ? '⚠️ يرجى تحديد زبون مسجل لحفظ المبلغ المتبقي كدين بذمته!' : 'Please select a registered customer for the remaining debt!');
+        return;
+      }
+    }
     
     // Construct transaction invoice items
     const invoiceItems: InvoiceItem[] = cart.map((item) => {
@@ -825,6 +845,7 @@ export default function POS({ products, customers, config, onAddTransaction, onR
       sellerName: currentUser?.name || 'System',
       isWholesale: isWholesale || pricingTier === 'wholesale',
       pricingMode: pricingTier,
+      splitPayments: splitObj,
     };
 
     if (mode === 'preview') {
@@ -866,6 +887,8 @@ export default function POS({ products, customers, config, onAddTransaction, onR
     setNotes('');
     setCustomerId('walk-in');
     setPaymentMethod('cash');
+    setSplitCash('');
+    setSplitCard('');
     setIsWholesale(false);
   };
 
@@ -888,6 +911,8 @@ export default function POS({ products, customers, config, onAddTransaction, onR
     setNotes('');
     setCustomerId('walk-in');
     setPaymentMethod('cash');
+    setSplitCash('');
+    setSplitCard('');
     setIsWholesale(false);
   };
 
@@ -1723,12 +1748,12 @@ export default function POS({ products, customers, config, onAddTransaction, onR
               <label className="text-[11px] font-black text-slate-600 block">
                 {lang === 'ar' ? 'طريقة الدفع:' : `${t.pos.paymentMethod}:`}
               </label>
-              <div className="grid grid-cols-3 gap-1.5 bg-slate-100 p-1 rounded-xl">
+              <div className="grid grid-cols-2 sm:grid-cols-4 gap-1.5 bg-slate-100 p-1 rounded-xl">
                 <button
                   id="pay-cash-btn"
                   type="button"
                   onClick={() => { setPaymentMethod('cash'); setAmountPaid(''); }}
-                  className={`py-2 px-2 text-xs font-black rounded-lg flex items-center justify-center gap-1.5 cursor-pointer transition ${
+                  className={`py-2 px-1.5 text-xs font-black rounded-lg flex items-center justify-center gap-1.5 cursor-pointer transition ${
                     paymentMethod === 'cash'
                       ? 'bg-slate-900 text-white shadow-xs'
                       : 'text-slate-600 hover:text-slate-900 hover:bg-white/60'
@@ -1742,7 +1767,7 @@ export default function POS({ products, customers, config, onAddTransaction, onR
                   id="pay-card-btn"
                   type="button"
                   onClick={() => { setPaymentMethod('card'); setAmountPaid(total.toFixed(2)); }}
-                  className={`py-2 px-2 text-xs font-black rounded-lg flex items-center justify-center gap-1.5 cursor-pointer transition ${
+                  className={`py-2 px-1.5 text-xs font-black rounded-lg flex items-center justify-center gap-1.5 cursor-pointer transition ${
                     paymentMethod === 'card'
                       ? 'bg-slate-900 text-white shadow-xs'
                       : 'text-slate-600 hover:text-slate-900 hover:bg-white/60'
@@ -1756,7 +1781,7 @@ export default function POS({ products, customers, config, onAddTransaction, onR
                   id="pay-debt-btn"
                   type="button"
                   onClick={() => { setPaymentMethod('debt'); setAmountPaid('0'); }}
-                  className={`py-2 px-2 text-xs font-black rounded-lg flex items-center justify-center gap-1.5 cursor-pointer transition ${
+                  className={`py-2 px-1.5 text-xs font-black rounded-lg flex items-center justify-center gap-1.5 cursor-pointer transition ${
                     paymentMethod === 'debt'
                       ? 'bg-rose-700 text-white shadow-xs'
                       : 'text-slate-600 hover:text-slate-900 hover:bg-white/60'
@@ -1765,11 +1790,126 @@ export default function POS({ products, customers, config, onAddTransaction, onR
                   <AlertCircle className="w-3.5 h-3.5 shrink-0" />
                   <span>{t.pos.debt}</span>
                 </button>
+
+                <button
+                  id="pay-split-btn"
+                  type="button"
+                  onClick={() => {
+                    setPaymentMethod('split');
+                    setSplitCash('');
+                    setSplitCard('');
+                  }}
+                  className={`py-2 px-1.5 text-xs font-black rounded-lg flex items-center justify-center gap-1.5 cursor-pointer transition ${
+                    paymentMethod === 'split'
+                      ? 'bg-indigo-600 text-white shadow-xs'
+                      : 'text-slate-600 hover:text-slate-900 hover:bg-white/60'
+                  }`}
+                >
+                  <SlidersHorizontal className="w-3.5 h-3.5 shrink-0" />
+                  <span>{t.pos.split}</span>
+                </button>
               </div>
             </div>
 
-            {/* 3. Tender / Amount Paid (when not debt) - Wraps cleanly on iPhone so عدد المنتجات never overflows */}
-            {paymentMethod !== 'debt' ? (
+            {/* Split Tender Form */}
+            {paymentMethod === 'split' && (
+              <div className="bg-indigo-50/60 p-3 rounded-xl border border-indigo-100 space-y-2.5 shadow-2xs">
+                <div className="flex items-center justify-between text-xs font-black text-indigo-950">
+                  <span className="flex items-center gap-1.5">
+                    <SlidersHorizontal className="w-3.5 h-3.5 text-indigo-600" />
+                    <span>{lang === 'ar' ? 'توزيع مبلغ الدفع المجزّأ:' : 'Split Tender Distribution:'}</span>
+                  </span>
+                  <span className="font-mono text-indigo-700 font-bold">{total.toFixed(2)} {config.currency}</span>
+                </div>
+
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
+                  <div className="bg-white p-2 rounded-lg border border-indigo-200/70">
+                    <div className="flex justify-between items-center mb-1">
+                      <span className="text-[11px] font-bold text-slate-700 flex items-center gap-1">
+                        <Wallet className="w-3 h-3 text-emerald-600" />
+                        {lang === 'ar' ? 'نقداً:' : 'Cash:'}
+                      </span>
+                      <button
+                        type="button"
+                        onClick={() => {
+                          const cardVal = parseDecimal(splitCard, 0);
+                          setSplitCash(Math.max(0, total - cardVal).toFixed(2));
+                        }}
+                        className="text-[10px] text-indigo-600 font-bold hover:underline cursor-pointer"
+                      >
+                        {lang === 'ar' ? 'الباقي' : 'Rest'}
+                      </button>
+                    </div>
+                    <input
+                      id="split-cash-input"
+                      type="text"
+                      inputMode="decimal"
+                      placeholder="0.00"
+                      value={splitCash}
+                      onChange={(e) => setSplitCash(sanitizeDecimalInput(e.target.value))}
+                      className="w-full text-sm font-mono font-black text-slate-900 bg-slate-50 border border-slate-200 rounded px-2 py-1 text-center focus:bg-white focus:outline-hidden focus:ring-1 focus:ring-indigo-500"
+                    />
+                  </div>
+
+                  <div className="bg-white p-2 rounded-lg border border-indigo-200/70">
+                    <div className="flex justify-between items-center mb-1">
+                      <span className="text-[11px] font-bold text-slate-700 flex items-center gap-1">
+                        <CreditCard className="w-3 h-3 text-blue-600" />
+                        {lang === 'ar' ? 'بطاقة ائتمان:' : 'Card:'}
+                      </span>
+                      <button
+                        type="button"
+                        onClick={() => {
+                          const cashVal = parseDecimal(splitCash, 0);
+                          setSplitCard(Math.max(0, total - cashVal).toFixed(2));
+                        }}
+                        className="text-[10px] text-indigo-600 font-bold hover:underline cursor-pointer"
+                      >
+                        {lang === 'ar' ? 'الباقي' : 'Rest'}
+                      </button>
+                    </div>
+                    <input
+                      id="split-card-input"
+                      type="text"
+                      inputMode="decimal"
+                      placeholder="0.00"
+                      value={splitCard}
+                      onChange={(e) => setSplitCard(sanitizeDecimalInput(e.target.value))}
+                      className="w-full text-sm font-mono font-black text-slate-900 bg-slate-50 border border-slate-200 rounded px-2 py-1 text-center focus:bg-white focus:outline-hidden focus:ring-1 focus:ring-indigo-500"
+                    />
+                  </div>
+                </div>
+
+                {(() => {
+                  const paidSum = parseDecimal(splitCash, 0) + parseDecimal(splitCard, 0);
+                  const remDebt = Math.max(0, total - paidSum);
+                  const changeAmt = Math.max(0, paidSum - total);
+                  return (
+                    <div className="pt-2 border-t border-indigo-100 flex items-center justify-between text-xs font-bold">
+                      <span className="text-slate-600">
+                        {lang === 'ar' ? 'مجموع المدفوع:' : 'Total paid:'}{' '}
+                        <b className="font-mono text-emerald-700">{paidSum.toFixed(2)}</b>
+                      </span>
+                      {remDebt > 0 && (
+                        <span className="text-rose-600 font-black">
+                          {lang === 'ar' ? 'المتبقي كدين:' : 'Due as debt:'}{' '}
+                          <b className="font-mono">{remDebt.toFixed(2)} {config.currency}</b>
+                        </span>
+                      )}
+                      {changeAmt > 0 && (
+                        <span className="text-indigo-700 font-black">
+                          {lang === 'ar' ? 'الصرف للزبون:' : 'Change:'}{' '}
+                          <b className="font-mono">{changeAmt.toFixed(2)} {config.currency}</b>
+                        </span>
+                      )}
+                    </div>
+                  );
+                })()}
+              </div>
+            )}
+
+            {/* 3. Tender / Amount Paid (when not debt and not split) */}
+            {paymentMethod !== 'debt' && paymentMethod !== 'split' ? (
               <div className="bg-slate-50/90 p-2.5 rounded-xl border border-slate-200/80 shadow-2xs">
                 <div className="flex flex-wrap items-center justify-between gap-2">
                   <div className="flex items-center gap-1.5 shrink-0">

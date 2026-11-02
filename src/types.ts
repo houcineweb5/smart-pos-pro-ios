@@ -27,7 +27,7 @@ export interface Warehouse {
   notes?: string;
 }
 
-export type PaymentMethod = 'cash' | 'card' | 'debt';
+export type PaymentMethod = 'cash' | 'card' | 'debt' | 'split';
 export type PaymentStatus = 'paid' | 'unpaid' | 'partial' | 'refunded';
 
 export type SaleItem = InvoiceItem;
@@ -74,6 +74,11 @@ export interface Invoice {
   returnedItems?: InvoiceReturnItem[];
   isWholesale?: boolean;
   pricingMode?: 'retail' | 'wholesale' | 'installment';
+  splitPayments?: {
+    cash?: number;
+    card?: number;
+    debt?: number;
+  };
 }
 
 export interface Customer {

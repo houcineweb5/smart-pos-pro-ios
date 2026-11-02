@@ -641,9 +641,9 @@ export function buildStructuredA4Html(meta: PdfDocumentMeta): string {
   const itemsTableHtml =
     meta.items && meta.items.length > 0
       ? `
-      <table style="width: 100%; border-collapse: collapse; margin-bottom: 18px; font-size: 12px;">
-        <thead>
-          <tr style="background: ${headerBgColor}; color: #ffffff;">
+      <table style="width: 100%; border-collapse: collapse; margin-bottom: 18px; font-size: 12px; page-break-inside: auto;">
+        <thead style="display: table-header-group;">
+          <tr style="background: ${headerBgColor}; color: #ffffff; page-break-inside: avoid; break-inside: avoid;">
             <th style="padding: 9px 10px; text-align: ${alignStart}; font-weight: 800; width: 8%;">#</th>
             <th style="padding: 9px 10px; text-align: ${alignStart}; font-weight: 800; width: ${hideQtyPrice ? '67%' : '43%'};">${meta.customTableHeaders?.name || (isRTL ? 'البيان / المنتج' : 'Désignation')}</th>
             ${!hideQtyPrice ? `<th style="padding: 9px 10px; text-align: center; font-weight: 800; width: 14%;">${meta.customTableHeaders?.qty || (isRTL ? 'الكمية' : 'Qté')}</th>` : ''}
@@ -651,7 +651,7 @@ export function buildStructuredA4Html(meta: PdfDocumentMeta): string {
             <th style="padding: 9px 10px; text-align: ${alignEnd}; font-weight: 800; width: ${hideQtyPrice ? '25%' : '18%'};">${meta.customTableHeaders?.total || (isRTL ? 'الإجمالي' : 'Total')}</th>
           </tr>
         </thead>
-        <tbody>
+        <tbody style="display: table-row-group;">
           ${meta.items
             .map((it, idx) => {
               const label = it.discount && it.discount > 0 ? `${it.name} (-${it.discount}%)` : it.name;
@@ -660,7 +660,7 @@ export function buildStructuredA4Html(meta: PdfDocumentMeta): string {
                 ? String(Math.round(Number(it.unitPrice || 0)))
                 : `${Number(it.unitPrice || 0).toFixed(2)} ${meta.currency}`;
               return `
-              <tr style="background: ${bg}; border-bottom: 1px solid #f1f5f9; page-break-inside: avoid; break-inside: avoid;">
+              <tr style="background: ${bg}; border-bottom: 1px solid #f1f5f9; page-break-inside: avoid !important; break-inside: avoid !important;">
                 <td style="padding: 8px 10px; text-align: ${alignStart}; color: #64748b; font-weight: 700; font-family: Tahoma, Arial, sans-serif;">${idx + 1}</td>
                 <td style="padding: 8px 10px; text-align: ${alignStart}; color: #0f172a; font-weight: 800;">${label || ''}</td>
                 ${!hideQtyPrice ? `<td style="padding: 8px 10px; text-align: center; color: #0f172a; font-weight: 800; font-family: Tahoma, Arial, sans-serif;">${it.quantity}</td>` : ''}
@@ -2262,7 +2262,26 @@ export function printHtmlContent(
   pageStyleEl.textContent =
     mode === '80mm'
       ? `@media print { @page { size: 80mm auto; margin: 0mm; } }`
-      : `@media print { @page { size: A4 portrait; margin: 6mm; } }`;
+      : `@media print {
+          @page {
+            size: A4 portrait;
+            margin: 10mm 12mm 12mm 12mm;
+          }
+          thead {
+            display: table-header-group !important;
+          }
+          tfoot {
+            display: table-footer-group !important;
+          }
+          tr {
+            page-break-inside: avoid !important;
+            break-inside: avoid !important;
+          }
+          .smartpos-avoid-break {
+            page-break-inside: avoid !important;
+            break-inside: avoid !important;
+          }
+        }`;
 
   let mount = document.getElementById('smartpos-print-mount');
   if (!mount) {

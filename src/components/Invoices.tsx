@@ -1692,28 +1692,39 @@ export default function Invoices({ invoices, products = [], customers = [], conf
                       if (isOfficial) {
                         return (
                           <>
-                            <div className="pt-2 border-t border-slate-200 flex justify-between items-center">
-                              <button
-                                type="button"
-                                onClick={() => setShowPaymentInOfficialInvoice(!showPaymentInOfficialInvoice)}
-                                className={`inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-bold transition cursor-pointer border ${
-                                  showPaymentInOfficialInvoice
-                                    ? 'bg-amber-50 text-amber-800 border-amber-200 hover:bg-amber-100'
-                                    : 'bg-indigo-50 text-indigo-700 border-indigo-200 hover:bg-indigo-100'
-                                }`}
-                              >
-                                {showPaymentInOfficialInvoice ? (
-                                  <>
-                                    <EyeOff className="w-3.5 h-3.5 text-amber-600 shrink-0" />
-                                    <span>{lang === 'ar' ? 'إخفاء معطيات الدفع والباقي (رسمي)' : 'Masquer paiement & reste (officiel)'}</span>
-                                  </>
-                                ) : (
-                                  <>
-                                    <Eye className="w-3.5 h-3.5 text-indigo-600 shrink-0" />
-                                    <span>{lang === 'ar' ? 'إظهار معطيات الدفع والباقي' : 'Afficher paiement & reste'}</span>
-                                  </>
-                                )}
-                              </button>
+                            <div className="pt-2 border-t border-slate-200">
+                              <div className="flex items-center justify-between p-2 rounded-xl bg-slate-50 border border-slate-200">
+                                <div className="flex items-center gap-2">
+                                  <div className={`w-7 h-7 rounded-lg flex items-center justify-center transition ${showPaymentInOfficialInvoice ? 'bg-indigo-600 text-white' : 'bg-slate-200 text-slate-500'}`}>
+                                    <Receipt className="w-4 h-4" />
+                                  </div>
+                                  <div className="text-start">
+                                    <span className="text-xs font-black text-slate-800 block">
+                                      {lang === 'ar' ? 'معطيات الدفع والباقي' : 'Paiement & reste'}
+                                    </span>
+                                    <span className="text-[10px] text-slate-500 font-semibold block">
+                                      {showPaymentInOfficialInvoice
+                                        ? (lang === 'ar' ? 'ظاهرة في الفاتورة والطباعة' : 'Visibles sur le document')
+                                        : (lang === 'ar' ? 'مخفية (فاتورة رسمية بالمجموع)' : 'Masqués (officiel)')}
+                                    </span>
+                                  </div>
+                                </div>
+                                <button
+                                  type="button"
+                                  onClick={() => setShowPaymentInOfficialInvoice(!showPaymentInOfficialInvoice)}
+                                  role="switch"
+                                  aria-checked={showPaymentInOfficialInvoice}
+                                  className={`relative inline-flex h-6 w-11 shrink-0 cursor-pointer rounded-full border-2 border-transparent transition-colors duration-200 ease-in-out ${
+                                    showPaymentInOfficialInvoice ? 'bg-indigo-600' : 'bg-slate-300'
+                                  }`}
+                                >
+                                  <span
+                                    className={`pointer-events-none inline-block h-5 w-5 transform rounded-full bg-white shadow-md transition duration-200 ease-in-out ${
+                                      showPaymentInOfficialInvoice ? (isRTL ? '-translate-x-5' : 'translate-x-5') : 'translate-x-0'
+                                    }`}
+                                  />
+                                </button>
+                              </div>
                             </div>
                             {showPaymentInOfficialInvoice && (
                               <>
@@ -1788,10 +1799,10 @@ export default function Invoices({ invoices, products = [], customers = [], conf
 
                 {/* Company Info Footer Strip (Address, Phone, Email, ICE) - without repeating company name at the bottom */}
                 <div className="pt-4 border-t border-slate-200 text-center text-[11px] text-slate-600 font-semibold space-y-1">
-                  <div className="flex flex-wrap items-center justify-center gap-x-4 gap-y-1">
-                    {config.showAddressOnInvoice !== false && config.address && <span>{config.address}</span>}
-                    {config.showPhoneOnInvoice !== false && config.phone && <span>{lang === 'ar' ? 'الهاتف:' : 'Tél:'} <b className="font-mono text-slate-800" dir="ltr">{config.phone}</b></span>}
-                    {config.showEmailOnInvoice !== false && config.email && <span>{lang === 'ar' ? 'البريد:' : 'Email:'} <b className="font-mono text-slate-800">{config.email}</b></span>}
+                  {config.showAddressOnInvoice !== false && config.address && <div className="text-slate-600">{config.address}</div>}
+                  <div className="flex flex-wrap items-center justify-center gap-x-4 gap-y-1" dir="ltr">
+                    {config.showPhoneOnInvoice !== false && config.phone && <span>Tél: <b className="font-mono text-slate-800">{config.phone}</b></span>}
+                    {config.showEmailOnInvoice !== false && config.email && <span>Email: <b className="font-mono text-slate-800">{config.email}</b></span>}
                     {config.showTaxNumberOnInvoice !== false && (config.registrationNumber || config.taxNumber) && (
                       <span>
                         {[

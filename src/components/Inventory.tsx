@@ -32,7 +32,11 @@ import {
   DollarSign,
   Layers,
   Building2,
-  FileText
+  FileText,
+  MessageCircle,
+  Copy,
+  Share2,
+  Tags
 } from 'lucide-react';
 import CameraBarcodeModal from './CameraBarcodeModal';
 
@@ -2196,16 +2200,19 @@ export default function Inventory({ products, config, onSaveProduct, onDeletePro
 
       {/* Auto Reorder Low Stock Modal */}
       {showReorderModal && (
-        <div className="fixed inset-0 bg-slate-900/60 backdrop-blur-xs flex items-center justify-center p-3 sm:p-5 z-50 safe-modal-overlay">
-          <div className="bg-white rounded-3xl shadow-2xl border border-slate-100 w-full max-w-2xl overflow-hidden animate-fade-in flex flex-col max-h-[92vh]">
-            <div className="bg-slate-900 text-white px-6 py-4 flex items-center justify-between shrink-0">
+        <div className="fixed inset-0 bg-slate-900/60 backdrop-blur-xs flex items-center justify-center p-2 sm:p-5 z-50 safe-modal-overlay">
+          <div className="bg-white rounded-2xl sm:rounded-3xl shadow-2xl border border-slate-100 w-full max-w-3xl overflow-hidden animate-fade-in flex flex-col max-h-[94vh]">
+            {/* Header */}
+            <div className="bg-slate-900 text-white px-4 sm:px-6 py-3.5 sm:py-4 flex items-center justify-between shrink-0">
               <div className="flex items-center gap-2.5">
-                <FileText className="w-5 h-5 text-amber-400" />
+                <div className="p-2 bg-amber-500/20 text-amber-400 rounded-xl">
+                  <FileText className="w-5 h-5" />
+                </div>
                 <div>
-                  <h3 className="font-black text-base">
-                    {lang === 'ar' ? 'سند طلب شراء تلقائي للنواقص للموردين' : 'Auto Purchase Order (Low Stock)'}
+                  <h3 className="font-black text-sm sm:text-base">
+                    {lang === 'ar' ? 'سند طلب شراء النواقص للموردين' : 'Auto Purchase Order (Low Stock)'}
                   </h3>
-                  <p className="text-[11px] text-slate-400">
+                  <p className="text-[10px] sm:text-[11px] text-slate-400">
                     {lang === 'ar' ? `حصر تلقائي لـ ${lowStockProducts.length} منتج وصل للحد الأدنى من المخزون` : `Reorder list for ${lowStockProducts.length} items below minimum stock`}
                   </p>
                 </div>
@@ -2219,44 +2226,111 @@ export default function Inventory({ products, config, onSaveProduct, onDeletePro
               </button>
             </div>
 
-            <div className="p-5 overflow-y-auto space-y-4 flex-1">
-              <div className="border border-slate-200 rounded-2xl overflow-hidden">
-                <table className="w-full text-xs text-start">
-                  <thead className="bg-slate-50 border-b border-slate-200 font-black text-slate-600">
-                    <tr>
-                      <th className="p-3 text-start">{lang === 'ar' ? 'المنتج' : 'Product'}</th>
-                      <th className="p-3 text-center">{lang === 'ar' ? 'المخزون الحالي' : 'Stock'}</th>
-                      <th className="p-3 text-center">{lang === 'ar' ? 'الحد الأدنى' : 'Min'}</th>
-                      <th className="p-3 text-center">{lang === 'ar' ? 'الكمية المقترحة' : 'Order Qty'}</th>
-                      <th className="p-3 text-end">{lang === 'ar' ? 'سعر الشراء' : 'Cost'}</th>
-                    </tr>
-                  </thead>
-                  <tbody className="divide-y divide-slate-100 font-bold">
-                    {lowStockProducts.map((p) => {
-                      const suggested = Math.max(1, p.minStock * 2 - p.stock);
-                      return (
-                        <tr key={p.id} className="hover:bg-slate-50/50">
-                          <td className="p-3">
-                            <span className="font-black text-slate-900 block">{p.name}</span>
-                            <span className="text-[10px] text-slate-400 font-mono">SKU: {p.sku}</span>
-                          </td>
-                          <td className="p-3 text-center font-mono font-black text-rose-600">{p.stock} {p.unit}</td>
-                          <td className="p-3 text-center font-mono text-slate-500">{p.minStock}</td>
-                          <td className="p-3 text-center font-mono font-black text-indigo-700">+{suggested} {p.unit}</td>
-                          <td className="p-3 text-end font-mono text-slate-800">{p.purchasePrice.toFixed(2)} {currency}</td>
-                        </tr>
-                      );
-                    })}
-                  </tbody>
-                </table>
+            {/* Content Body: Responsive Cards on Mobile + Table on Desktop */}
+            <div className="p-3 sm:p-5 overflow-y-auto space-y-3 sm:space-y-4 flex-1">
+              {/* Mobile View: High-contrast responsive cards (sm:hidden) */}
+              <div className="block sm:hidden space-y-2.5">
+                {lowStockProducts.map((p, idx) => {
+                  const suggested = Math.max(1, p.minStock * 2 - p.stock);
+                  return (
+                    <div key={p.id} className="p-3 bg-slate-50 border border-slate-200 rounded-xl space-y-2 shadow-2xs">
+                      <div className="flex items-start justify-between gap-2">
+                        <div className="flex items-center gap-1.5">
+                          <span className="w-5 h-5 rounded-md bg-slate-200 text-slate-700 text-[10px] font-black flex items-center justify-center shrink-0">
+                            {idx + 1}
+                          </span>
+                          <span className="font-black text-slate-900 text-xs">{p.name}</span>
+                        </div>
+                        <span className="px-1.5 py-0.5 bg-slate-200/80 text-slate-600 rounded text-[9px] font-mono shrink-0">
+                          {p.sku}
+                        </span>
+                      </div>
+
+                      <div className="grid grid-cols-3 gap-1.5 pt-1 text-center">
+                        <div className="bg-rose-50 border border-rose-100 rounded-lg p-1.5">
+                          <span className="text-[9px] text-rose-600 font-bold block">{lang === 'ar' ? 'المتوفر' : 'Stock'}</span>
+                          <span className="text-xs font-black font-mono text-rose-700">{p.stock} {p.unit}</span>
+                        </div>
+                        <div className="bg-slate-100/80 border border-slate-200 rounded-lg p-1.5">
+                          <span className="text-[9px] text-slate-500 font-bold block">{lang === 'ar' ? 'الأدنى' : 'Min'}</span>
+                          <span className="text-xs font-black font-mono text-slate-700">{p.minStock} {p.unit}</span>
+                        </div>
+                        <div className="bg-indigo-50 border border-indigo-100 rounded-lg p-1.5">
+                          <span className="text-[9px] text-indigo-600 font-bold block">{lang === 'ar' ? 'المطلوب' : 'Order'}</span>
+                          <span className="text-xs font-black font-mono text-indigo-700">+{suggested} {p.unit}</span>
+                        </div>
+                      </div>
+
+                      <div className="flex items-center justify-between pt-1 border-t border-slate-200/60 text-[11px]">
+                        <span className="text-slate-500 font-medium">{lang === 'ar' ? 'سعر الشراء المقدر:' : 'Cost:'}</span>
+                        <span className="font-black font-mono text-slate-800">{p.purchasePrice.toFixed(2)} {currency}</span>
+                      </div>
+                    </div>
+                  );
+                })}
+              </div>
+
+              {/* Desktop / Tablet View: Wide Table (hidden sm:block) */}
+              <div className="hidden sm:block border border-slate-200 rounded-2xl overflow-hidden">
+                <div className="overflow-x-auto">
+                  <table className="w-full text-xs text-start min-w-[550px]">
+                    <thead className="bg-slate-50 border-b border-slate-200 font-black text-slate-600">
+                      <tr>
+                        <th className="p-3 text-start w-8">#</th>
+                        <th className="p-3 text-start">{lang === 'ar' ? 'المنتج' : 'Product'}</th>
+                        <th className="p-3 text-center">{lang === 'ar' ? 'المخزون الحالي' : 'Stock'}</th>
+                        <th className="p-3 text-center">{lang === 'ar' ? 'الحد الأدنى' : 'Min'}</th>
+                        <th className="p-3 text-center">{lang === 'ar' ? 'الكمية المقترحة' : 'Order Qty'}</th>
+                        <th className="p-3 text-end">{lang === 'ar' ? 'سعر الشراء' : 'Cost'}</th>
+                      </tr>
+                    </thead>
+                    <tbody className="divide-y divide-slate-100 font-bold">
+                      {lowStockProducts.map((p, idx) => {
+                        const suggested = Math.max(1, p.minStock * 2 - p.stock);
+                        return (
+                          <tr key={p.id} className="hover:bg-slate-50/50">
+                            <td className="p-3 text-slate-400 font-mono">{idx + 1}</td>
+                            <td className="p-3">
+                              <span className="font-black text-slate-900 block">{p.name}</span>
+                              <span className="text-[10px] text-slate-400 font-mono">SKU: {p.sku}</span>
+                            </td>
+                            <td className="p-3 text-center font-mono font-black text-rose-600">{p.stock} {p.unit}</td>
+                            <td className="p-3 text-center font-mono text-slate-500">{p.minStock}</td>
+                            <td className="p-3 text-center font-mono font-black text-indigo-700">+{suggested} {p.unit}</td>
+                            <td className="p-3 text-end font-mono text-slate-800">{p.purchasePrice.toFixed(2)} {currency}</td>
+                          </tr>
+                        );
+                      })}
+                    </tbody>
+                  </table>
+                </div>
               </div>
             </div>
 
-            <div className="bg-slate-50 px-6 py-4 border-t border-slate-100 flex flex-wrap items-center justify-between gap-3 shrink-0">
-              <span className="text-xs font-bold text-slate-600">
+            {/* Bottom Actions Bar */}
+            <div className="bg-slate-50 px-3 sm:px-6 py-3 sm:py-4 border-t border-slate-100 flex flex-col sm:flex-row sm:items-center justify-between gap-2.5 shrink-0">
+              <span className="text-xs font-bold text-slate-600 text-center sm:text-start">
                 {lang === 'ar' ? 'إجمالي الأصناف المطلوبة:' : 'Total items:'} <b className="font-mono text-slate-900">{lowStockProducts.length}</b>
               </span>
-              <div className="flex items-center gap-2">
+              <div className="flex flex-wrap items-center justify-end gap-2 w-full sm:w-auto">
+                {/* WhatsApp Share Button */}
+                <button
+                  type="button"
+                  onClick={() => {
+                    const lines = lowStockProducts.map((p, idx) => {
+                      const qty = Math.max(1, p.minStock * 2 - p.stock);
+                      return `${idx + 1}. *${p.name}* (${p.sku}) -> كمية: *${qty}* ${p.unit}`;
+                    });
+                    const msg = `*طلب شراء مواد ناقصة (${config?.name || 'SmartPOS'})*\nالتاريخ: ${new Date().toLocaleDateString('fr-FR')}\nعدد الأصناف: ${lowStockProducts.length}\n\n${lines.join('\n')}\n\nالرجاء تأكيد توفر الكميات وتاريخ التوريد. شكراً.`;
+                    window.open(`https://wa.me/?text=${encodeURIComponent(msg)}`, '_blank');
+                  }}
+                  className="flex-1 sm:flex-none flex items-center justify-center gap-1.5 px-3 py-2 bg-emerald-600 hover:bg-emerald-700 text-white rounded-xl text-xs font-black transition cursor-pointer shadow-xs"
+                >
+                  <MessageCircle className="w-4 h-4 shrink-0" />
+                  <span>{lang === 'ar' ? 'إرسال عبر الواتساب' : 'WhatsApp'}</span>
+                </button>
+
+                {/* Print Order Button */}
                 <button
                   type="button"
                   onClick={() => {
@@ -2294,15 +2368,16 @@ export default function Inventory({ products, config, onSaveProduct, onDeletePro
                     `;
                     printHtmlContent({ html: printHtml, title: 'PURCHASE-ORDER-LOW-STOCK', isRTL, mode: 'a4' });
                   }}
-                  className="flex items-center gap-1.5 px-4 py-2 bg-indigo-600 hover:bg-indigo-700 text-white rounded-xl text-xs font-black transition cursor-pointer shadow-xs"
+                  className="flex-1 sm:flex-none flex items-center justify-center gap-1.5 px-3.5 py-2 bg-indigo-600 hover:bg-indigo-700 text-white rounded-xl text-xs font-black transition cursor-pointer shadow-xs"
                 >
-                  <Printer className="w-4 h-4" />
+                  <Printer className="w-4 h-4 shrink-0" />
                   <span>{lang === 'ar' ? 'طباعة سند الطلب' : 'Print Order'}</span>
                 </button>
+
                 <button
                   type="button"
                   onClick={() => setShowReorderModal(false)}
-                  className="px-4 py-2 bg-slate-200 hover:bg-slate-300 text-slate-800 rounded-xl text-xs font-black transition cursor-pointer"
+                  className="px-3.5 py-2 bg-slate-200 hover:bg-slate-300 text-slate-800 rounded-xl text-xs font-black transition cursor-pointer"
                 >
                   {lang === 'ar' ? 'إغلاق' : 'Close'}
                 </button>

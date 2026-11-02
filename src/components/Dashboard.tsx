@@ -6,7 +6,7 @@
 import React, { useState } from 'react';
 import { Invoice, Product, Customer, Language, StoreConfig, Supplier, Expense } from '../types';
 import { languages } from '../languages';
-import { TrendingUp, AlertCircle, ShoppingBag, ArrowUpRight, ArrowDownRight, Award, DollarSign, Layers, ReceiptText, Printer, FileDown } from 'lucide-react';
+import { TrendingUp, AlertCircle, ShoppingBag, ArrowUpRight, ArrowDownRight, Award, DollarSign, Layers, ReceiptText, Printer, FileDown, Package } from 'lucide-react';
 import { printHtmlContent, exportStructuredPdf, PdfDocumentMeta, A4_PRINT_THEMES, buildStructuredA4Html } from '../utils/printService';
 
 interface DashboardProps {

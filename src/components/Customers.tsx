@@ -44,7 +44,7 @@ export default function Customers({ customers, invoices, onSaveCustomer, onDelet
   // Filtered list
   const filteredCustomers = customers.filter((c) => {
     const s = search.toLowerCase();
-    return c.name.toLowerCase().includes(s) || c.phone.includes(s) || (c.email && c.email.toLowerCase().includes(s));
+    return c.name.toLowerCase().includes(s) || c.phone.includes(s) || (c.address && c.address.toLowerCase().includes(s)) || (c.email && c.email.toLowerCase().includes(s));
   });
 
   const handleStartAdd = () => {
@@ -226,6 +226,7 @@ export default function Customers({ customers, invoices, onSaveCustomer, onDelet
             <tr>
               <th>#</th>
               <th>${lang === 'ar' ? 'اسم الزبون' : 'Customer Name'}</th>
+              <th>${lang === 'ar' ? 'العنوان' : 'Address'}</th>
               <th>${lang === 'ar' ? 'رقم الهاتف' : 'Phone'}</th>
               <th>${lang === 'ar' ? 'عدد الفواتير' : 'Invoices'}</th>
               <th>${lang === 'ar' ? 'مبلغ الدين المستحق' : 'Outstanding Debt'}</th>
@@ -238,6 +239,7 @@ export default function Customers({ customers, invoices, onSaveCustomer, onDelet
               <tr>
                 <td>${i + 1}</td>
                 <td><b>${c.name}</b></td>
+                <td>${c.address || '-'}</td>
                 <td>${c.phone || '-'}</td>
                 <td>${getCustomerInvoices(c.id).length}</td>
                 <td class="debt">${Number(c.debt || 0).toFixed(2)} ${config.currency}</td>
