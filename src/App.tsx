@@ -2036,7 +2036,9 @@ export default function App() {
                 {config.name}
               </span>
               <span className="text-[10px] text-slate-400 font-semibold block truncate text-start">
-                {config.registrationNumber ? `VAT: ${config.registrationNumber}` : 'Smart POS Pro'}
+                {config.registrationNumber 
+                  ? (lang === 'ar' ? `معرف المقاولة: ${config.registrationNumber}` : `ICE: ${config.registrationNumber}`) 
+                  : 'Smart POS Pro'}
               </span>
             </div>
           </div>

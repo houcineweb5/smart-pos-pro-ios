@@ -412,151 +412,152 @@ export default function CustomerLedger({ customer, invoices, logs, customerPayme
   const labels = getTranslatedLabels();
 
   return (
-    <div className="space-y-6 animate-fade-in" id="customer-ledger-wrapper">
-      {/* Dynamic Navigation Action Header */}
-      <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4 bg-white p-4 sm:p-5 rounded-2xl shadow-sm border border-slate-100">
-        <div className="flex items-center gap-3">
+    <div className="space-y-4 sm:space-y-6 animate-fade-in w-full max-w-full overflow-x-hidden touch-pan-y" style={{ WebkitOverflowScrolling: 'touch' }} id="customer-ledger-wrapper">
+      {/* Dynamic Navigation Action Header (Sticky on Mobile) */}
+      <div className="sticky top-0 z-20 flex flex-col sm:flex-row justify-between items-start sm:items-center gap-3 bg-white/95 backdrop-blur-md p-3 sm:p-5 rounded-2xl shadow-sm border border-slate-100">
+        <div className="flex items-center gap-2.5 sm:gap-3 w-full sm:w-auto justify-between sm:justify-start">
           <button
             id="btn-ledger-back"
             onClick={onClose}
-            className="px-3 py-2 bg-slate-100 hover:bg-slate-200 rounded-xl text-slate-700 font-bold text-xs flex items-center gap-1.5 transition cursor-pointer shrink-0"
+            className="px-3 py-2 bg-slate-100 hover:bg-slate-200 active:bg-slate-300 rounded-xl text-slate-700 font-bold text-xs flex items-center gap-1.5 transition cursor-pointer shrink-0 shadow-2xs"
+            title={isRTL ? 'الرجوع إلى قائمة الزبناء' : 'Retour à la liste des clients'}
           >
             <ArrowLeft className={`w-4 h-4 ${isRTL ? 'rotate-180' : ''}`} />
             <span>{isRTL ? 'رجوع' : 'Retour'}</span>
           </button>
-          <div className="text-start">
-            <div className="flex items-center gap-2 flex-wrap">
-              <h1 className="text-lg sm:text-xl font-bold text-slate-800 tracking-tight">{customer.name}</h1>
-              <span className="px-2.5 py-0.5 text-[10px] bg-slate-100 text-slate-600 font-bold rounded-full font-mono">
-                {customer.phone}
+          <div className="text-start min-w-0 flex-1">
+            <div className="flex items-center gap-1.5 sm:gap-2 flex-wrap">
+              <h1 className="text-base sm:text-xl font-bold text-slate-800 tracking-tight truncate max-w-[200px] sm:max-w-none">{customer.name}</h1>
+              <span className="px-2 py-0.5 text-[9px] sm:text-[10px] bg-slate-100 text-slate-600 font-bold rounded-full font-mono shrink-0">
+                {customer.phone || (isRTL ? 'بدون هاتف' : 'Sans tél')}
               </span>
             </div>
-            <p className="text-xs text-slate-500 mt-1 font-semibold flex items-center gap-1">
-              <Calendar className="w-3.5 h-3.5" />
+            <p className="text-[10px] sm:text-xs text-slate-500 mt-0.5 font-semibold flex items-center gap-1">
+              <Calendar className="w-3 h-3 text-slate-400 shrink-0" />
               <span>{labels.registeredOn} {new Date(customer.createdAt).toLocaleDateString()}</span>
             </p>
           </div>
         </div>
 
-        <div className="flex flex-wrap items-center gap-2 w-full sm:w-auto">
+        <div className="flex items-center gap-2 w-full sm:w-auto">
           <button
             type="button"
             onClick={handleExportLedgerPdf}
-            className="flex-1 sm:flex-none justify-center flex items-center gap-1.5 px-3.5 py-2.5 bg-rose-600 hover:bg-rose-700 text-white text-xs font-bold rounded-xl transition shadow-sm cursor-pointer"
+            className="flex-1 sm:flex-none justify-center flex items-center gap-1.5 px-3 py-2 bg-rose-600 hover:bg-rose-700 text-white text-xs font-bold rounded-xl transition shadow-sm cursor-pointer"
           >
-            <FileDown className="w-4 h-4" />
+            <FileDown className="w-4 h-4 shrink-0" />
             <span>PDF</span>
           </button>
           <button
             id="btn-print-ledger-statement"
             onClick={triggerPrintLedger}
-            className="flex-1 sm:flex-none justify-center flex items-center gap-2 px-4 py-2.5 bg-slate-800 hover:bg-slate-900 text-white text-xs font-bold rounded-xl transition duration-200 shadow-sm cursor-pointer"
+            className="flex-1 sm:flex-none justify-center flex items-center gap-2 px-3.5 py-2 bg-slate-800 hover:bg-slate-900 text-white text-xs font-bold rounded-xl transition duration-200 shadow-sm cursor-pointer"
           >
-            <Printer className="w-4 h-4" />
+            <Printer className="w-4 h-4 shrink-0" />
             <span>{labels.receiptPrint}</span>
           </button>
         </div>
       </div>
 
-      {/* 5-Column Financial Statement Bento Grid */}
-      <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-5 gap-3.5">
+      {/* 5-Column Financial Statement Bento Grid (Responsive 2-col on mobile) */}
+      <div className="grid grid-cols-2 sm:grid-cols-2 lg:grid-cols-5 gap-2.5 sm:gap-3.5">
         {/* Total Purchased / Invoiced */}
-        <div className="bg-white p-4 rounded-2xl border border-slate-100 shadow-xs text-start">
-          <span className="text-[10px] text-slate-400 font-extrabold uppercase tracking-widest block">
+        <div className="bg-white p-3 sm:p-4 rounded-2xl border border-slate-100 shadow-xs text-start flex flex-col justify-between">
+          <span className="text-[9px] sm:text-[10px] text-slate-400 font-extrabold uppercase tracking-widest block truncate">
             {labels.totalPurchased}
           </span>
-          <div className="flex items-baseline gap-1 mt-1.5">
-            <span className="text-xl sm:text-2xl font-black text-slate-800 font-mono">
+          <div className="flex items-baseline gap-1 mt-1">
+            <span className="text-lg sm:text-2xl font-black text-slate-800 font-mono">
               {totalInvoicedSum.toLocaleString(undefined, { minimumFractionDigits: 2 })}
             </span>
-            <span className="text-xs font-semibold text-slate-500">{config.currency}</span>
+            <span className="text-[10px] sm:text-xs font-semibold text-slate-500">{config.currency}</span>
           </div>
-          <span className="text-[10px] font-bold text-indigo-600 block mt-1.5 bg-indigo-50/50 py-1 px-2.5 rounded-lg w-max">
+          <span className="text-[9px] sm:text-[10px] font-bold text-indigo-600 block mt-1 bg-indigo-50/50 py-0.5 px-2 rounded-lg w-max truncate">
             {activeInvoicesForStats.length} {isRTL ? 'فواتير مشتريات' : 'Sales bills'}
           </span>
         </div>
 
         {/* Customer Profit (أرباحنا مع الزبون) */}
-        <div className="bg-white p-4 rounded-2xl border border-emerald-100 shadow-xs text-start bg-gradient-to-b from-emerald-50/40 to-white">
+        <div className="bg-white p-3 sm:p-4 rounded-2xl border border-emerald-100 shadow-xs text-start bg-gradient-to-b from-emerald-50/40 to-white flex flex-col justify-between">
           <div className="flex items-center justify-between">
-            <span className="text-[10px] text-emerald-700 font-extrabold uppercase tracking-widest block">
+            <span className="text-[9px] sm:text-[10px] text-emerald-700 font-extrabold uppercase tracking-widest block truncate">
               {labels.totalProfit}
             </span>
-            <TrendingUp className="w-3.5 h-3.5 text-emerald-600" />
+            <TrendingUp className="w-3.5 h-3.5 text-emerald-600 shrink-0" />
           </div>
-          <div className="flex items-baseline gap-1 mt-1.5">
-            <span className="text-xl sm:text-2xl font-black text-emerald-700 font-mono">
+          <div className="flex items-baseline gap-1 mt-1">
+            <span className="text-lg sm:text-2xl font-black text-emerald-700 font-mono">
               {totalCustomerProfit.toLocaleString(undefined, { minimumFractionDigits: 2 })}
             </span>
-            <span className="text-xs font-semibold text-emerald-600">{config.currency}</span>
+            <span className="text-[10px] sm:text-xs font-semibold text-emerald-600">{config.currency}</span>
           </div>
-          <span className="text-[10px] font-bold text-emerald-700 block mt-1.5 bg-emerald-100/60 py-1 px-2.5 rounded-lg w-max">
+          <span className="text-[9px] sm:text-[10px] font-bold text-emerald-700 block mt-1 bg-emerald-100/60 py-0.5 px-2 rounded-lg w-max truncate">
             {selectedMonth ? (isRTL ? `شهر ${selectedMonth}` : `Mois: ${selectedMonth}`) : (isRTL ? 'صافي الأرباح' : 'Gain net')}
           </span>
         </div>
 
         {/* Total Paid on Invoices */}
-        <div className="bg-white p-4.5 rounded-2xl border border-slate-100 shadow-xs text-start">
-          <span className="text-[10px] text-slate-400 font-extrabold uppercase tracking-widest block">
+        <div className="bg-white p-3 sm:p-4 rounded-2xl border border-slate-100 shadow-xs text-start flex flex-col justify-between">
+          <span className="text-[9px] sm:text-[10px] text-slate-400 font-extrabold uppercase tracking-widest block truncate">
             {labels.totalPaidOnInvoices}
           </span>
-          <div className="flex items-baseline gap-1 mt-1.5">
-            <span className="text-2xl font-black text-emerald-600 font-mono">
+          <div className="flex items-baseline gap-1 mt-1">
+            <span className="text-lg sm:text-2xl font-black text-emerald-600 font-mono">
               {totalInvoicedPaidSum.toLocaleString(undefined, { minimumFractionDigits: 2 })}
             </span>
-            <span className="text-xs font-semibold text-slate-500">{config.currency}</span>
+            <span className="text-[10px] sm:text-xs font-semibold text-slate-500">{config.currency}</span>
           </div>
-          <span className="text-[10px] font-bold text-emerald-600 block mt-1.5 bg-emerald-50/50 py-1 px-2.5 rounded-lg w-max">
+          <span className="text-[9px] sm:text-[10px] font-bold text-emerald-600 block mt-1 bg-emerald-50/50 py-0.5 px-2 rounded-lg w-max truncate">
             {activeInvoicesForStats.filter(i => i.status === 'paid').length} {isRTL ? 'مسواه بالكامل' : 'fully paid'}
           </span>
         </div>
 
         {/* Total subsequent debt settlements */}
-        <div className="bg-white p-4.5 rounded-2xl border border-slate-100 shadow-xs text-start">
-          <span className="text-[10px] text-slate-400 font-extrabold uppercase tracking-widest block">
+        <div className="bg-white p-3 sm:p-4 rounded-2xl border border-slate-100 shadow-xs text-start flex flex-col justify-between">
+          <span className="text-[9px] sm:text-[10px] text-slate-400 font-extrabold uppercase tracking-widest block truncate">
             {labels.totalSubRepayments}
           </span>
-          <div className="flex items-baseline gap-1 mt-1.5">
-            <span className="text-2xl font-black text-blue-600 font-mono">
+          <div className="flex items-baseline gap-1 mt-1">
+            <span className="text-lg sm:text-2xl font-black text-blue-600 font-mono">
               {totalDirectRepayments.toLocaleString(undefined, { minimumFractionDigits: 2 })}
             </span>
-            <span className="text-xs font-semibold text-slate-500">{config.currency}</span>
+            <span className="text-[10px] sm:text-xs font-semibold text-slate-500">{config.currency}</span>
           </div>
-          <span className="text-[10px] font-bold text-blue-600 block mt-1.5 bg-blue-50/50 py-1 px-2.5 rounded-lg w-max">
-            {activeRepaymentsForStats.length} {isRTL ? 'إيصالات تسديد المديونية' : 'Ledger receipts'}
+          <span className="text-[9px] sm:text-[10px] font-bold text-blue-600 block mt-1 bg-blue-50/50 py-0.5 px-2 rounded-lg w-max truncate">
+            {activeRepaymentsForStats.length} {isRTL ? 'إيصالات تسديد' : 'Ledger receipts'}
           </span>
         </div>
 
         {/* PROFILE DEBT OR CREDIT STATUS */}
-        <div className="bg-white p-4.5 rounded-2xl border border-slate-100 shadow-xs text-start">
-          <span className="text-[10px] text-slate-400 font-extrabold uppercase tracking-widest block">
+        <div className="col-span-2 lg:col-span-1 bg-white p-3 sm:p-4 rounded-2xl border border-slate-100 shadow-xs text-start flex flex-col justify-between">
+          <span className="text-[9px] sm:text-[10px] text-slate-400 font-extrabold uppercase tracking-widest block truncate">
             {labels.netOutstandingDebt}
           </span>
-          <div className="flex items-baseline gap-1 mt-1.5">
-            <span className={`text-2xl font-black font-mono ${customer.debt > 0 ? 'text-rose-600' : 'text-emerald-600'}`}>
+          <div className="flex items-baseline gap-1 mt-1">
+            <span className={`text-xl sm:text-2xl font-black font-mono ${customer.debt > 0 ? 'text-rose-600' : 'text-emerald-600'}`}>
               {customer.debt.toLocaleString(undefined, { minimumFractionDigits: 2 })}
             </span>
-            <span className="text-xs font-semibold text-slate-500">{config.currency}</span>
+            <span className="text-[10px] sm:text-xs font-semibold text-slate-500">{config.currency}</span>
           </div>
-          <span className={`text-[10px] font-bold block mt-1.5 py-1 px-2.5 rounded-lg w-max ${
+          <span className={`text-[9px] sm:text-[10px] font-bold block mt-1 py-0.5 px-2 rounded-lg w-max truncate ${
             customer.debt > 0 ? 'bg-rose-50 text-rose-600' : 'bg-emerald-50 text-emerald-600'
           }`}>
             {customer.debt > 0 
-              ? (isRTL ? 'الزبون مطالب بالدفع (آجل)' : 'Client must repay debt') 
-              : (isRTL ? 'الحساب مسوى تماماً' : 'Balance clear & settled')}
+              ? (isRTL ? 'الزبون مطالب بالدفع (آجل)' : 'Client doit payer') 
+              : (isRTL ? 'الحساب مسوى تماماً' : 'Balance réglée')}
           </span>
         </div>
       </div>
 
       {/* Filter and Timeline Ledger Container */}
-      <div className="bg-white border border-slate-100 rounded-3xl p-4 sm:p-6 shadow-xs flex flex-col space-y-4">
+      <div className="bg-white border border-slate-100 rounded-2xl sm:rounded-3xl p-3 sm:p-6 shadow-xs flex flex-col space-y-3.5 sm:space-y-4">
         {/* Search & Tabs Filtering */}
-        <div className="flex flex-col md:flex-row justify-between items-start md:items-center gap-4">
-          <div className="flex bg-slate-100 p-1 rounded-xl self-start flex-wrap gap-1">
+        <div className="flex flex-col md:flex-row justify-between items-stretch md:items-center gap-3">
+          <div className="flex bg-slate-100 p-1 rounded-xl w-full md:w-auto">
             <button
               id="filter-tabs-all"
               onClick={() => setFilter('all')}
-              className={`px-3.5 py-2 text-xs font-bold rounded-lg transition ${
+              className={`flex-1 md:flex-none px-3 sm:px-3.5 py-1.5 sm:py-2 text-xs font-bold rounded-lg transition text-center ${
                 filter === 'all' ? 'bg-white shadow-xs text-slate-800' : 'text-slate-500 hover:text-slate-800'
               }`}
             >
@@ -565,7 +566,7 @@ export default function CustomerLedger({ customer, invoices, logs, customerPayme
             <button
               id="filter-tabs-invoices"
               onClick={() => setFilter('invoices')}
-              className={`px-3.5 py-2 text-xs font-bold rounded-lg transition ${
+              className={`flex-1 md:flex-none px-3 sm:px-3.5 py-1.5 sm:py-2 text-xs font-bold rounded-lg transition text-center ${
                 filter === 'invoices' ? 'bg-white shadow-xs text-slate-800' : 'text-slate-500 hover:text-slate-800'
               }`}
             >
@@ -574,7 +575,7 @@ export default function CustomerLedger({ customer, invoices, logs, customerPayme
             <button
               id="filter-tabs-payments"
               onClick={() => setFilter('payments')}
-              className={`px-3.5 py-2 text-xs font-bold rounded-lg transition ${
+              className={`flex-1 md:flex-none px-3 sm:px-3.5 py-1.5 sm:py-2 text-xs font-bold rounded-lg transition text-center ${
                 filter === 'payments' ? 'bg-white shadow-xs text-slate-800' : 'text-slate-500 hover:text-slate-800'
               }`}
             >
@@ -587,25 +588,25 @@ export default function CustomerLedger({ customer, invoices, logs, customerPayme
               id="ledger-timeline-search"
               type="text"
               placeholder={labels.searchPlaceholder}
-              className={`w-full text-xs font-bold py-2 bg-slate-50 text-slate-800 rounded-lg border border-slate-200 focus:ring-1 focus:ring-indigo-500 focus:outline-none pl-9 pr-4 ${
+              className={`w-full text-xs font-bold py-2 bg-slate-50 text-slate-800 rounded-lg border border-slate-200 focus:ring-1 focus:ring-indigo-500 focus:outline-none ps-9 pe-4 ${
                 isRTL ? 'text-right' : 'text-left'
               }`}
               value={searchQuery}
               onChange={(e) => setSearchQuery(e.target.value)}
             />
-            <Search className="w-4 h-4 text-slate-400 absolute left-3 top-2.5" />
+            <Search className="w-4 h-4 text-slate-400 absolute start-3 top-2.5" />
           </div>
         </div>
 
         {/* Date & Month Search Bar (بحث بالشهر أو بالتاريخ من / إلى) */}
-        <div className="flex flex-wrap items-center gap-3 bg-slate-50/90 p-3 rounded-2xl border border-slate-200/80 text-xs">
-          <div className="flex items-center gap-1.5 text-indigo-700 font-black">
+        <div className="flex flex-wrap items-center gap-2 sm:gap-3 bg-slate-50/90 p-2.5 sm:p-3 rounded-2xl border border-slate-200/80 text-xs">
+          <div className="flex items-center gap-1.5 text-indigo-700 font-black w-full sm:w-auto">
             <Calendar className="w-4 h-4 text-indigo-600 shrink-0" />
             <span>{isRTL ? 'بحث بالتاريخ أو بشهر معين:' : 'Filtrer par mois ou date:'}</span>
           </div>
 
-          <div className="flex items-center gap-1.5 bg-white px-2.5 py-1.5 rounded-xl border border-slate-200 shadow-2xs">
-            <span className="font-bold text-slate-600">{isRTL ? 'الشهر:' : 'Mois:'}</span>
+          <div className="flex items-center gap-1.5 bg-white px-2.5 py-1.5 rounded-xl border border-slate-200 shadow-2xs flex-1 sm:flex-none min-w-[125px]">
+            <span className="font-bold text-slate-600 shrink-0">{isRTL ? 'الشهر:' : 'Mois:'}</span>
             <input
               type="month"
               value={selectedMonth}
@@ -616,12 +617,12 @@ export default function CustomerLedger({ customer, invoices, logs, customerPayme
                   setToDate('');
                 }
               }}
-              className="text-xs font-bold text-slate-800 focus:outline-none bg-transparent cursor-pointer"
+              className="text-xs font-bold text-slate-800 focus:outline-none bg-transparent cursor-pointer w-full"
             />
           </div>
 
-          <div className="flex items-center gap-1.5 bg-white px-2.5 py-1.5 rounded-xl border border-slate-200 shadow-2xs">
-            <span className="font-bold text-slate-600">{isRTL ? 'من تاريخ:' : 'Du:'}</span>
+          <div className="flex items-center gap-1.5 bg-white px-2.5 py-1.5 rounded-xl border border-slate-200 shadow-2xs flex-1 sm:flex-none min-w-[125px]">
+            <span className="font-bold text-slate-600 shrink-0">{isRTL ? 'من:' : 'Du:'}</span>
             <input
               type="date"
               value={fromDate}
@@ -629,12 +630,12 @@ export default function CustomerLedger({ customer, invoices, logs, customerPayme
                 setFromDate(e.target.value);
                 if (e.target.value) setSelectedMonth('');
               }}
-              className="text-xs font-bold text-slate-800 focus:outline-none bg-transparent cursor-pointer"
+              className="text-xs font-bold text-slate-800 focus:outline-none bg-transparent cursor-pointer w-full"
             />
           </div>
 
-          <div className="flex items-center gap-1.5 bg-white px-2.5 py-1.5 rounded-xl border border-slate-200 shadow-2xs">
-            <span className="font-bold text-slate-600">{isRTL ? 'إلى تاريخ:' : 'Au:'}</span>
+          <div className="flex items-center gap-1.5 bg-white px-2.5 py-1.5 rounded-xl border border-slate-200 shadow-2xs flex-1 sm:flex-none min-w-[125px]">
+            <span className="font-bold text-slate-600 shrink-0">{isRTL ? 'إلى:' : 'Au:'}</span>
             <input
               type="date"
               value={toDate}
@@ -642,7 +643,7 @@ export default function CustomerLedger({ customer, invoices, logs, customerPayme
                 setToDate(e.target.value);
                 if (e.target.value) setSelectedMonth('');
               }}
-              className="text-xs font-bold text-slate-800 focus:outline-none bg-transparent cursor-pointer"
+              className="text-xs font-bold text-slate-800 focus:outline-none bg-transparent cursor-pointer w-full"
             />
           </div>
 
@@ -654,14 +655,14 @@ export default function CustomerLedger({ customer, invoices, logs, customerPayme
                 setFromDate('');
                 setToDate('');
               }}
-              className="px-3 py-1.5 bg-rose-50 hover:bg-rose-100 text-rose-700 border border-rose-200 rounded-xl font-bold transition cursor-pointer"
+              className="px-3 py-1.5 bg-rose-50 hover:bg-rose-100 text-rose-700 border border-rose-200 rounded-xl font-bold transition cursor-pointer shrink-0"
             >
               {isRTL ? 'إظهار كل التواريخ' : 'Réinitialiser'}
             </button>
           )}
 
           {hasDateFilter && (
-            <div className="ms-auto flex items-center gap-2 text-[11px] font-black text-indigo-700 bg-indigo-50 px-3 py-1.5 rounded-xl border border-indigo-200">
+            <div className="w-full sm:w-auto sm:ms-auto flex items-center gap-2 text-[11px] font-black text-indigo-700 bg-indigo-50 px-3 py-1.5 rounded-xl border border-indigo-200">
               <span>
                 {isRTL
                   ? `نتائج الفترة: ${filteredLedger.length} معاملة | المجموع: ${totalInvoicedSum.toFixed(2)} ${config.currency}`
@@ -672,7 +673,7 @@ export default function CustomerLedger({ customer, invoices, logs, customerPayme
         </div>
 
         {/* Unified Timeline Log */}
-        <div className="space-y-4 pt-2">
+        <div className="space-y-3 sm:space-y-4 pt-1 sm:pt-2">
           {filteredLedger.length > 0 ? (
             filteredLedger.map((item) => {
               const isInv = item.type === 'invoice';
@@ -683,75 +684,75 @@ export default function CustomerLedger({ customer, invoices, logs, customerPayme
               return (
                 <div 
                   key={item.id} 
-                  className={`border rounded-2xl p-4 transition-all duration-200 text-start ${
+                  className={`border rounded-2xl p-3 sm:p-4 transition-all duration-200 text-start ${
                     isInv 
                       ? 'bg-white hover:bg-slate-50/20 border-slate-100' 
                       : 'bg-emerald-50/15 hover:bg-emerald-50/25 border-emerald-100/60'
                   }`}
                 >
-                  <div className="flex flex-col sm:flex-row justify-between items-start gap-4">
+                  <div className="flex flex-col sm:flex-row justify-between items-start gap-3 sm:gap-4">
                     {/* Time & Title info area */}
-                    <div className="flex items-start gap-3">
-                      <div className={`p-2.5 rounded-xl mt-0.5 shrink-0 ${
+                    <div className="flex items-start gap-2.5 sm:gap-3">
+                      <div className={`p-2 sm:p-2.5 rounded-xl mt-0.5 shrink-0 ${
                         isInv ? 'bg-slate-100 text-slate-600' : 'bg-emerald-100 text-emerald-700'
                       }`}>
-                        {isInv ? <FileText className="w-5 h-5" /> : <CheckCircle className="w-5 h-5" />}
+                        {isInv ? <FileText className="w-4 h-4 sm:w-5 sm:h-5" /> : <CheckCircle className="w-4 h-4 sm:w-5 sm:h-5" />}
                       </div>
 
-                      <div className="space-y-1">
-                        <div className="flex items-center gap-2 flex-wrap">
-                          <h4 className="font-extrabold text-slate-800 text-sm">{item.title}</h4>
-                          <span className="font-mono text-[10px] px-2 py-0.5 bg-slate-100 text-slate-500 rounded-md font-bold uppercase">
+                      <div className="space-y-0.5 sm:space-y-1 min-w-0">
+                        <div className="flex items-center gap-1.5 sm:gap-2 flex-wrap">
+                          <h4 className="font-extrabold text-slate-800 text-xs sm:text-sm">{item.title}</h4>
+                          <span className="font-mono text-[9px] sm:text-[10px] px-2 py-0.5 bg-slate-100 text-slate-500 rounded-md font-bold uppercase">
                             #{item.reference}
                           </span>
                           {!isInv && (
-                            <span className="px-2 py-0.5 bg-emerald-100 text-emerald-800 font-bold rounded text-[9px] uppercase tracking-wide">
-                              {isRTL ? 'تسديد دفعة دين' : 'Account repayment'}
+                            <span className="px-2 py-0.5 bg-emerald-100 text-emerald-800 font-bold rounded text-[8px] sm:text-[9px] uppercase tracking-wide">
+                              {isRTL ? 'تسديد دفعة دين' : 'Paiement dette'}
                             </span>
                           )}
                         </div>
-                        <p className="text-xs text-slate-500 font-semibold">{item.subtitle}</p>
+                        <p className="text-[11px] sm:text-xs text-slate-500 font-semibold">{item.subtitle}</p>
                         
-                        <div className="flex items-center gap-2 text-[10px] text-slate-400 font-bold">
-                          <Clock className="w-3.5 h-3.5" />
+                        <div className="flex items-center gap-1.5 text-[9px] sm:text-[10px] text-slate-400 font-bold">
+                          <Clock className="w-3 h-3 text-slate-400" />
                           <span>{item.date ? new Date(item.date).toLocaleString() : ''}</span>
                         </div>
                       </div>
                     </div>
 
                     {/* Transaction metrics */}
-                    <div className="text-start sm:text-end space-y-1 self-stretch flex flex-col justify-between sm:items-end">
+                    <div className="text-start sm:text-end space-y-1 w-full sm:w-auto self-stretch flex flex-col justify-between sm:items-end bg-slate-50/60 sm:bg-transparent p-2 sm:p-0 rounded-xl border border-slate-100 sm:border-0">
                       {isInv ? (
                         <>
                           <div className="flex items-baseline gap-1 sm:justify-end">
-                            <span className="text-[10px] font-bold text-slate-400 capitalize">{isRTL ? 'إجمالي الفاتورة:' : 'Invoice Total:'}</span>
-                            <span className="font-mono font-black text-slate-800 text-base">{invRaw.total.toFixed(2)}</span>
+                            <span className="text-[10px] font-bold text-slate-400 capitalize">{isRTL ? 'إجمالي الفاتورة:' : 'Total:'}</span>
+                            <span className="font-mono font-black text-slate-800 text-sm sm:text-base">{invRaw.total.toFixed(2)}</span>
                             <span className="text-[10px] font-semibold text-slate-500">{config.currency}</span>
                           </div>
 
-                          <div className="flex items-center gap-4 flex-wrap sm:justify-end text-[11px] font-semibold">
+                          <div className="flex items-center gap-3 sm:gap-4 flex-wrap sm:justify-end text-[10px] sm:text-[11px] font-semibold">
                             <span className="text-emerald-600">
-                              {isRTL ? 'المدفوع:' : 'Paid:'} {invRaw.amountPaid.toFixed(2)} {config.currency}
+                              {isRTL ? 'المدفوع:' : 'Payé:'} {invRaw.amountPaid.toFixed(2)} {config.currency}
                             </span>
                             {remainingVal > 0 ? (
-                              <span className="text-rose-600">
-                                {isRTL ? 'المتبقي (دين):' : 'Debt:'} {remainingVal.toFixed(2)} {config.currency}
+                              <span className="text-rose-600 font-bold">
+                                {isRTL ? 'المتبقي (دين):' : 'Reste:'} {remainingVal.toFixed(2)} {config.currency}
                               </span>
                             ) : (
-                              <span className="bg-emerald-100 text-emerald-800 font-extrabold px-1.5 py-0.5 rounded text-[9px]">
-                                {isRTL ? 'مسددة بالكامل' : 'Paid in full'}
+                              <span className="bg-emerald-100 text-emerald-800 font-extrabold px-1.5 py-0.5 rounded text-[8px] sm:text-[9px]">
+                                {isRTL ? 'مسددة بالكامل' : 'Réglée'}
                               </span>
                             )}
                           </div>
                         </>
                       ) : (
                         <div className="flex flex-col sm:items-end justify-center h-full">
-                          <span className="text-[10px] font-bold text-emerald-600 uppercase tracking-wider">
-                            {isRTL ? 'المبلغ المستلم كدفعة سداد:' : 'Amount Logged / Settled:'}
+                          <span className="text-[9px] sm:text-[10px] font-bold text-emerald-600 uppercase tracking-wider">
+                            {isRTL ? 'المبلغ المستلم كدفعة سداد:' : 'Montant payé:'}
                           </span>
                           <div className="flex items-baseline gap-1 mt-0.5">
-                            <span className="text-emerald-700 font-mono font-extrabold text-base">-{item.amountPaid.toFixed(2)}</span>
-                            <span className="text-xs font-semibold text-emerald-600">{config.currency}</span>
+                            <span className="text-emerald-700 font-mono font-extrabold text-sm sm:text-base">-{item.amountPaid.toFixed(2)}</span>
+                            <span className="text-[10px] sm:text-xs font-semibold text-emerald-600">{config.currency}</span>
                           </div>
                         </div>
                       )}
@@ -761,16 +762,16 @@ export default function CustomerLedger({ customer, invoices, logs, customerPayme
                         <button
                           id={`btn-toggle-inv-items-${item.id}`}
                           onClick={() => toggleInvoiceExpand(item.id)}
-                          className="text-[10px] font-extrabold text-slate-500 hover:text-slate-800 flex items-center gap-1 mt-1 transition focus:outline-none cursor-pointer self-start sm:self-auto bg-slate-50 hover:bg-slate-100 py-1 px-2.5 rounded-lg border border-slate-100"
+                          className="text-[10px] font-extrabold text-slate-600 hover:text-slate-900 flex items-center gap-1 mt-1 transition focus:outline-none cursor-pointer self-start sm:self-auto bg-white hover:bg-slate-100 py-1 px-2.5 rounded-lg border border-slate-200/80 shadow-2xs"
                         >
                           {isExpanded ? (
                             <>
-                              <span>{isRTL ? 'إخفاء عناصر المبيعات' : 'Hide purchase items'}</span>
+                              <span>{isRTL ? 'إخفاء عناصر المبيعات' : 'Masquer articles'}</span>
                               <ChevronUp className="w-3 h-3" />
                             </>
                           ) : (
                             <>
-                              <span>{isRTL ? 'عرض المنتجات المشتراة' : 'Show purchase items'}</span>
+                              <span>{isRTL ? 'عرض المنتجات المشتراة' : 'Voir articles'}</span>
                               <ChevronDown className="w-3 h-3 text-slate-500" />
                             </>
                           )}

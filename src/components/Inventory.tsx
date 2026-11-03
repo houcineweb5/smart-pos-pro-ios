@@ -36,7 +36,8 @@ import {
   MessageCircle,
   Copy,
   Share2,
-  Tags
+  Tags,
+  ArrowLeft
 } from 'lucide-react';
 import CameraBarcodeModal from './CameraBarcodeModal';
 
@@ -1549,28 +1550,38 @@ export default function Inventory({ products, config, onSaveProduct, onDeletePro
 
       {/* Barcode Stickers Printing Modal */}
       {showBarcodeModal && (
-        <div
-          className="fixed inset-0 bg-slate-900/60 backdrop-blur-xs flex items-start sm:items-center justify-center px-3 sm:px-4 z-[100] overflow-y-auto safe-modal-overlay"
-          style={{
-            paddingTop: 'max(3.25rem, calc(env(safe-area-inset-top, 20px) + 1rem))',
-            paddingBottom: 'max(1.5rem, env(safe-area-inset-bottom, 20px))'
-          }}
-        >
-          <div className="bg-white rounded-3xl shadow-2xl border border-slate-100 w-full max-w-4xl overflow-hidden animate-fade-in my-auto text-start flex flex-col max-h-[calc(100dvh-4.75rem)]">
+        <div className="fixed inset-0 bg-slate-900/60 backdrop-blur-xs flex items-center justify-center p-0 sm:p-4 z-[100] safe-modal-overlay">
+          <div className="bg-white rounded-none sm:rounded-3xl shadow-2xl border-0 sm:border border-slate-100 w-full max-w-4xl h-[100dvh] sm:h-auto sm:max-h-[92vh] overflow-hidden animate-fade-in text-start flex flex-col">
             {/* Top Header */}
-            <div className="flex flex-wrap justify-between items-center bg-slate-50 px-5 sm:px-6 py-4 border-b border-slate-100 shrink-0 gap-2">
-              <div className="flex items-center gap-2">
-                <Barcode className="w-5 h-5 text-indigo-600" />
-                <h3 className="font-bold text-slate-800 text-base">
-                  {lang === 'ar' ? 'مولد وطباعة ملصقات الباركود' : 'Barcode Labels & Sticker Printer'}
-                </h3>
+            <div className="flex flex-col sm:flex-row justify-between items-stretch sm:items-center bg-slate-50 px-3.5 sm:px-6 py-3 sm:py-4 border-b border-slate-200 shrink-0 gap-2.5">
+              <div className="flex items-center justify-between sm:justify-start gap-2">
+                <div className="flex items-center gap-2">
+                  <div className="p-1.5 bg-indigo-100 text-indigo-700 rounded-xl">
+                    <Barcode className="w-5 h-5 text-indigo-600 shrink-0" />
+                  </div>
+                  <h3 className="font-bold text-slate-800 text-sm sm:text-base">
+                    {lang === 'ar' ? 'مولد وطباعة ملصقات الباركود' : 'Barcode Labels & Sticker Printer'}
+                  </h3>
+                </div>
+
+                {/* Mobile Header Close Button */}
+                <button
+                  type="button"
+                  onClick={() => setShowBarcodeModal(false)}
+                  className="sm:hidden flex items-center gap-1 px-2.5 py-1.5 bg-slate-200 hover:bg-slate-300 active:bg-slate-400 text-slate-700 rounded-xl text-xs font-bold transition cursor-pointer"
+                  title={lang === 'ar' ? 'إغلاق وعودة' : 'Fermer'}
+                >
+                  <ArrowLeft className={`w-3.5 h-3.5 ${isRTL ? 'rotate-180' : ''}`} />
+                  <span>{lang === 'ar' ? 'عودة' : 'Retour'}</span>
+                </button>
               </div>
-              <div className="flex flex-wrap items-center gap-2 sm:gap-3">
-                <div className="flex bg-slate-200/80 p-0.5 rounded-lg text-xs font-bold">
+
+              <div className="flex items-center justify-between sm:justify-end gap-2 sm:gap-3">
+                <div className="flex bg-slate-200/80 p-0.5 rounded-xl text-xs font-bold flex-1 sm:flex-none">
                   <button
                     type="button"
                     onClick={() => setBarcodePrintMode('thermal')}
-                    className={`px-2.5 py-1 rounded-md transition cursor-pointer ${
+                    className={`flex-1 sm:flex-none px-2.5 py-1.5 rounded-lg transition cursor-pointer text-center ${
                       barcodePrintMode === 'thermal' ? 'bg-white text-indigo-700 shadow-xs' : 'text-slate-600 hover:text-slate-900'
                     }`}
                   >
@@ -1579,24 +1590,17 @@ export default function Inventory({ products, config, onSaveProduct, onDeletePro
                   <button
                     type="button"
                     onClick={() => setBarcodePrintMode('a4')}
-                    className={`px-2.5 py-1 rounded-md transition cursor-pointer ${
+                    className={`flex-1 sm:flex-none px-2.5 py-1.5 rounded-lg transition cursor-pointer text-center ${
                       barcodePrintMode === 'a4' ? 'bg-white text-indigo-700 shadow-xs' : 'text-slate-600 hover:text-slate-900'
                     }`}
                   >
                     {lang === 'ar' ? 'ورق A4 متعدد' : 'A4 Sheet'}
                   </button>
                 </div>
-                <button
-                  id="btn-print-barcode-stickers"
-                  onClick={triggerPrintBarcodes}
-                  className="flex items-center gap-1.5 px-4 py-2 bg-indigo-600 hover:bg-indigo-700 text-white rounded-xl text-xs font-bold transition shadow-xs cursor-pointer"
-                >
-                  <Printer className="w-4 h-4" />
-                  <span>{lang === 'ar' ? 'طباعة الملصقات' : 'Print Stickers'}</span>
-                </button>
+
                 <button
                   onClick={() => setShowBarcodeModal(false)}
-                  className="p-1.5 hover:bg-slate-200 text-slate-400 rounded-lg transition cursor-pointer"
+                  className="hidden sm:flex p-1.5 hover:bg-slate-200 text-slate-400 hover:text-slate-700 rounded-lg transition cursor-pointer"
                 >
                   <X className="w-5 h-5" />
                 </button>
@@ -1604,9 +1608,12 @@ export default function Inventory({ products, config, onSaveProduct, onDeletePro
             </div>
 
             {/* Main Body */}
-            <div className="p-6 overflow-y-auto flex-1 space-y-6">
+            <div 
+              className="p-3 sm:p-6 overflow-y-auto flex-1 space-y-4 sm:space-y-6 overscroll-contain touch-pan-y"
+              style={{ WebkitOverflowScrolling: 'touch' }}
+            >
               {/* Selection Toolbar */}
-              <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-3 bg-slate-50 p-4 rounded-2xl border border-slate-100">
+              <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-2.5 sm:gap-3 bg-slate-50 p-3 sm:p-4 rounded-2xl border border-slate-100">
                 <div className="relative flex-1 w-full">
                   <Search className="w-4 h-4 text-slate-400 absolute start-3 top-3" />
                   <input
@@ -1617,28 +1624,113 @@ export default function Inventory({ products, config, onSaveProduct, onDeletePro
                     className="w-full ps-9 pe-3 py-2 bg-white border border-slate-200 rounded-xl text-xs font-semibold focus:outline-none focus:ring-2 focus:ring-indigo-500"
                   />
                 </div>
-                <div className="flex items-center gap-2 shrink-0">
+                <div className="flex items-center gap-2 w-full sm:w-auto">
                   <button
                     onClick={() => {
                       const all: Record<string, number> = {};
                       products.forEach(p => { all[p.id] = Math.max(1, p.stock || 1); });
                       setBarcodeSelection(all);
                     }}
-                    className="px-3 py-1.5 bg-white hover:bg-slate-100 text-slate-700 border border-slate-200 rounded-lg text-xs font-bold transition cursor-pointer"
+                    className="flex-1 sm:flex-none px-3 py-1.5 bg-white hover:bg-slate-100 text-slate-700 border border-slate-200 rounded-xl text-xs font-bold transition cursor-pointer text-center"
                   >
                     {lang === 'ar' ? 'تحديد الكل' : 'Select All'}
                   </button>
                   <button
                     onClick={() => setBarcodeSelection({})}
-                    className="px-3 py-1.5 bg-white hover:bg-slate-100 text-slate-500 border border-slate-200 rounded-lg text-xs font-bold transition cursor-pointer"
+                    className="flex-1 sm:flex-none px-3 py-1.5 bg-white hover:bg-slate-100 text-slate-500 border border-slate-200 rounded-xl text-xs font-bold transition cursor-pointer text-center"
                   >
                     {lang === 'ar' ? 'إلغاء التحديد' : 'Clear'}
                   </button>
                 </div>
               </div>
 
-              {/* Product Selection List */}
-              <div className="border border-slate-200 rounded-2xl overflow-hidden max-h-56 overflow-y-auto">
+              {/* Product Selection List: Mobile Responsive Cards (sm:hidden) */}
+              <div className="block sm:hidden space-y-2">
+                <span className="text-[10px] font-extrabold text-slate-400 uppercase tracking-wider block px-1">
+                  {lang === 'ar' ? 'اختر المنتجات وحدد عدد الملصقات لكل منتج:' : 'Select products & stickers count:'}
+                </span>
+                <div className="space-y-2 max-h-72 overflow-y-auto p-1">
+                  {products
+                    .filter(p => p.name.toLowerCase().includes(barcodeSearch.toLowerCase()) || p.sku.toLowerCase().includes(barcodeSearch.toLowerCase()))
+                    .map(p => {
+                      const count = barcodeSelection[p.id] || 0;
+                      const isChecked = count > 0;
+                      return (
+                        <div
+                          key={p.id}
+                          className={`p-3 rounded-2xl border transition-all ${
+                            isChecked ? 'bg-indigo-50/50 border-indigo-200 shadow-2xs' : 'bg-white border-slate-200'
+                          }`}
+                        >
+                          <div className="flex items-start justify-between gap-2">
+                            <label className="flex items-center gap-2 min-w-0 cursor-pointer flex-1">
+                              <input
+                                type="checkbox"
+                                checked={isChecked}
+                                onChange={(e) => {
+                                  setBarcodeSelection({
+                                    ...barcodeSelection,
+                                    [p.id]: e.target.checked ? Math.max(1, p.stock || 1) : 0
+                                  });
+                                }}
+                                className="rounded text-indigo-600 focus:ring-indigo-500 shrink-0 w-4 h-4"
+                              />
+                              <div className="min-w-0">
+                                <span className="font-black text-slate-900 text-xs block truncate">{p.name}</span>
+                                <span className="text-[10px] font-mono text-slate-500 block">{p.sku}</span>
+                              </div>
+                            </label>
+                            <span className="font-mono font-black text-slate-800 text-xs shrink-0">
+                              {p.sellingPrice.toFixed(2)} {currency}
+                            </span>
+                          </div>
+
+                          <div className="flex items-center justify-between mt-2 pt-2 border-t border-slate-100">
+                            <span className="text-[10px] font-bold text-slate-500">{lang === 'ar' ? 'عدد الملصقات:' : 'Stickers:'}</span>
+                            <div className="flex items-center gap-1.5">
+                              <button
+                                type="button"
+                                onClick={() => {
+                                  const current = barcodeSelection[p.id] || 0;
+                                  if (current > 0) {
+                                    setBarcodeSelection({ ...barcodeSelection, [p.id]: current - 1 });
+                                  }
+                                }}
+                                className="w-7 h-7 bg-slate-100 active:bg-slate-200 rounded-lg text-slate-700 font-black flex items-center justify-center text-sm cursor-pointer"
+                              >
+                                -
+                              </button>
+                              <input
+                                type="number"
+                                min="0"
+                                max="500"
+                                value={count}
+                                onChange={(e) => {
+                                  const val = Math.max(0, parseInt(e.target.value) || 0);
+                                  setBarcodeSelection({ ...barcodeSelection, [p.id]: val });
+                                }}
+                                className="w-14 px-1 py-1 text-center font-black border border-slate-200 rounded-lg text-xs bg-white focus:outline-none focus:ring-1 focus:ring-indigo-500"
+                              />
+                              <button
+                                type="button"
+                                onClick={() => {
+                                  const current = barcodeSelection[p.id] || 0;
+                                  setBarcodeSelection({ ...barcodeSelection, [p.id]: current + 1 });
+                                }}
+                                className="w-7 h-7 bg-indigo-50 active:bg-indigo-100 rounded-lg text-indigo-700 font-black flex items-center justify-center text-sm cursor-pointer"
+                              >
+                                +
+                              </button>
+                            </div>
+                          </div>
+                        </div>
+                      );
+                    })}
+                </div>
+              </div>
+
+              {/* Product Selection List: Desktop Table (hidden sm:block) */}
+              <div className="hidden sm:block border border-slate-200 rounded-2xl overflow-hidden max-h-56 overflow-y-auto shadow-2xs">
                 <table className="w-full text-xs">
                   <thead className="bg-slate-50 border-b border-slate-200 text-slate-500 font-bold sticky top-0">
                     <tr>
@@ -1698,7 +1790,7 @@ export default function Inventory({ products, config, onSaveProduct, onDeletePro
 
               {/* Live Sticker Preview Box */}
               <div>
-                <div className="flex items-center justify-between mb-3">
+                <div className="flex items-center justify-between mb-2.5">
                   <h4 className="text-xs font-black uppercase tracking-wider text-slate-500">
                     {lang === 'ar' ? 'معاينة شكل الملصقات قبل الطباعة:' : 'Live Labels Preview:'}
                   </h4>
@@ -1709,9 +1801,9 @@ export default function Inventory({ products, config, onSaveProduct, onDeletePro
                   </span>
                 </div>
 
-                <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 gap-3 bg-slate-100/70 p-4 rounded-2xl border border-slate-200 max-h-60 overflow-y-auto">
+                <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 gap-2.5 sm:gap-3 bg-slate-100/70 p-3 sm:p-4 rounded-2xl border border-slate-200 max-h-56 sm:max-h-60 overflow-y-auto">
                   {(Object.entries(barcodeSelection) as [string, number][]).filter(([_, count]) => Number(count) > 0).length === 0 ? (
-                    <div className="col-span-full py-8 text-center text-slate-400 font-semibold text-xs">
+                    <div className="col-span-full py-6 sm:py-8 text-center text-slate-400 font-semibold text-xs">
                       {lang === 'ar' ? 'حدد المنتجات وعدد الملصقات لمعاينتها هنا.' : 'Select products above to preview labels.'}
                     </div>
                   ) : (
@@ -1723,15 +1815,15 @@ export default function Inventory({ products, config, onSaveProduct, onDeletePro
                         return (
                           <div
                             key={prod.id}
-                            className="bg-white rounded-xl border border-dashed border-slate-300 p-3 flex flex-col items-center justify-between text-center shadow-xs"
+                            className="bg-white rounded-xl border border-dashed border-slate-300 p-2.5 sm:p-3 flex flex-col items-center justify-between text-center shadow-xs"
                           >
                             <span className="text-[9px] font-bold text-slate-400 uppercase tracking-widest block truncate w-full">{storeName}</span>
                             <span className="text-xs font-black text-slate-800 line-clamp-1 mt-0.5">{prod.name}</span>
-                            <div className="my-1.5" dangerouslySetInnerHTML={{ __html: getBarcodeSvgString(prod.sku) }} />
-                            <span className="text-sm font-black font-mono text-slate-900 border-t border-slate-100 pt-1 w-full block">
+                            <div className="my-1 sm:my-1.5 w-full flex justify-center overflow-hidden" dangerouslySetInnerHTML={{ __html: getBarcodeSvgString(prod.sku) }} />
+                            <span className="text-xs sm:text-sm font-black font-mono text-slate-900 border-t border-slate-100 pt-1 w-full block">
                               {prod.sellingPrice.toFixed(2)} {currency}
                             </span>
-                            <span className="text-[10px] text-indigo-600 font-bold mt-1 bg-indigo-50 px-2 py-0.5 rounded-full">
+                            <span className="text-[9px] sm:text-[10px] text-indigo-600 font-bold mt-1 bg-indigo-50 px-2 py-0.5 rounded-full">
                               x{count} {lang === 'ar' ? 'نسخ' : 'copies'}
                             </span>
                           </div>
@@ -1742,19 +1834,23 @@ export default function Inventory({ products, config, onSaveProduct, onDeletePro
               </div>
             </div>
 
-            {/* Footer */}
-            <div className="bg-slate-50 px-6 py-4 border-t border-slate-100 flex justify-end gap-3 shrink-0">
+            {/* Footer with Prominent Actions */}
+            <div className="bg-slate-50 px-3.5 sm:px-6 py-2.5 sm:py-4 border-t border-slate-200 flex items-center justify-between gap-2.5 shrink-0">
               <button
+                type="button"
                 onClick={() => setShowBarcodeModal(false)}
-                className="px-4 py-2 bg-slate-100 hover:bg-slate-200 text-slate-700 text-xs font-bold rounded-xl transition cursor-pointer"
+                className="flex-1 sm:flex-none flex items-center justify-center gap-1 px-4 py-2 bg-slate-200 hover:bg-slate-300 active:bg-slate-400 text-slate-700 text-xs font-black rounded-xl transition cursor-pointer border border-slate-300"
               >
-                {t.inventory.cancel}
+                <X className="w-4 h-4 shrink-0" />
+                <span>{lang === 'ar' ? 'إغلاق / عودة' : 'Fermer'}</span>
               </button>
               <button
+                id="btn-print-barcode-stickers-bottom"
+                type="button"
                 onClick={triggerPrintBarcodes}
-                className="flex items-center gap-2 px-5 py-2 bg-indigo-600 hover:bg-indigo-700 text-white text-xs font-bold rounded-xl transition cursor-pointer shadow-xs"
+                className="flex-1 sm:flex-none flex items-center justify-center gap-2 px-5 py-2 bg-indigo-600 hover:bg-indigo-700 active:bg-indigo-800 text-white text-xs font-black rounded-xl transition cursor-pointer shadow-xs"
               >
-                <Printer className="w-4 h-4" />
+                <Printer className="w-4 h-4 shrink-0" />
                 <span>{lang === 'ar' ? 'بدء الطباعة الآن' : 'Print Labels Now'}</span>
               </button>
             </div>
@@ -2200,34 +2296,41 @@ export default function Inventory({ products, config, onSaveProduct, onDeletePro
 
       {/* Auto Reorder Low Stock Modal */}
       {showReorderModal && (
-        <div className="fixed inset-0 bg-slate-900/60 backdrop-blur-xs flex items-center justify-center p-2 sm:p-5 z-50 safe-modal-overlay">
-          <div className="bg-white rounded-2xl sm:rounded-3xl shadow-2xl border border-slate-100 w-full max-w-3xl overflow-hidden animate-fade-in flex flex-col max-h-[94vh]">
+        <div className="fixed inset-0 bg-slate-900/60 backdrop-blur-xs flex items-center justify-center p-0 sm:p-4 z-50 safe-modal-overlay">
+          <div className="bg-white rounded-none sm:rounded-3xl shadow-2xl border-0 sm:border border-slate-100 w-full max-w-3xl h-[100dvh] sm:h-auto sm:max-h-[90vh] overflow-hidden animate-fade-in flex flex-col">
             {/* Header */}
-            <div className="bg-slate-900 text-white px-4 sm:px-6 py-3.5 sm:py-4 flex items-center justify-between shrink-0">
-              <div className="flex items-center gap-2.5">
-                <div className="p-2 bg-amber-500/20 text-amber-400 rounded-xl">
-                  <FileText className="w-5 h-5" />
+            <div className="bg-slate-900 text-white px-3.5 sm:px-6 py-3 sm:py-4 flex items-center justify-between shrink-0 gap-2">
+              <div className="flex items-center gap-2 sm:gap-2.5 min-w-0">
+                <div className="p-1.5 sm:p-2 bg-amber-500/20 text-amber-400 rounded-xl shrink-0">
+                  <FileText className="w-4 h-4 sm:w-5 sm:h-5" />
                 </div>
-                <div>
-                  <h3 className="font-black text-sm sm:text-base">
+                <div className="min-w-0">
+                  <h3 className="font-black text-xs sm:text-base truncate">
                     {lang === 'ar' ? 'سند طلب شراء النواقص للموردين' : 'Auto Purchase Order (Low Stock)'}
                   </h3>
-                  <p className="text-[10px] sm:text-[11px] text-slate-400">
+                  <p className="text-[9px] sm:text-[11px] text-slate-400 truncate">
                     {lang === 'ar' ? `حصر تلقائي لـ ${lowStockProducts.length} منتج وصل للحد الأدنى من المخزون` : `Reorder list for ${lowStockProducts.length} items below minimum stock`}
                   </p>
                 </div>
               </div>
+
+              {/* Explicit Back / Close Button in Header */}
               <button
                 type="button"
                 onClick={() => setShowReorderModal(false)}
-                className="p-1.5 hover:bg-slate-800 text-slate-400 hover:text-white rounded-lg transition cursor-pointer"
+                className="flex items-center gap-1.5 px-3 py-1.5 bg-slate-800 hover:bg-slate-700 active:bg-slate-600 text-slate-200 hover:text-white rounded-xl text-xs font-bold transition cursor-pointer shrink-0 shadow-2xs border border-slate-700"
+                title={lang === 'ar' ? 'إغلاق وعودة' : 'Fermer / Retour'}
               >
-                <X className="w-5 h-5" />
+                <ArrowLeft className={`w-3.5 h-3.5 ${isRTL ? 'rotate-180' : ''}`} />
+                <span>{lang === 'ar' ? 'عودة' : 'Retour'}</span>
               </button>
             </div>
 
             {/* Content Body: Responsive Cards on Mobile + Table on Desktop */}
-            <div className="p-3 sm:p-5 overflow-y-auto space-y-3 sm:space-y-4 flex-1">
+            <div 
+              className="p-3 sm:p-5 overflow-y-auto space-y-3 sm:space-y-4 flex-1 overscroll-contain touch-pan-y"
+              style={{ WebkitOverflowScrolling: 'touch' }}
+            >
               {/* Mobile View: High-contrast responsive cards (sm:hidden) */}
               <div className="block sm:hidden space-y-2.5">
                 {lowStockProducts.map((p, idx) => {
@@ -2368,7 +2471,7 @@ export default function Inventory({ products, config, onSaveProduct, onDeletePro
                     `;
                     printHtmlContent({ html: printHtml, title: 'PURCHASE-ORDER-LOW-STOCK', isRTL, mode: 'a4' });
                   }}
-                  className="flex-1 sm:flex-none flex items-center justify-center gap-1.5 px-3.5 py-2 bg-indigo-600 hover:bg-indigo-700 text-white rounded-xl text-xs font-black transition cursor-pointer shadow-xs"
+                  className="flex-1 sm:flex-none flex items-center justify-center gap-1.5 px-3.5 py-2.5 bg-indigo-600 hover:bg-indigo-700 active:bg-indigo-800 text-white rounded-xl text-xs font-black transition cursor-pointer shadow-xs"
                 >
                   <Printer className="w-4 h-4 shrink-0" />
                   <span>{lang === 'ar' ? 'طباعة سند الطلب' : 'Print Order'}</span>
@@ -2377,9 +2480,10 @@ export default function Inventory({ products, config, onSaveProduct, onDeletePro
                 <button
                   type="button"
                   onClick={() => setShowReorderModal(false)}
-                  className="px-3.5 py-2 bg-slate-200 hover:bg-slate-300 text-slate-800 rounded-xl text-xs font-black transition cursor-pointer"
+                  className="flex-1 sm:flex-none flex items-center justify-center gap-1.5 px-4 py-2.5 bg-slate-200 hover:bg-slate-300 active:bg-slate-400 text-slate-800 rounded-xl text-xs font-black transition cursor-pointer shadow-2xs border border-slate-300"
                 >
-                  {lang === 'ar' ? 'إغلاق' : 'Close'}
+                  <X className="w-4 h-4 shrink-0" />
+                  <span>{lang === 'ar' ? 'إغلاق وعودة' : 'Fermer / Retour'}</span>
                 </button>
               </div>
             </div>
