@@ -274,7 +274,7 @@ export default function Customers({ customers, invoices, onSaveCustomer, onDelet
   };
 
   return (
-    <div className="space-y-6" id="customers-sec">
+    <div className="space-y-6 pb-36 sm:pb-8" id="customers-sec">
       {/* Header */}
       <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4 bg-white p-5 rounded-2xl shadow-sm border border-slate-100">
         <div>
@@ -441,20 +441,20 @@ export default function Customers({ customers, invoices, onSaveCustomer, onDelet
                     </div>
                   </div>
 
-                  <div className="flex items-center gap-1.5 flex-wrap">
-                    {/* Settle Debt Button */}
+                  <div className="flex flex-col sm:flex-row items-stretch sm:items-center gap-2 w-full sm:w-auto">
+                    {/* Settle Debt & WhatsApp Buttons */}
                     {c.debt > 0 && (
-                      <>
+                      <div className="grid grid-cols-2 gap-1.5 w-full sm:w-auto sm:flex sm:items-center">
                         <button
                           id={`settle-btn-${c.id}`}
                           onClick={() => {
                             setSettlingCustId(c.id);
                             setSettlingAmount(c.debt);
                           }}
-                          className="px-3 py-1.5 text-xs font-bold bg-emerald-50 hover:bg-emerald-100 text-emerald-700 rounded-lg transition duration-150 flex items-center gap-1 shadow-2xs border border-emerald-200 cursor-pointer"
+                          className="flex-1 sm:flex-none justify-center px-3 py-2 text-xs font-black bg-emerald-50 hover:bg-emerald-100 active:bg-emerald-200 text-emerald-700 rounded-xl transition duration-150 flex items-center gap-1.5 shadow-2xs border border-emerald-200 cursor-pointer"
                         >
-                          <CheckCircle className="w-3.5 h-3.5" />
-                          {t.customer.payDebt}
+                          <CheckCircle className="w-3.5 h-3.5 shrink-0" />
+                          <span>{t.customer.payDebt}</span>
                         </button>
                         <button
                           id={`wa-debt-btn-${c.id}`}
@@ -469,23 +469,23 @@ export default function Customers({ customers, invoices, onSaveCustomer, onDelet
                             const url = cleanPhone ? `https://wa.me/${cleanPhone}?text=${encodeURIComponent(msg)}` : `https://wa.me/?text=${encodeURIComponent(msg)}`;
                             window.open(url, '_blank');
                           }}
-                          className="px-3.5 py-2 text-xs font-semibold bg-emerald-600 hover:bg-emerald-700 text-white rounded-xl transition duration-150 flex items-center gap-1.5 shadow-xs cursor-pointer"
+                          className="flex-1 sm:flex-none justify-center px-3 py-2 text-xs font-black bg-emerald-600 hover:bg-emerald-700 active:bg-emerald-800 text-white rounded-xl transition duration-150 flex items-center gap-1.5 shadow-xs cursor-pointer"
                           title={lang === 'ar' ? 'إرسال تذكير بالدين عبر الواتساب' : 'Send WhatsApp Debt Reminder'}
                         >
-                          <MessageCircle className="w-4 h-4" />
-                          <span>{lang === 'ar' ? 'تذكير واتساب' : 'WhatsApp'}</span>
+                          <MessageCircle className="w-3.5 h-3.5 shrink-0" />
+                          <span>{lang === 'ar' ? 'واتساب' : 'WhatsApp'}</span>
                         </button>
-                      </>
+                      </div>
                     )}
 
                     {/* View Ledger Button */}
                     <button
                       id={`ledger-btn-${c.id}`}
                       onClick={() => setSelectedLedgerCustomerId(c.id)}
-                      className="px-4 py-2 text-xs font-bold bg-slate-100 hover:bg-slate-200 text-slate-700 rounded-xl transition duration-150 flex items-center gap-1.5 shadow-sm border border-slate-200 self-start cursor-pointer"
+                      className="w-full sm:w-auto justify-center px-3.5 py-2 text-xs font-black bg-slate-100 hover:bg-slate-200 active:bg-slate-300 text-slate-800 rounded-xl transition duration-150 flex items-center gap-1.5 shadow-2xs border border-slate-200 cursor-pointer"
                     >
-                      <Receipt className="w-4 h-4 text-slate-500" />
-                      {isRTL ? 'كشف الحساب والنشاط' : 'Account Ledger'}
+                      <Receipt className="w-3.5 h-3.5 text-slate-500 shrink-0" />
+                      <span>{isRTL ? 'كشف الحساب والنشاط' : 'Account Ledger'}</span>
                     </button>
                   </div>
                 </div>

@@ -412,9 +412,12 @@ export default function CustomerLedger({ customer, invoices, logs, customerPayme
   const labels = getTranslatedLabels();
 
   return (
-    <div className="space-y-4 sm:space-y-6 animate-fade-in w-full max-w-full overflow-x-hidden touch-pan-y" style={{ WebkitOverflowScrolling: 'touch' }} id="customer-ledger-wrapper">
+    <div className="space-y-4 sm:space-y-6 animate-fade-in w-full max-w-full overflow-x-hidden touch-pan-y pb-36 sm:pb-8" style={{ WebkitOverflowScrolling: 'touch' }} id="customer-ledger-wrapper">
       {/* Dynamic Navigation Action Header (Sticky on Mobile) */}
-      <div className="sticky top-0 z-20 flex flex-col sm:flex-row justify-between items-start sm:items-center gap-3 bg-white/95 backdrop-blur-md p-3 sm:p-5 rounded-2xl shadow-sm border border-slate-100">
+      <div 
+        className="sticky top-0 z-20 flex flex-col sm:flex-row justify-between items-start sm:items-center gap-3 bg-white/95 backdrop-blur-md p-3 sm:p-5 rounded-2xl shadow-sm border border-slate-100"
+        style={{ paddingTop: 'max(0.75rem, env(safe-area-inset-top, 0px))' }}
+      >
         <div className="flex items-center gap-2.5 sm:gap-3 w-full sm:w-auto justify-between sm:justify-start">
           <button
             id="btn-ledger-back"
@@ -822,6 +825,40 @@ export default function CustomerLedger({ customer, invoices, logs, customerPayme
               <p className="text-xs text-slate-400 font-semibold">{labels.noTransactions}</p>
             </div>
           )}
+        </div>
+      </div>
+
+      {/* Dedicated Bottom Return & Print Bar for Mobile & Desktop */}
+      <div 
+        className="sticky bottom-16 sm:bottom-4 z-20 bg-white/95 backdrop-blur-md p-3 sm:p-4 rounded-2xl shadow-lg border border-slate-200 flex items-center justify-between gap-2.5"
+        style={{ marginBottom: 'max(0.5rem, env(safe-area-inset-bottom, 0px))' }}
+      >
+        <button
+          type="button"
+          onClick={onClose}
+          className="flex-1 sm:flex-none justify-center px-4 py-2.5 bg-slate-800 hover:bg-slate-900 active:bg-slate-950 text-white text-xs font-black rounded-xl transition flex items-center gap-2 cursor-pointer shadow-sm"
+        >
+          <ArrowLeft className={`w-4 h-4 ${isRTL ? 'rotate-180' : ''}`} />
+          <span>{isRTL ? 'الرجوع لسجل الزبناء' : 'Retour aux clients'}</span>
+        </button>
+
+        <div className="flex items-center gap-2">
+          <button
+            type="button"
+            onClick={handleExportLedgerPdf}
+            className="px-3.5 py-2.5 bg-rose-600 hover:bg-rose-700 active:bg-rose-800 text-white text-xs font-black rounded-xl transition shadow-xs cursor-pointer flex items-center gap-1.5"
+          >
+            <FileDown className="w-4 h-4 shrink-0" />
+            <span>PDF</span>
+          </button>
+          <button
+            type="button"
+            onClick={triggerPrintLedger}
+            className="px-3.5 py-2.5 bg-indigo-600 hover:bg-indigo-700 active:bg-indigo-800 text-white text-xs font-black rounded-xl transition shadow-xs cursor-pointer flex items-center gap-1.5"
+          >
+            <Printer className="w-4 h-4 shrink-0" />
+            <span>{labels.receiptPrint}</span>
+          </button>
         </div>
       </div>
 

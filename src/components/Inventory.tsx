@@ -1550,10 +1550,13 @@ export default function Inventory({ products, config, onSaveProduct, onDeletePro
 
       {/* Barcode Stickers Printing Modal */}
       {showBarcodeModal && (
-        <div className="fixed inset-0 bg-slate-900/60 backdrop-blur-xs flex items-center justify-center p-0 sm:p-4 z-[100] safe-modal-overlay">
-          <div className="bg-white rounded-none sm:rounded-3xl shadow-2xl border-0 sm:border border-slate-100 w-full max-w-4xl h-[100dvh] sm:h-auto sm:max-h-[92vh] overflow-hidden animate-fade-in text-start flex flex-col">
+        <div className="fixed inset-0 z-[100] bg-slate-900/70 backdrop-blur-xs flex flex-col sm:items-center sm:justify-center sm:p-4">
+          <div className="bg-white rounded-none sm:rounded-3xl shadow-2xl border-0 sm:border border-slate-100 w-full max-w-4xl h-full sm:h-auto sm:max-h-[92vh] overflow-hidden animate-fade-in text-start flex flex-col">
             {/* Top Header */}
-            <div className="flex flex-col sm:flex-row justify-between items-stretch sm:items-center bg-slate-50 px-3.5 sm:px-6 py-3 sm:py-4 border-b border-slate-200 shrink-0 gap-2.5">
+            <div 
+              className="flex flex-col sm:flex-row justify-between items-stretch sm:items-center bg-slate-50 px-3.5 sm:px-6 py-3 sm:py-4 border-b border-slate-200 shrink-0 gap-2.5"
+              style={{ paddingTop: 'max(0.75rem, env(safe-area-inset-top, 0px))' }}
+            >
               <div className="flex items-center justify-between sm:justify-start gap-2">
                 <div className="flex items-center gap-2">
                   <div className="p-1.5 bg-indigo-100 text-indigo-700 rounded-xl">
@@ -1568,8 +1571,8 @@ export default function Inventory({ products, config, onSaveProduct, onDeletePro
                 <button
                   type="button"
                   onClick={() => setShowBarcodeModal(false)}
-                  className="sm:hidden flex items-center gap-1 px-2.5 py-1.5 bg-slate-200 hover:bg-slate-300 active:bg-slate-400 text-slate-700 rounded-xl text-xs font-bold transition cursor-pointer"
-                  title={lang === 'ar' ? 'إغلاق وعودة' : 'Fermer'}
+                  className="sm:hidden flex items-center gap-1.5 px-3 py-1.5 bg-slate-200 hover:bg-slate-300 active:bg-slate-400 text-slate-800 rounded-xl text-xs font-black transition cursor-pointer shadow-2xs border border-slate-300"
+                  title={lang === 'ar' ? 'إغلاق وعودة' : 'Fermer / Retour'}
                 >
                   <ArrowLeft className={`w-3.5 h-3.5 ${isRTL ? 'rotate-180' : ''}`} />
                   <span>{lang === 'ar' ? 'عودة' : 'Retour'}</span>
@@ -1835,20 +1838,23 @@ export default function Inventory({ products, config, onSaveProduct, onDeletePro
             </div>
 
             {/* Footer with Prominent Actions */}
-            <div className="bg-slate-50 px-3.5 sm:px-6 py-2.5 sm:py-4 border-t border-slate-200 flex items-center justify-between gap-2.5 shrink-0">
+            <div 
+              className="bg-slate-50 px-3.5 sm:px-6 py-2.5 sm:py-4 border-t border-slate-200 flex items-center justify-between gap-2.5 shrink-0"
+              style={{ paddingBottom: 'max(0.85rem, env(safe-area-inset-bottom, 0px))' }}
+            >
               <button
                 type="button"
                 onClick={() => setShowBarcodeModal(false)}
-                className="flex-1 sm:flex-none flex items-center justify-center gap-1 px-4 py-2 bg-slate-200 hover:bg-slate-300 active:bg-slate-400 text-slate-700 text-xs font-black rounded-xl transition cursor-pointer border border-slate-300"
+                className="flex-1 sm:flex-none flex items-center justify-center gap-1.5 px-4 py-2.5 bg-slate-200 hover:bg-slate-300 active:bg-slate-400 text-slate-800 text-xs font-black rounded-xl transition cursor-pointer border border-slate-300 shadow-2xs"
               >
-                <X className="w-4 h-4 shrink-0" />
-                <span>{lang === 'ar' ? 'إغلاق / عودة' : 'Fermer'}</span>
+                <ArrowLeft className={`w-4 h-4 shrink-0 ${isRTL ? 'rotate-180' : ''}`} />
+                <span>{lang === 'ar' ? 'إغلاق وعودة' : 'Fermer / Retour'}</span>
               </button>
               <button
                 id="btn-print-barcode-stickers-bottom"
                 type="button"
                 onClick={triggerPrintBarcodes}
-                className="flex-1 sm:flex-none flex items-center justify-center gap-2 px-5 py-2 bg-indigo-600 hover:bg-indigo-700 active:bg-indigo-800 text-white text-xs font-black rounded-xl transition cursor-pointer shadow-xs"
+                className="flex-1 sm:flex-none flex items-center justify-center gap-2 px-5 py-2.5 bg-indigo-600 hover:bg-indigo-700 active:bg-indigo-800 text-white text-xs font-black rounded-xl transition cursor-pointer shadow-xs"
               >
                 <Printer className="w-4 h-4 shrink-0" />
                 <span>{lang === 'ar' ? 'بدء الطباعة الآن' : 'Print Labels Now'}</span>
@@ -2296,10 +2302,13 @@ export default function Inventory({ products, config, onSaveProduct, onDeletePro
 
       {/* Auto Reorder Low Stock Modal */}
       {showReorderModal && (
-        <div className="fixed inset-0 bg-slate-900/60 backdrop-blur-xs flex items-center justify-center p-0 sm:p-4 z-50 safe-modal-overlay">
-          <div className="bg-white rounded-none sm:rounded-3xl shadow-2xl border-0 sm:border border-slate-100 w-full max-w-3xl h-[100dvh] sm:h-auto sm:max-h-[90vh] overflow-hidden animate-fade-in flex flex-col">
+        <div className="fixed inset-0 z-50 bg-slate-900/70 backdrop-blur-xs flex flex-col sm:items-center sm:justify-center sm:p-4">
+          <div className="bg-white rounded-none sm:rounded-3xl shadow-2xl border-0 sm:border border-slate-100 w-full max-w-3xl h-full sm:h-auto sm:max-h-[90vh] overflow-hidden animate-fade-in flex flex-col">
             {/* Header */}
-            <div className="bg-slate-900 text-white px-3.5 sm:px-6 py-3 sm:py-4 flex items-center justify-between shrink-0 gap-2">
+            <div 
+              className="bg-slate-900 text-white px-3.5 sm:px-6 py-3 sm:py-4 flex items-center justify-between shrink-0 gap-2 border-b border-slate-800"
+              style={{ paddingTop: 'max(0.75rem, env(safe-area-inset-top, 0px))' }}
+            >
               <div className="flex items-center gap-2 sm:gap-2.5 min-w-0">
                 <div className="p-1.5 sm:p-2 bg-amber-500/20 text-amber-400 rounded-xl shrink-0">
                   <FileText className="w-4 h-4 sm:w-5 sm:h-5" />
@@ -2318,7 +2327,7 @@ export default function Inventory({ products, config, onSaveProduct, onDeletePro
               <button
                 type="button"
                 onClick={() => setShowReorderModal(false)}
-                className="flex items-center gap-1.5 px-3 py-1.5 bg-slate-800 hover:bg-slate-700 active:bg-slate-600 text-slate-200 hover:text-white rounded-xl text-xs font-bold transition cursor-pointer shrink-0 shadow-2xs border border-slate-700"
+                className="flex items-center gap-1.5 px-3.5 py-2 bg-slate-800 hover:bg-slate-700 active:bg-slate-600 text-white rounded-xl text-xs font-black transition cursor-pointer shrink-0 shadow-2xs border border-slate-700"
                 title={lang === 'ar' ? 'إغلاق وعودة' : 'Fermer / Retour'}
               >
                 <ArrowLeft className={`w-3.5 h-3.5 ${isRTL ? 'rotate-180' : ''}`} />
@@ -2411,11 +2420,14 @@ export default function Inventory({ products, config, onSaveProduct, onDeletePro
             </div>
 
             {/* Bottom Actions Bar */}
-            <div className="bg-slate-50 px-3 sm:px-6 py-3 sm:py-4 border-t border-slate-100 flex flex-col sm:flex-row sm:items-center justify-between gap-2.5 shrink-0">
+            <div 
+              className="bg-slate-50 px-3 sm:px-6 py-3 sm:py-4 border-t border-slate-200 flex flex-col sm:flex-row sm:items-center justify-between gap-2.5 shrink-0"
+              style={{ paddingBottom: 'max(0.85rem, env(safe-area-inset-bottom, 0px))' }}
+            >
               <span className="text-xs font-bold text-slate-600 text-center sm:text-start">
                 {lang === 'ar' ? 'إجمالي الأصناف المطلوبة:' : 'Total items:'} <b className="font-mono text-slate-900">{lowStockProducts.length}</b>
               </span>
-              <div className="flex flex-wrap items-center justify-end gap-2 w-full sm:w-auto">
+              <div className="grid grid-cols-3 sm:flex sm:items-center sm:justify-end gap-2 w-full sm:w-auto">
                 {/* WhatsApp Share Button */}
                 <button
                   type="button"
@@ -2427,10 +2439,10 @@ export default function Inventory({ products, config, onSaveProduct, onDeletePro
                     const msg = `*طلب شراء مواد ناقصة (${config?.name || 'SmartPOS'})*\nالتاريخ: ${new Date().toLocaleDateString('fr-FR')}\nعدد الأصناف: ${lowStockProducts.length}\n\n${lines.join('\n')}\n\nالرجاء تأكيد توفر الكميات وتاريخ التوريد. شكراً.`;
                     window.open(`https://wa.me/?text=${encodeURIComponent(msg)}`, '_blank');
                   }}
-                  className="flex-1 sm:flex-none flex items-center justify-center gap-1.5 px-3 py-2 bg-emerald-600 hover:bg-emerald-700 text-white rounded-xl text-xs font-black transition cursor-pointer shadow-xs"
+                  className="flex items-center justify-center gap-1.5 px-2.5 py-2.5 bg-emerald-600 hover:bg-emerald-700 active:bg-emerald-800 text-white rounded-xl text-[11px] sm:text-xs font-black transition cursor-pointer shadow-xs"
                 >
-                  <MessageCircle className="w-4 h-4 shrink-0" />
-                  <span>{lang === 'ar' ? 'إرسال عبر الواتساب' : 'WhatsApp'}</span>
+                  <MessageCircle className="w-3.5 h-3.5 shrink-0" />
+                  <span>{lang === 'ar' ? 'واتساب' : 'WhatsApp'}</span>
                 </button>
 
                 {/* Print Order Button */}
@@ -2471,19 +2483,19 @@ export default function Inventory({ products, config, onSaveProduct, onDeletePro
                     `;
                     printHtmlContent({ html: printHtml, title: 'PURCHASE-ORDER-LOW-STOCK', isRTL, mode: 'a4' });
                   }}
-                  className="flex-1 sm:flex-none flex items-center justify-center gap-1.5 px-3.5 py-2.5 bg-indigo-600 hover:bg-indigo-700 active:bg-indigo-800 text-white rounded-xl text-xs font-black transition cursor-pointer shadow-xs"
+                  className="flex items-center justify-center gap-1.5 px-2.5 py-2.5 bg-indigo-600 hover:bg-indigo-700 active:bg-indigo-800 text-white rounded-xl text-[11px] sm:text-xs font-black transition cursor-pointer shadow-xs"
                 >
-                  <Printer className="w-4 h-4 shrink-0" />
-                  <span>{lang === 'ar' ? 'طباعة سند الطلب' : 'Print Order'}</span>
+                  <Printer className="w-3.5 h-3.5 shrink-0" />
+                  <span>{lang === 'ar' ? 'طباعة' : 'Print'}</span>
                 </button>
 
                 <button
                   type="button"
                   onClick={() => setShowReorderModal(false)}
-                  className="flex-1 sm:flex-none flex items-center justify-center gap-1.5 px-4 py-2.5 bg-slate-200 hover:bg-slate-300 active:bg-slate-400 text-slate-800 rounded-xl text-xs font-black transition cursor-pointer shadow-2xs border border-slate-300"
+                  className="flex items-center justify-center gap-1.5 px-2.5 py-2.5 bg-slate-200 hover:bg-slate-300 active:bg-slate-400 text-slate-800 rounded-xl text-[11px] sm:text-xs font-black transition cursor-pointer shadow-2xs border border-slate-300"
                 >
-                  <X className="w-4 h-4 shrink-0" />
-                  <span>{lang === 'ar' ? 'إغلاق وعودة' : 'Fermer / Retour'}</span>
+                  <X className="w-3.5 h-3.5 shrink-0" />
+                  <span>{lang === 'ar' ? 'إغلاق' : 'Fermer'}</span>
                 </button>
               </div>
             </div>

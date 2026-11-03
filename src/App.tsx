@@ -2472,7 +2472,7 @@ export default function App() {
 
         {/* Dynamic Inner Active Section Viewport */}
         <div
-          className="p-3 sm:p-6 pb-28 lg:pb-6 flex-1 overflow-y-auto min-h-0 bg-slate-50/70 no-scrollbar"
+          className="p-3 sm:p-6 pb-36 lg:pb-6 flex-1 overflow-y-auto min-h-0 bg-slate-50/70 no-scrollbar"
           id="main-content-display"
         >
           {activeTab === 'home' && (
