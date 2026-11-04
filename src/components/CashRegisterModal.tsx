@@ -4,14 +4,17 @@
  */
 
 import React, { useState } from 'react';
+import { createPortal } from 'react-dom';
 import { Invoice, StoreConfig, Language, Expense, Employee, CashMovement } from '../types';
 import { 
   Lock, Printer, X, DollarSign, Calculator, AlertTriangle, 
   CheckCircle2, TrendingUp, TrendingDown, ArrowUpRight, ArrowDownRight,
-  Calendar, Clock, User, FileDown, ArrowRight, PlusCircle
+  Calendar, Clock, User, FileDown, ArrowRight, PlusCircle, Share2, MessageCircle
 } from 'lucide-react';
 import { parseDecimal, sanitizeDecimalInput } from '../utils/numberInput';
 import { printHtmlContent, exportStructuredPdf } from '../utils/printService';
+import { triggerHaptic } from '../utils/haptics';
+import { shareContent } from '../utils/nativeShare';
 
 interface CashRegisterModalProps {
   isOpen: boolean;
@@ -217,8 +220,65 @@ export default function CashRegisterModal({
     });
   };
 
-  return (
-    <div className="fixed inset-0 bg-slate-900/60 backdrop-blur-xs flex items-center justify-center p-2 sm:p-4 z-50 animate-fade-in safe-modal-overlay">
+  const handleShareZReportWhatsApp = () => {
+    triggerHaptic('light');
+    const phone = config.phone ? config.phone.replace(/[^0-9+]/g, '') : '';
+    const storeName = config.name || 'Smart POS';
+    const lines = [
+      `📊 *${lang === 'ar' ? 'تقرير إغلاق الصندوق (Z-Report)' : 'Rapport Z de Caisse'}*`,
+      `🏪 *${storeName}*`,
+      `📅 ${now.toLocaleDateString(lang === 'ar' ? 'ar-MA' : 'fr-FR')} ${now.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}`,
+      `👤 ${lang === 'ar' ? 'المسؤول' : 'Caissier'}: ${currentUser?.name || 'Administrator'}`,
+      '--------------------------------',
+      `🛒 ${lang === 'ar' ? 'عدد العمليات' : 'Nombre de ventes'}: ${todayInvoices.length}`,
+      `💰 ${lang === 'ar' ? 'إجمالي المبيعات' : 'Total Ventes'}: ${totalSalesToday.toFixed(2)} ${config.currency}`,
+      `💵 ${lang === 'ar' ? 'مبيعات نقدية' : 'Espèces'}: ${cashSales.toFixed(2)} ${config.currency}`,
+      cardSales > 0 ? `💳 ${lang === 'ar' ? 'مبيعات بنكية' : 'Carte'}: ${cardSales.toFixed(2)} ${config.currency}` : null,
+      debtSales > 0 ? `📝 ${lang === 'ar' ? 'مبيعات بالكريدي' : 'Crédit'}: ${debtSales.toFixed(2)} ${config.currency}` : null,
+      totalCashExpensesToday > 0 ? `📉 ${lang === 'ar' ? 'مصاريف الصندوق' : 'Dépenses'}: -${totalCashExpensesToday.toFixed(2)} ${config.currency}` : null,
+      '--------------------------------',
+      `📥 *${lang === 'ar' ? 'المتوقع في الصندوق' : 'Espèces théoriques'}: ${expectedCash.toFixed(2)} ${config.currency}*`,
+      actualVal !== null ? `💵 *${lang === 'ar' ? 'الفعلي في الدرج' : 'Espèces comptées'}: ${actualVal.toFixed(2)} ${config.currency}*` : null,
+      actualVal !== null ? `${Math.abs(difference || 0) < 0.01 ? '✅' : '⚠️'} ${lang === 'ar' ? 'الفارق' : 'Écart'}: ${(difference || 0) > 0 ? '+' : ''}${(difference || 0).toFixed(2)} ${config.currency}` : null,
+      notes ? `📝 ${notes}` : null
+    ].filter(Boolean).join('\n');
+
+    const text = encodeURIComponent(lines);
+    const url = phone ? `https://wa.me/${phone}?text=${text}` : `https://wa.me/?text=${text}`;
+    window.open(url, '_blank');
+  };
+
+  const handleShareZReportNative = async () => {
+    triggerHaptic('light');
+    const storeName = config.name || 'Smart POS';
+    const lines = [
+      `📊 *${lang === 'ar' ? 'تقرير إغلاق الصندوق (Z-Report)' : 'Rapport Z de Caisse'}*`,
+      `🏪 *${storeName}*`,
+      `📅 ${now.toLocaleDateString(lang === 'ar' ? 'ar-MA' : 'fr-FR')} ${now.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}`,
+      `👤 ${lang === 'ar' ? 'المسؤول' : 'Caissier'}: ${currentUser?.name || 'Administrator'}`,
+      '--------------------------------',
+      `🛒 ${lang === 'ar' ? 'عدد العمليات' : 'Nombre de ventes'}: ${todayInvoices.length}`,
+      `💰 ${lang === 'ar' ? 'إجمالي المبيعات' : 'Total Ventes'}: ${totalSalesToday.toFixed(2)} ${config.currency}`,
+      `💵 ${lang === 'ar' ? 'مبيعات نقدية' : 'Espèces'}: ${cashSales.toFixed(2)} ${config.currency}`,
+      cardSales > 0 ? `💳 ${lang === 'ar' ? 'مبيعات بنكية' : 'Carte'}: ${cardSales.toFixed(2)} ${config.currency}` : null,
+      debtSales > 0 ? `📝 ${lang === 'ar' ? 'مبيعات بالكريدي' : 'Crédit'}: ${debtSales.toFixed(2)} ${config.currency}` : null,
+      totalCashExpensesToday > 0 ? `📉 ${lang === 'ar' ? 'مصاريف الصندوق' : 'Dépenses'}: -${totalCashExpensesToday.toFixed(2)} ${config.currency}` : null,
+      '--------------------------------',
+      `📥 *${lang === 'ar' ? 'المتوقع في الصندوق' : 'Espèces théoriques'}: ${expectedCash.toFixed(2)} ${config.currency}*`,
+      actualVal !== null ? `💵 *${lang === 'ar' ? 'الفعلي في الدرج' : 'Espèces comptées'}: ${actualVal.toFixed(2)} ${config.currency}*` : null,
+      actualVal !== null ? `${Math.abs(difference || 0) < 0.01 ? '✅' : '⚠️'} ${lang === 'ar' ? 'الفارق' : 'Écart'}: ${(difference || 0) > 0 ? '+' : ''}${(difference || 0).toFixed(2)} ${config.currency}` : null,
+      notes ? `📝 ${notes}` : null
+    ].filter(Boolean).join('\n');
+
+    await shareContent({
+      title: `${storeName} - Z-Report`,
+      text: lines,
+      dialogTitle: lang === 'ar' ? 'مشاركة تقرير إغلاق الصندوق' : 'Partager le rapport Z'
+    });
+  };
+
+  return createPortal(
+    <div className="fixed inset-0 bg-slate-900/60 backdrop-blur-xs flex items-center justify-center p-2 sm:p-4 z-[200] animate-fade-in safe-modal-overlay">
       <div className="bg-white rounded-2xl shadow-2xl border border-slate-100 w-full max-w-lg overflow-hidden flex flex-col max-h-[92vh]">
         {/* Modal Header */}
         <div className="bg-slate-900 text-white p-5 flex items-center justify-between shrink-0">
@@ -503,11 +563,29 @@ export default function CashRegisterModal({
             <span>{lang === 'ar' ? 'رجوع' : 'Back'}</span>
           </button>
 
-          <div className="flex flex-wrap items-center gap-2">
+          <div className="flex flex-wrap items-center gap-1.5">
+            <button
+              type="button"
+              onClick={handleShareZReportNative}
+              className="flex items-center gap-1.5 px-3 py-2.5 bg-blue-600 hover:bg-blue-700 text-white rounded-xl text-xs font-black shadow-xs transition active:scale-95 cursor-pointer"
+              title={lang === 'ar' ? 'مشاركة الملخص عبر النظام' : 'Partager'}
+            >
+              <Share2 className="w-4 h-4" />
+              <span>{lang === 'ar' ? 'مشاركة' : 'Partager'}</span>
+            </button>
+            <button
+              type="button"
+              onClick={handleShareZReportWhatsApp}
+              className="flex items-center gap-1.5 px-3 py-2.5 bg-emerald-600 hover:bg-emerald-700 text-white rounded-xl text-xs font-black shadow-xs transition active:scale-95 cursor-pointer"
+              title={lang === 'ar' ? 'مشاركة عبر واتساب' : 'WhatsApp'}
+            >
+              <MessageCircle className="w-4 h-4" />
+              <span>{lang === 'ar' ? 'واتساب' : 'WhatsApp'}</span>
+            </button>
             <button
               type="button"
               onClick={handleExportZReportPdf}
-              className="flex items-center gap-1.5 px-4 py-2.5 bg-rose-600 hover:bg-rose-700 text-white rounded-xl text-xs font-black shadow-xs transition active:scale-95 cursor-pointer"
+              className="flex items-center gap-1.5 px-3 py-2.5 bg-rose-600 hover:bg-rose-700 text-white rounded-xl text-xs font-black shadow-xs transition active:scale-95 cursor-pointer"
             >
               <FileDown className="w-4 h-4" />
               <span>PDF</span>
@@ -515,7 +593,7 @@ export default function CashRegisterModal({
             <button
               type="button"
               onClick={handlePrintZReport}
-              className="flex items-center gap-2 px-4 py-2.5 bg-slate-900 hover:bg-black text-white rounded-xl text-xs font-black shadow-md transition active:scale-95 cursor-pointer"
+              className="flex items-center gap-2 px-3.5 py-2.5 bg-slate-900 hover:bg-black text-white rounded-xl text-xs font-black shadow-md transition active:scale-95 cursor-pointer"
             >
               <Printer className="w-4 h-4 text-emerald-400" />
               <span>{lang === 'ar' ? 'طباعة تقرير Z (80mm)' : 'Print Z-Report (80mm)'}</span>
@@ -523,6 +601,7 @@ export default function CashRegisterModal({
           </div>
         </div>
       </div>
-    </div>
+    </div>,
+    document.body
   );
 }

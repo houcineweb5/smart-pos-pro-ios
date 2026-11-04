@@ -7,9 +7,12 @@ import React, { useState } from 'react';
 import { Customer, CustomerPayment, Invoice, ActivityLog, Language, StoreConfig } from '../types';
 import { 
   ArrowLeft, Calendar, FileText, Printer, Search, TrendingUp, DollarSign, 
-  CreditCard, CreditCard as DebtIcon, ChevronDown, ChevronUp, Clock, CheckCircle, AlertCircle, FileDown
+  CreditCard, CreditCard as DebtIcon, ChevronDown, ChevronUp, Clock, CheckCircle, AlertCircle, FileDown,
+  Share2, MessageCircle
 } from 'lucide-react';
 import { printHtmlContent, exportStructuredPdf, A4_PRINT_THEMES } from '../utils/printService';
+import { triggerHaptic } from '../utils/haptics';
+import { shareContent } from '../utils/nativeShare';
 
 interface CustomerLedgerProps {
   customer: Customer;
@@ -321,6 +324,36 @@ export default function CustomerLedger({ customer, invoices, logs, customerPayme
     await exportStructuredPdf(buildLedgerPdfMeta());
   };
 
+  const handleShareLedgerSummary = async (target: 'native' | 'whatsapp') => {
+    triggerHaptic('light');
+    const storeName = config.name || 'Smart POS';
+    const lines = [
+      `📊 *${labels.statementTitle}*`,
+      `🏪 *${storeName}*`,
+      `👤 ${labels.debtor} ${customer.name}`,
+      customer.phone ? `📞 ${customer.phone}` : null,
+      `📅 ${new Date().toLocaleDateString(isRTL ? 'ar-MA' : 'fr-FR')}`,
+      '--------------------------------',
+      `💰 ${labels.totalPurchased}: ${totalInvoicedSum.toFixed(2)} ${config.currency}`,
+      `💵 ${labels.totalPaidOnInvoices}: ${(totalInvoicedPaidSum + totalDirectRepayments).toFixed(2)} ${config.currency}`,
+      `⚠️ *${labels.netOutstandingDebt}: ${(hasDateFilter ? Math.max(0, totalOutstandingBillDebt - totalDirectRepayments) : customer.debt).toFixed(2)} ${config.currency}*`,
+      customer.notes ? `📝 ${labels.notes} ${customer.notes}` : null
+    ].filter(Boolean).join('\n');
+
+    if (target === 'whatsapp') {
+      const phone = customer.phone ? customer.phone.replace(/[^0-9+]/g, '') : '';
+      const text = encodeURIComponent(lines);
+      const url = phone ? `https://wa.me/${phone}?text=${text}` : `https://wa.me/?text=${text}`;
+      window.open(url, '_blank');
+    } else {
+      await shareContent({
+        title: `${labels.statementTitle} - ${customer.name}`,
+        text: lines,
+        dialogTitle: isRTL ? 'مشاركة كشف الحساب' : 'Partager le relevé'
+      });
+    }
+  };
+
   const getTranslatedLabels = () => {
     if (isRTL) {
       return {
@@ -442,7 +475,25 @@ export default function CustomerLedger({ customer, invoices, logs, customerPayme
           </div>
         </div>
 
-        <div className="flex items-center gap-2 w-full sm:w-auto">
+        <div className="flex items-center gap-1.5 w-full sm:w-auto flex-wrap">
+          <button
+            type="button"
+            onClick={() => handleShareLedgerSummary('native')}
+            className="flex-1 sm:flex-none justify-center flex items-center gap-1.5 px-3 py-2 bg-blue-600 hover:bg-blue-700 text-white text-xs font-bold rounded-xl transition shadow-sm cursor-pointer"
+            title={isRTL ? 'مشاركة كشف الحساب' : 'Partager'}
+          >
+            <Share2 className="w-4 h-4 shrink-0" />
+            <span>{isRTL ? 'مشاركة' : 'Partager'}</span>
+          </button>
+          <button
+            type="button"
+            onClick={() => handleShareLedgerSummary('whatsapp')}
+            className="flex-1 sm:flex-none justify-center flex items-center gap-1.5 px-3 py-2 bg-emerald-600 hover:bg-emerald-700 text-white text-xs font-bold rounded-xl transition shadow-sm cursor-pointer"
+            title={isRTL ? 'مشاركة عبر واتساب' : 'WhatsApp'}
+          >
+            <MessageCircle className="w-4 h-4 shrink-0" />
+            <span>{isRTL ? 'واتساب' : 'WhatsApp'}</span>
+          </button>
           <button
             type="button"
             onClick={handleExportLedgerPdf}
@@ -842,11 +893,29 @@ export default function CustomerLedger({ customer, invoices, logs, customerPayme
           <span>{isRTL ? 'الرجوع لسجل الزبناء' : 'Retour aux clients'}</span>
         </button>
 
-        <div className="flex items-center gap-2">
+        <div className="flex items-center gap-1.5 flex-wrap">
+          <button
+            type="button"
+            onClick={() => handleShareLedgerSummary('native')}
+            className="px-3 py-2.5 bg-blue-600 hover:bg-blue-700 active:bg-blue-800 text-white text-xs font-black rounded-xl transition shadow-xs cursor-pointer flex items-center gap-1.5"
+            title={isRTL ? 'مشاركة كشف الحساب' : 'Partager'}
+          >
+            <Share2 className="w-4 h-4 shrink-0" />
+            <span>{isRTL ? 'مشاركة' : 'Partager'}</span>
+          </button>
+          <button
+            type="button"
+            onClick={() => handleShareLedgerSummary('whatsapp')}
+            className="px-3 py-2.5 bg-emerald-600 hover:bg-emerald-700 active:bg-emerald-800 text-white text-xs font-black rounded-xl transition shadow-xs cursor-pointer flex items-center gap-1.5"
+            title={isRTL ? 'مشاركة عبر واتساب' : 'WhatsApp'}
+          >
+            <MessageCircle className="w-4 h-4 shrink-0" />
+            <span>{isRTL ? 'واتساب' : 'WhatsApp'}</span>
+          </button>
           <button
             type="button"
             onClick={handleExportLedgerPdf}
-            className="px-3.5 py-2.5 bg-rose-600 hover:bg-rose-700 active:bg-rose-800 text-white text-xs font-black rounded-xl transition shadow-xs cursor-pointer flex items-center gap-1.5"
+            className="px-3 py-2.5 bg-rose-600 hover:bg-rose-700 active:bg-rose-800 text-white text-xs font-black rounded-xl transition shadow-xs cursor-pointer flex items-center gap-1.5"
           >
             <FileDown className="w-4 h-4 shrink-0" />
             <span>PDF</span>
@@ -854,7 +923,7 @@ export default function CustomerLedger({ customer, invoices, logs, customerPayme
           <button
             type="button"
             onClick={triggerPrintLedger}
-            className="px-3.5 py-2.5 bg-indigo-600 hover:bg-indigo-700 active:bg-indigo-800 text-white text-xs font-black rounded-xl transition shadow-xs cursor-pointer flex items-center gap-1.5"
+            className="px-3 py-2.5 bg-indigo-600 hover:bg-indigo-700 active:bg-indigo-800 text-white text-xs font-black rounded-xl transition shadow-xs cursor-pointer flex items-center gap-1.5"
           >
             <Printer className="w-4 h-4 shrink-0" />
             <span>{labels.receiptPrint}</span>

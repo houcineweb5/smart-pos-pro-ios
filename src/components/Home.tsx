@@ -8,8 +8,10 @@ import { Invoice, Product, Customer, Supplier, ActivityLog, StoreConfig, Languag
 import { languages } from '../languages';
 import { 
   ShoppingCart, Package, PenTool, Settings, TrendingUp, DollarSign, Users, AlertTriangle, 
-  ArrowRight, UserCheck, Clock, Activity, Zap, CheckCircle2, Truck, ShoppingBag, ClipboardList 
+  ArrowRight, UserCheck, Clock, Activity, Zap, CheckCircle2, Truck, ShoppingBag, ClipboardList, Share2
 } from 'lucide-react';
+import { triggerHaptic } from '../utils/haptics';
+import { shareContent } from '../utils/nativeShare';
 
 interface HomeProps {
   invoices: Invoice[];
@@ -171,6 +173,29 @@ export default function Home({
   const lowStockCount = products.filter((p) => p.stock <= p.minStock).length;
   const totalDebt = customers.reduce((sum, c) => sum + Math.max(0, c.debt), 0);
 
+  const handleShareTodaySales = async (e: React.MouseEvent) => {
+    e.stopPropagation();
+    triggerHaptic('light');
+    const storeName = config.name || 'Smart POS';
+    const lines = [
+      `📊 *${lang === 'ar' ? 'ملخص مبيعات اليوم السريع' : 'Résumé des ventes du jour'}*`,
+      `🏪 *${storeName}*`,
+      `📅 ${now.toLocaleDateString(lang === 'ar' ? 'ar-MA' : 'fr-FR')}`,
+      '--------------------------------',
+      `🛒 ${lang === 'ar' ? 'عدد الفواتير' : 'Nombre de tickets'}: ${todayInvoices.length}`,
+      `💰 *${lang === 'ar' ? 'إجمالي المبيعات' : 'Total Ventes'}: ${todayRevenue.toFixed(2)} ${config.currency}*`,
+      '--------------------------------',
+      `👥 ${lang === 'ar' ? 'الديون المتبقية للزبناء' : 'Créances totales'}: ${totalDebt.toFixed(2)} ${config.currency}`,
+      lowStockCount > 0 ? `⚠️ ${lang === 'ar' ? 'منتجات تحتاج تموين' : 'Alertes stock'}: ${lowStockCount}` : null
+    ].filter(Boolean).join('\n');
+
+    await shareContent({
+      title: `${storeName} - ${lang === 'ar' ? 'مبيعات اليوم' : 'Ventes du jour'}`,
+      text: lines,
+      dialogTitle: lang === 'ar' ? 'مشاركة ملخص مبيعات اليوم' : 'Partager les ventes du jour'
+    });
+  };
+
   // SVG Chart points calculation for last 7 days with French labels
   const getDailySales = () => {
     const salesMap: Record<string, number> = {};
@@ -308,18 +333,28 @@ export default function Home({
         </div>
 
         {/* Card 2: Today Sales */}
-        <div className="bg-white border border-slate-100 p-4 rounded-xl shadow-xs flex items-center gap-3 transition hover:shadow-sm">
-          <div className="p-2 bg-emerald-50 text-emerald-600 rounded-xl">
-            <TrendingUp className="w-4.5 h-4.5" />
+        <div className="bg-white border border-slate-100 p-4 rounded-xl shadow-xs flex items-center justify-between gap-3 transition hover:shadow-sm">
+          <div className="flex items-center gap-3">
+            <div className="p-2 bg-emerald-50 text-emerald-600 rounded-xl">
+              <TrendingUp className="w-4.5 h-4.5" />
+            </div>
+            <div className="text-start">
+              <span className="text-[10px] text-slate-500 font-bold uppercase tracking-wider block">
+                {lang === 'ar' ? 'مبيعات اليوم' : 'Today\'s Sales'}
+              </span>
+              <span className="text-base sm:text-lg font-bold text-slate-900 font-mono">
+                {todayRevenue.toFixed(2)} <span className="text-[11px] text-slate-500 font-sans font-bold uppercase">{config.currency}</span>
+              </span>
+            </div>
           </div>
-          <div className="text-start">
-            <span className="text-[10px] text-slate-500 font-bold uppercase tracking-wider block">
-              {lang === 'ar' ? 'مبيعات اليوم' : 'Today\'s Sales'}
-            </span>
-            <span className="text-base sm:text-lg font-bold text-slate-900 font-mono">
-              {todayRevenue.toFixed(2)} <span className="text-[11px] text-slate-500 font-sans font-bold uppercase">{config.currency}</span>
-            </span>
-          </div>
+          <button
+            type="button"
+            onClick={handleShareTodaySales}
+            className="p-2 text-slate-400 hover:text-emerald-600 hover:bg-emerald-50 rounded-xl transition cursor-pointer"
+            title={lang === 'ar' ? 'مشاركة ملخص مبيعات اليوم' : 'Partager les ventes du jour'}
+          >
+            <Share2 className="w-4 h-4" />
+          </button>
         </div>
 
         {/* Card 3: Pending Debt */}

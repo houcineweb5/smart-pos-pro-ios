@@ -7,7 +7,8 @@ import React, { useEffect, useRef, useState } from 'react';
 import { createPortal } from 'react-dom';
 import { Language } from '../types';
 import { pushCloudBarcodeScan } from '../utils/cloudSync';
-import { Camera, X, ScanBarcode, Send, CheckCircle2, AlertCircle, RefreshCw } from 'lucide-react';
+import { triggerHaptic } from '../utils/haptics';
+import { Camera, X, ScanBarcode, Send, CheckCircle2, AlertCircle, RefreshCw, Zap } from 'lucide-react';
 
 interface CameraBarcodeModalProps {
   isOpen: boolean;
@@ -54,10 +55,30 @@ export default function CameraBarcodeModal({
   const [lastScanned, setLastScanned] = useState<string | null>(null);
   const [cameraError, setCameraError] = useState<string | null>(null);
   const [facingMode, setFacingMode] = useState<'environment' | 'user'>('environment');
+  const [isTorchOn, setIsTorchOn] = useState(false);
+  const [hasTorch, setHasTorch] = useState(false);
 
   const scannerRef = useRef<any>(null);
   const lastScanTimeRef = useRef<number>(0);
   const containerId = 'smartpos-camera-reader-box';
+
+  const toggleTorch = async () => {
+    try {
+      const video = document.querySelector(`#${containerId} video`) as HTMLVideoElement;
+      if (video && video.srcObject) {
+        const stream = video.srcObject as MediaStream;
+        const track = stream.getVideoTracks()[0];
+        if (track) {
+          const next = !isTorchOn;
+          await (track as any).applyConstraints({ advanced: [{ torch: next }] });
+          setIsTorchOn(next);
+          triggerHaptic('light');
+        }
+      }
+    } catch {
+      // ignore torch errors
+    }
+  };
 
   const handleDetectedCode = async (rawCode: string) => {
     const code = String(rawCode || '').trim();
@@ -68,6 +89,7 @@ export default function CameraBarcodeModal({
     lastScanTimeRef.current = now;
 
     playScannerBeep();
+    triggerHaptic('success');
     setLastScanned(code);
 
     if (scanMode === 'pc_wireless') {
@@ -133,6 +155,25 @@ export default function CameraBarcodeModal({
         },
         () => {}
       );
+
+      // Check if current camera video track supports torch/flashlight
+      setTimeout(() => {
+        try {
+          const video = document.querySelector(`#${containerId} video`) as HTMLVideoElement;
+          if (video && video.srcObject) {
+            const stream = video.srcObject as MediaStream;
+            const track = stream.getVideoTracks()[0];
+            if (track) {
+              const capabilities = (track as any).getCapabilities?.() || {};
+              if ('torch' in capabilities) {
+                setHasTorch(true);
+              }
+            }
+          }
+        } catch {
+          // ignore
+        }
+      }, 500);
     } catch (err: any) {
       setCameraError(
         lang === 'ar'
@@ -181,6 +222,18 @@ export default function CameraBarcodeModal({
           </div>
 
           <div className="flex items-center gap-1.5">
+            {/* Flashlight / Torch Toggle */}
+            <button
+              type="button"
+              onClick={toggleTorch}
+              className={`p-2 rounded-xl transition cursor-pointer flex items-center justify-center ${
+                isTorchOn ? 'bg-amber-400 text-slate-900 shadow-md font-bold' : 'bg-white/10 hover:bg-white/20 text-white'
+              }`}
+              title={lang === 'ar' ? (isTorchOn ? 'إطفاء الفلاش' : 'تشغيل الفلاش للإضاءة') : 'Toggle Flashlight'}
+            >
+              <Zap className={`w-4 h-4 ${isTorchOn ? 'fill-slate-900' : ''}`} />
+            </button>
+
             <button
               type="button"
               onClick={() => setFacingMode((prev) => (prev === 'environment' ? 'user' : 'environment'))}

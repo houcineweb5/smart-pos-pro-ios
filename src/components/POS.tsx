@@ -4,18 +4,21 @@
  */
 
 import React, { useState, useEffect, useRef } from 'react';
+import { createPortal } from 'react-dom';
 import { Product, Customer, Invoice, PaymentMethod, Language, StoreConfig, InvoiceItem, Employee, Expense } from '../types';
 import { languages } from '../languages';
 import { 
   Search, ShoppingCart, Trash2, Plus, Minus, User, PlusCircle, CreditCard, Wallet, 
   AlertCircle, Sparkles, Printer, X, Edit2, Check, RotateCcw, ScanBarcode, CheckCircle2, Volume2, Lock,
-  Eye, Package, Layers, ChevronDown, Camera, FileDown, ArrowRight, MessageCircle, Monitor, SlidersHorizontal
+  Eye, Package, Layers, ChevronDown, Camera, FileDown, ArrowRight, MessageCircle, Monitor, SlidersHorizontal, Share2
 } from 'lucide-react';
 import CashRegisterModal from './CashRegisterModal';
 import CameraBarcodeModal from './CameraBarcodeModal';
 import { generateBarcodeSvg } from '../utils/barcode';
 import { parseDecimal, sanitizeDecimalInput } from '../utils/numberInput';
 import { pullCloudBarcodeScan } from '../utils/cloudSync';
+import { triggerHaptic } from '../utils/haptics';
+import { shareContent } from '../utils/nativeShare';
 import { printHtmlContent, exportStructuredPdf, PdfDocumentMeta, buildUnified80mmReceiptHtml } from '../utils/printService';
 
 interface POSProps {
@@ -400,6 +403,7 @@ export default function POS({ products, customers, config, onAddTransaction, onR
   const addToCart = (product: Product, quantityToAdd: number = 1) => {
     if (!product || !product.id) return;
     playKeyboardClick();
+    triggerHaptic('medium');
     const qtyVal = Number(quantityToAdd) > 0 ? Number(quantityToAdd) : 1;
     setCart((prevCart) => {
       const safeCart = Array.isArray(prevCart) ? prevCart.filter((it) => it && it.product && it.product.id) : [];
@@ -429,6 +433,7 @@ export default function POS({ products, customers, config, onAddTransaction, onR
   };
 
   const updateQty = (id: string, delta: number) => {
+    triggerHaptic('light');
     const idx = cart.findIndex((item) => item.product.id === id);
     if (idx === -1) return;
 
@@ -495,6 +500,7 @@ export default function POS({ products, customers, config, onAddTransaction, onR
   };
 
   const removeFromCart = (id: string) => {
+    triggerHaptic('warning');
     setCart(cart.filter((item) => item.product.id !== id));
   };
 
@@ -691,6 +697,7 @@ export default function POS({ products, customers, config, onAddTransaction, onR
 
   const handleShareWhatsAppReceipt = (inv: Invoice) => {
     if (!inv) return;
+    triggerHaptic('light');
     const targetCust = customers.find((c) => c.id === inv.customerId);
     const phone = targetCust?.phone ? targetCust.phone.replace(/[^0-9+]/g, '') : '';
     const storeName = config.name || 'Smart POS';
@@ -726,6 +733,46 @@ export default function POS({ products, customers, config, onAddTransaction, onR
     const text = encodeURIComponent(lines.join('\n'));
     const url = phone ? `https://wa.me/${phone}?text=${text}` : `https://wa.me/?text=${text}`;
     window.open(url, '_blank');
+  };
+
+  const handleNativeShareReceipt = async (inv: Invoice) => {
+    if (!inv) return;
+    triggerHaptic('light');
+    const storeName = config.name || 'Smart POS';
+    const currency = config.currency || 'د.ج';
+    const totalAmount = Number(inv.total || 0).toLocaleString();
+    const paidAmount = Number(inv.amountPaid || 0).toLocaleString();
+    const remVal = Math.max(0, Number(inv.total || 0) - Number(inv.amountPaid || 0));
+    const remaining = remVal.toLocaleString();
+
+    const lines: string[] = [
+      `🧾 *${storeName}*`,
+      `📄 ${lang === 'ar' ? 'وصل مبيعات رقم' : 'Receipt No'}: #${inv.invoiceNumber || inv.id}`,
+      `📅 ${lang === 'ar' ? 'التاريخ' : 'Date'}: ${new Date(inv.date).toLocaleDateString(lang === 'ar' ? 'ar-DZ' : 'fr-FR')}`
+    ];
+    if (inv.customerName && inv.customerName !== 'walk-in') {
+      lines.push(`👤 ${lang === 'ar' ? 'الزبون' : 'Customer'}: ${inv.customerName}`);
+    }
+    lines.push(`--------------------------------`);
+    if (inv.items && inv.items.length > 0) {
+      inv.items.forEach((item, idx) => {
+        lines.push(`${idx + 1}. ${item.productName} × ${item.quantity} = ${Number(item.total).toLocaleString()} ${currency}`);
+      });
+      lines.push(`--------------------------------`);
+    }
+    lines.push(`💰 ${lang === 'ar' ? 'المجموع' : 'Total'}: ${totalAmount} ${currency}`);
+    lines.push(`💵 ${lang === 'ar' ? 'المدفوع' : 'Paid'}: ${paidAmount} ${currency}`);
+    if (remVal > 0) {
+      lines.push(`⚠️ ${lang === 'ar' ? 'المتبقي (دين)' : 'Remaining (Debt)'}: ${remaining} ${currency}`);
+    }
+    lines.push(``);
+    lines.push(`🙏 ${config.receiptFooterMessage || (lang === 'ar' ? 'شكراً لزيارتكم!' : 'Merci pour votre visite !')}`);
+
+    await shareContent({
+      title: `${storeName} #${inv.invoiceNumber || inv.id}`,
+      text: lines.join('\n'),
+      dialogTitle: lang === 'ar' ? 'مشاركة الوصل' : 'Partager le reçu'
+    });
   };
 
   const handleCheckoutFlow = (mode: 'print' | 'preview' | 'direct' = 'preview') => {
@@ -858,6 +905,7 @@ export default function POS({ products, customers, config, onAddTransaction, onR
 
     // Direct / Print: Commit transaction
     setIsPreviewDraft(false);
+    triggerHaptic('success');
     onAddTransaction(newInvoice);
 
     // Dynamic handling based on mode
@@ -1910,7 +1958,7 @@ export default function POS({ products, customers, config, onAddTransaction, onR
 
             {/* 3. Tender / Amount Paid (when not debt and not split) */}
             {paymentMethod !== 'debt' && paymentMethod !== 'split' ? (
-              <div className="bg-slate-50/90 p-2.5 rounded-xl border border-slate-200/80 shadow-2xs">
+              <div className="bg-slate-50/90 p-2.5 rounded-xl border border-slate-200/80 shadow-2xs space-y-2">
                 <div className="flex flex-wrap items-center justify-between gap-2">
                   <div className="flex items-center gap-1.5 shrink-0">
                     <label htmlFor="paid-input-amount" className="text-xs font-black text-slate-700 cursor-pointer whitespace-nowrap">
@@ -1920,7 +1968,10 @@ export default function POS({ products, customers, config, onAddTransaction, onR
                       <button
                         id="quick-pay-exact"
                         type="button"
-                        onClick={() => handleQuickPaySelect(parseFloat(total.toFixed(2)))}
+                        onClick={() => {
+                          handleQuickPaySelect(parseFloat(total.toFixed(2)));
+                          triggerHaptic('light');
+                        }}
                         className="text-[10px] text-emerald-700 hover:text-emerald-800 font-black cursor-pointer underline whitespace-nowrap"
                         title={lang === 'ar' ? 'دفع المبلغ بالضبط' : 'Paiement exact'}
                       >
@@ -1952,6 +2003,55 @@ export default function POS({ products, customers, config, onAddTransaction, onR
                     </span>
                   </div>
                 </div>
+
+                {/* Quick Cash Denomination Buttons when Cash */}
+                {paymentMethod === 'cash' && total > 0 && (() => {
+                  const exact = parseFloat(total.toFixed(2));
+                  const roundedOptions = [
+                    exact,
+                    Math.ceil(exact / 10) * 10,
+                    Math.ceil(exact / 20) * 20,
+                    Math.ceil(exact / 50) * 50,
+                    Math.ceil(exact / 100) * 100,
+                    Math.ceil(exact / 200) * 200,
+                  ].filter((val, idx, arr) => val >= exact && arr.indexOf(val) === idx).slice(0, 5);
+
+                  return (
+                    <div className="pt-1.5 border-t border-slate-200/60 flex items-center justify-between gap-1.5 flex-wrap">
+                      <div className="flex items-center gap-1 flex-wrap">
+                        <span className="text-[10px] text-slate-400 font-bold">{lang === 'ar' ? 'فئات نقدية:' : 'Cash:'}</span>
+                        {roundedOptions.map((denom) => {
+                          const isCurrent = parseFloat(amountPaid) === denom;
+                          return (
+                            <button
+                              key={denom}
+                              type="button"
+                              onClick={() => {
+                                setAmountPaid(denom.toFixed(2));
+                                triggerHaptic('light');
+                              }}
+                              className={`px-2 py-0.5 rounded-md text-[10px] font-black font-mono transition cursor-pointer border ${
+                                isCurrent
+                                  ? 'bg-emerald-600 text-white border-emerald-700 shadow-2xs'
+                                  : 'bg-white hover:bg-slate-100 text-slate-700 border-slate-200'
+                              }`}
+                            >
+                              {denom} {denom === exact && (lang === 'ar' ? '✓' : '✓')}
+                            </button>
+                          );
+                        })}
+                      </div>
+
+                      {/* Change Due Highlight Badge */}
+                      {changeDue > 0 && (
+                        <div className="flex items-center gap-1 bg-emerald-100/90 text-emerald-900 border border-emerald-300 px-2 py-0.5 rounded-md text-[10px] font-black font-mono">
+                          <span>{lang === 'ar' ? 'الصرف للزبون:' : 'Change:'}</span>
+                          <span>{changeDue.toFixed(2)} {config.currency}</span>
+                        </div>
+                      )}
+                    </div>
+                  );
+                })()}
               </div>
             ) : (
               <div className="bg-rose-50/90 p-2.5 rounded-xl border border-rose-200/80 shadow-2xs flex flex-wrap items-center justify-between gap-2 text-xs font-black text-rose-800">
@@ -2044,11 +2144,11 @@ export default function POS({ products, customers, config, onAddTransaction, onR
       </div>
 
       {/* POS Quick Thermal Receipt Modal */}
-      {showReceiptModal && lastCheckedInvoice && (
-        <div className="fixed inset-0 bg-slate-900/60 backdrop-blur-xs flex items-center justify-center px-3 z-50 safe-modal-overlay">
+      {showReceiptModal && lastCheckedInvoice && createPortal(
+        <div className="fixed inset-0 bg-slate-900/60 backdrop-blur-xs flex items-center justify-center px-3 z-[200] safe-modal-overlay">
           <div className="bg-white rounded-2xl shadow-xl border border-slate-100 w-full max-w-sm overflow-hidden animate-fade-in flex flex-col max-h-[88vh]">
             {/* Header / Actions Menu with Prominent Back, Print, and PDF Buttons */}
-            <div className="bg-slate-900 text-white p-3.5 flex flex-wrap items-center justify-between gap-2 shrink-0">
+            <div className="bg-slate-900 text-white p-3 flex flex-wrap items-center justify-between gap-2 shrink-0">
               <div className="flex items-center gap-1.5 font-bold">
                 <button
                   type="button"
@@ -2064,16 +2164,26 @@ export default function POS({ products, customers, config, onAddTransaction, onR
                 </button>
                 <span className="text-[11px] font-black truncate">
                   {isPreviewDraft
-                    ? (lang === 'ar' ? 'معاينة الفاتورة (مشاهدة فقط)' : 'Draft Preview (View only)')
+                    ? (lang === 'ar' ? 'معاينة الفاتورة' : 'Draft Preview')
                     : (lang === 'ar' ? 'وصل المبيعات' : 'Receipt')}
                 </span>
               </div>
-              <div className="flex items-center gap-1.5">
+              <div className="flex items-center gap-1 flex-wrap">
+                <button
+                  id="btn-pos-receipt-share"
+                  type="button"
+                  onClick={() => handleNativeShareReceipt(lastCheckedInvoice)}
+                  className="flex items-center gap-1 px-2 py-1.5 bg-blue-600 hover:bg-blue-700 text-white text-xs font-black rounded-lg transition shrink-0 cursor-pointer shadow-xs"
+                  title={lang === 'ar' ? 'مشاركة عبر النظام' : 'Partager'}
+                >
+                  <Share2 className="w-3.5 h-3.5" />
+                  <span>{lang === 'ar' ? 'مشاركة' : 'Partager'}</span>
+                </button>
                 <button
                   id="btn-pos-receipt-whatsapp"
                   type="button"
                   onClick={() => handleShareWhatsAppReceipt(lastCheckedInvoice)}
-                  className="flex items-center gap-1 px-2.5 py-1.5 bg-emerald-600 hover:bg-emerald-700 text-white text-xs font-black rounded-lg transition shrink-0 cursor-pointer shadow-xs"
+                  className="flex items-center gap-1 px-2 py-1.5 bg-emerald-600 hover:bg-emerald-700 text-white text-xs font-black rounded-lg transition shrink-0 cursor-pointer shadow-xs"
                   title={lang === 'ar' ? 'مشاركة عبر واتساب' : 'Share via WhatsApp'}
                 >
                   <MessageCircle className="w-3.5 h-3.5" />
@@ -2083,7 +2193,7 @@ export default function POS({ products, customers, config, onAddTransaction, onR
                   id="btn-pos-receipt-pdf"
                   type="button"
                   onClick={() => handleExportReceiptPdf(lastCheckedInvoice)}
-                  className="flex items-center gap-1 px-2.5 py-1.5 bg-rose-600 hover:bg-rose-700 text-white text-xs font-black rounded-lg transition shrink-0 cursor-pointer shadow-xs"
+                  className="flex items-center gap-1 px-2 py-1.5 bg-rose-600 hover:bg-rose-700 text-white text-xs font-black rounded-lg transition shrink-0 cursor-pointer shadow-xs"
                   title={lang === 'ar' ? 'تصدير ومشاركة PDF' : 'Export PDF'}
                 >
                   <FileDown className="w-3.5 h-3.5" />
@@ -2099,7 +2209,7 @@ export default function POS({ products, customers, config, onAddTransaction, onR
                       printThermalReceiptWindow(lastCheckedInvoice.invoiceNumber, lastCheckedInvoice);
                     }
                   }}
-                  className="flex items-center gap-1 px-2.5 py-1.5 bg-indigo-600 hover:bg-indigo-700 text-white text-xs font-black rounded-lg transition shrink-0 cursor-pointer shadow-xs"
+                  className="flex items-center gap-1 px-2 py-1.5 bg-indigo-600 hover:bg-indigo-700 text-white text-xs font-black rounded-lg transition shrink-0 cursor-pointer shadow-xs"
                 >
                   <Printer className="w-3.5 h-3.5" />
                   <span>{lang === 'ar' ? (isPreviewDraft ? 'حفظ وطباعة' : 'طباعة') : 'Print'}</span>
@@ -2152,7 +2262,8 @@ export default function POS({ products, customers, config, onAddTransaction, onR
               )}
             </div>
           </div>
-        </div>
+        </div>,
+        document.body
       )}
 
       {showDirectToast.visible && (
