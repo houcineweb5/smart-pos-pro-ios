@@ -1,4 +1,5 @@
 import React, { useState, useRef } from 'react';
+import { createPortal } from 'react-dom';
 import { Product, Language, StoreConfig, Warehouse } from '../types';
 import { languages } from '../languages';
 import { parseDecimal, sanitizeDecimalInput } from '../utils/numberInput';
@@ -1177,14 +1178,15 @@ export default function Inventory({ products, config, onSaveProduct, onDeletePro
           ? products.find(p => p.id !== editingProduct.id && (p.sku || '').trim().toLowerCase() === cleanCurrentSku.toLowerCase())
           : undefined;
 
-        return (
+        return createPortal(
           <div
-            className="fixed inset-0 bg-slate-900/60 backdrop-blur-xs flex items-start sm:items-center justify-center px-3 sm:px-4 z-[100] overflow-y-auto safe-modal-overlay"
+            className="fixed inset-0 bg-slate-900/60 backdrop-blur-xs flex items-start sm:items-center justify-center px-3 sm:px-4 z-[200] overflow-y-auto safe-modal-overlay"
             style={{
               paddingTop: 'max(3.25rem, calc(env(safe-area-inset-top, 20px) + 1rem))',
               paddingBottom: 'max(1.5rem, env(safe-area-inset-bottom, 20px))'
             }}
             id="edit-product-modal"
+            dir={isRTL ? 'rtl' : 'ltr'}
           >
             <div className="bg-white rounded-3xl shadow-2xl border border-slate-100 w-full max-w-lg max-h-[calc(100dvh-4.75rem)] flex flex-col overflow-hidden animate-fade-in my-auto">
               <div className="flex justify-between items-center bg-slate-50 px-5 sm:px-6 py-3.5 border-b border-slate-100 shrink-0">
@@ -1501,7 +1503,8 @@ export default function Inventory({ products, config, onSaveProduct, onDeletePro
                 </div>
               </form>
             </div>
-          </div>
+          </div>,
+          document.body
         );
       })()}
 
@@ -1549,8 +1552,11 @@ export default function Inventory({ products, config, onSaveProduct, onDeletePro
       )}
 
       {/* Barcode Stickers Printing Modal */}
-      {showBarcodeModal && (
-        <div className="fixed inset-0 z-[100] bg-slate-900/70 backdrop-blur-xs flex flex-col sm:items-center sm:justify-center sm:p-4">
+      {showBarcodeModal && createPortal(
+        <div 
+          className="fixed inset-0 z-[200] bg-slate-900/70 backdrop-blur-xs flex flex-col sm:items-center sm:justify-center p-0 sm:p-4 overflow-hidden"
+          dir={isRTL ? 'rtl' : 'ltr'}
+        >
           <div className="bg-white rounded-none sm:rounded-3xl shadow-2xl border-0 sm:border border-slate-100 w-full max-w-4xl h-full sm:h-auto sm:max-h-[92vh] overflow-hidden animate-fade-in text-start flex flex-col">
             {/* Top Header */}
             <div 
@@ -1861,7 +1867,8 @@ export default function Inventory({ products, config, onSaveProduct, onDeletePro
               </button>
             </div>
           </div>
-        </div>
+        </div>,
+        document.body
       )}
 
       {/* CSV Import Feedback Toast / Modal */}
@@ -1960,8 +1967,8 @@ export default function Inventory({ products, config, onSaveProduct, onDeletePro
           };
         }).sort((a, b) => b.sellingValue - a.sellingValue);
 
-        return (
-          <div className="fixed inset-0 bg-slate-900/60 backdrop-blur-xs flex items-center justify-center p-3 sm:p-5 z-50 safe-modal-overlay">
+        return createPortal(
+          <div className="fixed inset-0 bg-slate-900/70 backdrop-blur-xs flex items-center justify-center p-3 sm:p-5 z-[200] safe-modal-overlay" dir={isRTL ? 'rtl' : 'ltr'}>
             <div className="bg-white rounded-3xl shadow-2xl border border-slate-100 w-full max-w-4xl max-h-[92vh] flex flex-col overflow-hidden animate-fade-in">
               {/* Modal Header */}
               <div className="bg-slate-900 text-white px-6 py-4 flex items-center justify-between shrink-0">
@@ -2184,13 +2191,14 @@ export default function Inventory({ products, config, onSaveProduct, onDeletePro
                 </div>
               </div>
             </div>
-          </div>
+          </div>,
+          document.body
         );
       })()}
 
       {/* Manage Warehouses Modal */}
-      {showWarehouseModal && (
-        <div className="fixed inset-0 bg-slate-900/60 backdrop-blur-xs flex items-center justify-center p-3 sm:p-5 z-50 safe-modal-overlay">
+      {showWarehouseModal && createPortal(
+        <div className="fixed inset-0 bg-slate-900/70 backdrop-blur-xs flex items-center justify-center p-3 sm:p-5 z-[200] safe-modal-overlay" dir={isRTL ? 'rtl' : 'ltr'}>
           <div className="bg-white rounded-3xl shadow-2xl border border-slate-100 w-full max-w-lg overflow-hidden animate-fade-in flex flex-col max-h-[90vh]">
             <div className="bg-slate-900 text-white px-6 py-4 flex items-center justify-between shrink-0">
               <div className="flex items-center gap-2.5">
@@ -2297,12 +2305,16 @@ export default function Inventory({ products, config, onSaveProduct, onDeletePro
               </button>
             </div>
           </div>
-        </div>
+        </div>,
+        document.body
       )}
 
       {/* Auto Reorder Low Stock Modal */}
-      {showReorderModal && (
-        <div className="fixed inset-0 z-50 bg-slate-900/70 backdrop-blur-xs flex flex-col sm:items-center sm:justify-center sm:p-4">
+      {showReorderModal && createPortal(
+        <div 
+          className="fixed inset-0 z-[200] bg-slate-900/70 backdrop-blur-xs flex flex-col sm:items-center sm:justify-center p-0 sm:p-4 overflow-hidden"
+          dir={isRTL ? 'rtl' : 'ltr'}
+        >
           <div className="bg-white rounded-none sm:rounded-3xl shadow-2xl border-0 sm:border border-slate-100 w-full max-w-3xl h-full sm:h-auto sm:max-h-[90vh] overflow-hidden animate-fade-in flex flex-col">
             {/* Header */}
             <div 
@@ -2500,7 +2512,8 @@ export default function Inventory({ products, config, onSaveProduct, onDeletePro
               </div>
             </div>
           </div>
-        </div>
+        </div>,
+        document.body
       )}
     </div>
   );

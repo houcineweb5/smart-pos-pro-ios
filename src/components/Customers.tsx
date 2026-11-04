@@ -4,9 +4,10 @@
  */
 
 import React, { useState } from 'react';
+import { createPortal } from 'react-dom';
 import { Customer, CustomerPayment, Invoice, Language, StoreConfig, ActivityLog } from '../types';
 import { languages } from '../languages';
-import { UserPlus, Search, Phone, Mail, DollarSign, Edit3, Trash2, X, Receipt, CheckCircle, MessageCircle, Printer, FileDown, MapPin } from 'lucide-react';
+import { UserPlus, Search, Phone, Mail, DollarSign, Edit3, Trash2, X, Receipt, CheckCircle, MessageCircle, Printer, FileDown, MapPin, ArrowLeft } from 'lucide-react';
 import CustomerLedger from './CustomerLedger';
 import { parseDecimal, sanitizeDecimalInput } from '../utils/numberInput';
 import { printHtmlContent, exportStructuredPdf, PdfDocumentMeta } from '../utils/printService';
@@ -530,178 +531,208 @@ export default function Customers({ customers, invoices, onSaveCustomer, onDelet
       </div>
 
       {/* Editor Modal */}
-      {isEditing && editingCustomer && (
-        <div className="fixed inset-0 bg-slate-900/60 backdrop-blur-xs flex items-center justify-center p-4 z-50 overflow-y-auto" id="edit-customer-modal">
-          <div className="bg-white rounded-2xl shadow-xl border border-slate-100 w-full max-w-md overflow-hidden animate-fade-in my-8">
-            <div className="flex justify-between items-center bg-slate-50 px-6 py-4 border-b border-slate-100">
-              <h2 className="font-bold text-slate-800 text-lg">
+      {isEditing && editingCustomer && createPortal(
+        <div 
+          className="fixed inset-0 z-[200] bg-slate-900/70 backdrop-blur-xs flex flex-col sm:items-center sm:justify-center p-0 sm:p-4 overflow-hidden" 
+          id="edit-customer-modal"
+          dir={isRTL ? 'rtl' : 'ltr'}
+        >
+          <div className="bg-white rounded-none sm:rounded-3xl shadow-2xl border-0 sm:border border-slate-100 w-full max-w-lg h-full sm:h-auto sm:max-h-[90vh] overflow-hidden flex flex-col my-auto animate-fade-in text-start">
+            {/* Header */}
+            <div 
+              className="flex justify-between items-center bg-slate-50 px-4 sm:px-6 py-3.5 sm:py-4 border-b border-slate-200 shrink-0"
+              style={{ paddingTop: 'max(0.75rem, env(safe-area-inset-top, 0px))' }}
+            >
+              <h2 className="font-black text-slate-800 text-sm sm:text-base">
                 {editingCustomer.id ? t.customer.editCustomer : t.customer.addCustomer}
               </h2>
               <button
                 id="close-cust-modal"
+                type="button"
                 onClick={() => setIsEditing(false)}
-                className="p-1 hover:bg-slate-200 text-slate-400 hover:text-slate-600 rounded-lg transition"
+                className="flex items-center gap-1 px-3 py-1.5 bg-slate-200 hover:bg-slate-300 active:bg-slate-400 text-slate-800 rounded-xl text-xs font-black transition cursor-pointer shadow-2xs border border-slate-300"
+                title={lang === 'ar' ? 'إغلاق وعودة' : 'Fermer / Retour'}
               >
-                <X className="w-5 h-5" />
+                <ArrowLeft className={`w-3.5 h-3.5 ${isRTL ? 'rotate-180' : ''}`} />
+                <span>{lang === 'ar' ? 'عودة' : 'Retour'}</span>
               </button>
             </div>
 
-            <form onSubmit={handleSave} className="p-6 space-y-4">
-              <div>
-                <label className="block text-xs font-bold text-slate-500 uppercase mb-1.5">{t.customer.name} *</label>
-                <input
-                  id="form-c-name"
-                  required
-                  type="text"
-                  value={editingCustomer.name || ''}
-                  onChange={(e) => setEditingCustomer({ ...editingCustomer, name: e.target.value })}
-                  className="w-full px-3.5 py-2.5 border border-slate-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-indigo-500 text-slate-800 font-semibold"
-                />
-              </div>
+            <form onSubmit={handleSave} className="flex-1 flex flex-col min-h-0 overflow-hidden">
+              <div 
+                className="p-4 sm:p-6 space-y-4 flex-1 overflow-y-auto overscroll-contain touch-pan-y"
+                style={{ WebkitOverflowScrolling: 'touch' }}
+              >
+                <div>
+                  <label className="block text-xs font-bold text-slate-500 uppercase mb-1.5">{t.customer.name} *</label>
+                  <input
+                    id="form-c-name"
+                    required
+                    type="text"
+                    value={editingCustomer.name || ''}
+                    onChange={(e) => setEditingCustomer({ ...editingCustomer, name: e.target.value })}
+                    className="w-full px-3.5 py-2.5 border border-slate-200 rounded-xl focus:outline-none focus:ring-2 focus:ring-indigo-500 text-slate-800 font-semibold"
+                  />
+                </div>
 
-              <div>
-                <label className="block text-xs font-bold text-slate-500 uppercase mb-1.5">{t.customer.phone} *</label>
-                <input
-                  id="form-c-phone"
-                  required
-                  type="text"
-                  value={editingCustomer.phone || ''}
-                  onChange={(e) => setEditingCustomer({ ...editingCustomer, phone: e.target.value })}
-                  className="w-full px-3.5 py-2.5 border border-slate-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-indigo-500 text-slate-700 font-semibold"
-                />
-              </div>
+                <div>
+                  <label className="block text-xs font-bold text-slate-500 uppercase mb-1.5">{t.customer.phone} *</label>
+                  <input
+                    id="form-c-phone"
+                    required
+                    type="text"
+                    value={editingCustomer.phone || ''}
+                    onChange={(e) => setEditingCustomer({ ...editingCustomer, phone: e.target.value })}
+                    className="w-full px-3.5 py-2.5 border border-slate-200 rounded-xl focus:outline-none focus:ring-2 focus:ring-indigo-500 text-slate-700 font-semibold"
+                  />
+                </div>
 
-              <div>
-                <label className="block text-xs font-bold text-slate-500 uppercase mb-1.5">{t.customer.email}</label>
-                <input
-                  id="form-c-email"
-                  type="email"
-                  value={editingCustomer.email || ''}
-                  onChange={(e) => setEditingCustomer({ ...editingCustomer, email: e.target.value })}
-                  className="w-full px-3.5 py-2.5 border border-slate-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-indigo-500 text-slate-600"
-                />
-              </div>
+                <div>
+                  <label className="block text-xs font-bold text-slate-500 uppercase mb-1.5">{t.customer.email}</label>
+                  <input
+                    id="form-c-email"
+                    type="email"
+                    value={editingCustomer.email || ''}
+                    onChange={(e) => setEditingCustomer({ ...editingCustomer, email: e.target.value })}
+                    className="w-full px-3.5 py-2.5 border border-slate-200 rounded-xl focus:outline-none focus:ring-2 focus:ring-indigo-500 text-slate-600"
+                  />
+                </div>
 
-              <div>
-                <label className="block text-xs font-bold text-slate-500 uppercase mb-1.5">
-                  {lang === 'ar' ? 'العنوان' : 'Adresse'}
-                </label>
-                <input
-                  id="form-c-address"
-                  type="text"
-                  placeholder={lang === 'ar' ? 'عنوان الزبون (المدينة، الحي...)' : 'Adresse du client'}
-                  value={editingCustomer.address || ''}
-                  onChange={(e) => setEditingCustomer({ ...editingCustomer, address: e.target.value })}
-                  className="w-full px-3.5 py-2.5 border border-slate-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-indigo-500 text-slate-800 font-semibold"
-                />
-              </div>
+                <div>
+                  <label className="block text-xs font-bold text-slate-500 uppercase mb-1.5">
+                    {lang === 'ar' ? 'العنوان' : 'Adresse'}
+                  </label>
+                  <input
+                    id="form-c-address"
+                    type="text"
+                    placeholder={lang === 'ar' ? 'عنوان الزبون (المدينة، الحي...)' : 'Adresse du client'}
+                    value={editingCustomer.address || ''}
+                    onChange={(e) => setEditingCustomer({ ...editingCustomer, address: e.target.value })}
+                    className="w-full px-3.5 py-2.5 border border-slate-200 rounded-xl focus:outline-none focus:ring-2 focus:ring-indigo-500 text-slate-800 font-semibold"
+                  />
+                </div>
 
-              <div>
-                <label className="block text-xs font-bold text-slate-500 uppercase mb-1.5">
-                  {lang === 'ar' ? 'معرف المقاولة الضريبي (ICE)' : 'Identifiant ICE'}
-                </label>
-                <input
-                  id="form-c-ice"
-                  type="text"
-                  placeholder="ICE (ex: 001234567000089)"
-                  value={editingCustomer.ice || ''}
-                  onChange={(e) => setEditingCustomer({ ...editingCustomer, ice: e.target.value })}
-                  className="w-full px-3.5 py-2.5 border border-slate-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-indigo-500 text-slate-800 font-mono font-bold"
-                />
-              </div>
+                <div>
+                  <label className="block text-xs font-bold text-slate-500 uppercase mb-1.5">
+                    {lang === 'ar' ? 'معرف المقاولة الضريبي (ICE)' : 'Identifiant ICE'}
+                  </label>
+                  <input
+                    id="form-c-ice"
+                    type="text"
+                    placeholder="ICE (ex: 001234567000089)"
+                    value={editingCustomer.ice || ''}
+                    onChange={(e) => setEditingCustomer({ ...editingCustomer, ice: e.target.value })}
+                    className="w-full px-3.5 py-2.5 border border-slate-200 rounded-xl focus:outline-none focus:ring-2 focus:ring-indigo-500 text-slate-800 font-mono font-bold"
+                  />
+                </div>
 
-              <div>
-                <label className="block text-xs font-bold text-slate-500 uppercase mb-1.5">{t.customer.debt} ({config.currency})</label>
-                <input
-                  id="form-c-debt"
-                  type="text"
-                  inputMode="decimal"
-                  placeholder="0.00"
-                  value={editingCustomer.debt ?? ''}
-                  onChange={(e) => setEditingCustomer({ ...editingCustomer, debt: sanitizeDecimalInput(e.target.value) as any })}
-                  className="w-full px-3.5 py-2.5 border border-slate-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-indigo-500 text-slate-700 font-bold"
-                  disabled={!!editingCustomer.id} // prevent direct debt hacks unless new customer
-                />
-                {editingCustomer.id && (
+                <div>
+                  <label className="block text-xs font-bold text-slate-500 uppercase mb-1.5">{t.customer.debt} ({config.currency})</label>
+                  <input
+                    id="form-c-debt"
+                    type="text"
+                    inputMode="decimal"
+                    placeholder="0.00"
+                    value={editingCustomer.debt ?? ''}
+                    onChange={(e) => setEditingCustomer({ ...editingCustomer, debt: sanitizeDecimalInput(e.target.value) as any })}
+                    className="w-full px-3.5 py-2.5 border border-slate-200 rounded-xl focus:outline-none focus:ring-2 focus:ring-indigo-500 text-slate-700 font-bold"
+                    disabled={!!editingCustomer.id} // prevent direct debt hacks unless new customer
+                  />
+                  {editingCustomer.id && (
+                    <span className="text-[10px] text-slate-400 mt-1 block">
+                      Use debt reimbursement module below to settle accounts.
+                    </span>
+                  )}
+                </div>
+
+                <div>
+                  <label className="block text-xs font-bold text-slate-500 uppercase mb-1.5">
+                    {lang === 'ar' ? `سقف الائتمان / أقصى دين مسموح (${config.currency})` : `Credit Limit (${config.currency})`}
+                  </label>
+                  <input
+                    id="form-c-credit-limit"
+                    type="text"
+                    inputMode="decimal"
+                    placeholder={lang === 'ar' ? 'اختياري (مثال: 50000)' : 'Optional (e.g. 50000)'}
+                    value={editingCustomer.creditLimit ?? ''}
+                    onChange={(e) => setEditingCustomer({ ...editingCustomer, creditLimit: sanitizeDecimalInput(e.target.value) as any })}
+                    className="w-full px-3.5 py-2.5 border border-slate-200 rounded-xl focus:outline-none focus:ring-2 focus:ring-indigo-500 text-indigo-700 font-bold font-mono"
+                  />
                   <span className="text-[10px] text-slate-400 mt-1 block">
-                    Use debt reimbursement module below to settle accounts.
+                    {lang === 'ar' ? 'تنبيه الكاشير تلقائياً عند تجاوز الزبون لهذا الحد في المبيعات بالآجل.' : 'Warns cashier when total debt exceeds this limit.'}
                   </span>
-                )}
+                </div>
+
+                <div>
+                  <label className="block text-xs font-bold text-slate-500 uppercase mb-1.5">{t.customer.notes}</label>
+                  <textarea
+                    id="form-c-notes"
+                    rows={3}
+                    value={editingCustomer.notes || ''}
+                    onChange={(e) => setEditingCustomer({ ...editingCustomer, notes: e.target.value })}
+                    className="w-full px-3.5 py-2.5 border border-slate-200 rounded-xl focus:outline-none focus:ring-2 focus:ring-indigo-500 text-slate-600"
+                  ></textarea>
+                </div>
               </div>
 
-              <div>
-                <label className="block text-xs font-bold text-slate-500 uppercase mb-1.5">
-                  {lang === 'ar' ? `سقف الائتمان / أقصى دين مسموح (${config.currency})` : `Credit Limit (${config.currency})`}
-                </label>
-                <input
-                  id="form-c-credit-limit"
-                  type="text"
-                  inputMode="decimal"
-                  placeholder={lang === 'ar' ? 'اختياري (مثال: 50000)' : 'Optional (e.g. 50000)'}
-                  value={editingCustomer.creditLimit ?? ''}
-                  onChange={(e) => setEditingCustomer({ ...editingCustomer, creditLimit: sanitizeDecimalInput(e.target.value) as any })}
-                  className="w-full px-3.5 py-2.5 border border-slate-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-indigo-500 text-indigo-700 font-bold font-mono"
-                />
-                <span className="text-[10px] text-slate-400 mt-1 block">
-                  {lang === 'ar' ? 'تنبيه الكاشير تلقائياً عند تجاوز الزبون لهذا الحد في المبيعات بالآجل.' : 'Warns cashier when total debt exceeds this limit.'}
-                </span>
-              </div>
-
-              <div>
-                <label className="block text-xs font-bold text-slate-500 uppercase mb-1.5">{t.customer.notes}</label>
-                <textarea
-                  id="form-c-notes"
-                  rows={3}
-                  value={editingCustomer.notes || ''}
-                  onChange={(e) => setEditingCustomer({ ...editingCustomer, notes: e.target.value })}
-                  className="w-full px-3.5 py-2.5 border border-slate-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-indigo-500 text-slate-600"
-                ></textarea>
-              </div>
-
-              <div className="flex items-center justify-end gap-3 pt-4 border-t border-slate-100">
+              {/* Footer with Prominent Actions */}
+              <div 
+                className="bg-slate-50 px-4 sm:px-6 py-3 sm:py-4 border-t border-slate-200 flex items-center justify-end gap-2.5 shrink-0"
+                style={{ paddingBottom: 'max(0.85rem, env(safe-area-inset-bottom, 0px))' }}
+              >
                 <button
                   id="btn-edit-c-cancel"
                   type="button"
                   onClick={() => setIsEditing(false)}
-                  className="px-4 py-2 hover:bg-slate-100 text-slate-600 font-medium rounded-lg transition"
+                  className="flex-1 sm:flex-none px-5 py-2.5 bg-slate-200 hover:bg-slate-300 active:bg-slate-400 text-slate-700 font-bold rounded-xl transition text-xs cursor-pointer border border-slate-300"
                 >
                   {t.customer.cancel}
                 </button>
                 <button
                   id="btn-edit-c-save"
                   type="submit"
-                  className="px-5 py-2 bg-indigo-600 hover:bg-indigo-700 text-white font-medium rounded-lg transition"
+                  className="flex-1 sm:flex-none px-6 py-2.5 bg-indigo-600 hover:bg-indigo-700 active:bg-indigo-800 text-white font-black rounded-xl transition text-xs shadow-xs cursor-pointer"
                 >
                   {t.customer.save}
                 </button>
               </div>
             </form>
           </div>
-        </div>
+        </div>,
+        document.body
       )}
 
       {/* Debt Settle Modal */}
-      {settlingCustId && (
-        <div className="fixed inset-0 bg-slate-900/60 backdrop-blur-xs flex items-center justify-center p-4 z-50 overflow-y-auto" id="settle-debt-modal">
-          <div className="bg-white rounded-2xl shadow-xl border border-slate-100 w-full max-w-sm overflow-hidden animate-fade-in">
-            <div className="bg-emerald-50 px-6 py-4 border-b border-emerald-100 flex justify-between items-center">
-              <h3 className="font-bold text-emerald-950 flex items-center gap-1.5">
-                <CheckCircle className="w-5 h-5 text-emerald-600" />
+      {settlingCustId && createPortal(
+        <div 
+          className="fixed inset-0 z-[200] bg-slate-900/70 backdrop-blur-xs flex flex-col sm:items-center sm:justify-center p-0 sm:p-4 overflow-hidden" 
+          id="settle-debt-modal"
+          dir={isRTL ? 'rtl' : 'ltr'}
+        >
+          <div className="bg-white rounded-none sm:rounded-3xl shadow-2xl border-0 sm:border border-slate-100 w-full max-w-sm h-full sm:h-auto overflow-hidden animate-fade-in flex flex-col my-auto text-start">
+            <div 
+              className="bg-emerald-50 px-4 sm:px-6 py-3.5 sm:py-4 border-b border-emerald-100 flex justify-between items-center shrink-0"
+              style={{ paddingTop: 'max(0.75rem, env(safe-area-inset-top, 0px))' }}
+            >
+              <h3 className="font-bold text-emerald-950 flex items-center gap-1.5 text-sm sm:text-base">
+                <CheckCircle className="w-5 h-5 text-emerald-600 shrink-0" />
                 {t.customer.payDebt}
               </h3>
               <button
                 id="close-settle-modal"
+                type="button"
                 onClick={() => setSettlingCustId(null)}
-                className="p-1 hover:bg-emerald-100 rounded-lg text-emerald-800 transition"
+                className="flex items-center gap-1 px-3 py-1.5 bg-emerald-100 hover:bg-emerald-200 active:bg-emerald-300 text-emerald-800 rounded-xl text-xs font-bold transition cursor-pointer"
               >
-                <X className="w-5 h-5" />
+                <ArrowLeft className={`w-3.5 h-3.5 ${isRTL ? 'rotate-180' : ''}`} />
+                <span>{lang === 'ar' ? 'عودة' : 'Retour'}</span>
               </button>
             </div>
 
-            <form onSubmit={handleDebtSettleSubmit} className="p-6 space-y-4">
-              <div>
-                <p className="text-sm text-slate-600 mb-4">
-                  Register a customer payment towards their unpaid bills and balances.
+            <form onSubmit={handleDebtSettleSubmit} className="flex-1 flex flex-col justify-between">
+              <div className="p-4 sm:p-6 space-y-4">
+                <p className="text-xs sm:text-sm text-slate-600 font-medium">
+                  {lang === 'ar' ? 'تسجيل دفعة نقدية مسددة من الزبون لتخفيض رصيد الديون المترتبة بذمته.' : 'Register a customer payment towards their unpaid bills and balances.'}
                 </p>
                 <label className="block text-xs font-bold text-slate-500 uppercase mb-1.5">{t.customer.payAmount} *</label>
                 <div className="relative">
@@ -714,36 +745,43 @@ export default function Customers({ customers, invoices, onSaveCustomer, onDelet
                     placeholder="0.00"
                     value={settlingAmount || ''}
                     onChange={(e) => setSettlingAmount(sanitizeDecimalInput(e.target.value) as any)}
-                    className="w-full ps-14 pe-4 py-2.5 border border-slate-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-indigo-500 font-bold text-slate-800"
+                    className="w-full ps-14 pe-4 py-2.5 border border-slate-200 rounded-xl focus:outline-none focus:ring-2 focus:ring-emerald-500 font-bold text-slate-800"
                   />
                 </div>
               </div>
 
-              <div className="flex justify-end gap-3 pt-3 border-t border-slate-100">
+              <div 
+                className="bg-slate-50 px-4 sm:px-6 py-3 sm:py-4 border-t border-slate-100 flex items-center justify-end gap-2.5 shrink-0"
+                style={{ paddingBottom: 'max(0.85rem, env(safe-area-inset-bottom, 0px))' }}
+              >
                 <button
                   id="btn-settle-cancel"
                   type="button"
                   onClick={() => setSettlingCustId(null)}
-                  className="px-4 py-2 text-slate-600 font-medium hover:bg-slate-50 rounded-lg transition text-sm"
+                  className="flex-1 sm:flex-none px-4 py-2.5 bg-slate-200 hover:bg-slate-300 text-slate-700 font-bold rounded-xl transition text-xs cursor-pointer border border-slate-300"
                 >
                   {t.customer.cancel}
                 </button>
                 <button
                   id="btn-settle-save"
                   type="submit"
-                  className="px-5 py-2 bg-emerald-600 hover:bg-emerald-700 text-white font-semibold rounded-lg transition text-sm shadow-xs"
+                  className="flex-1 sm:flex-none px-5 py-2.5 bg-emerald-600 hover:bg-emerald-700 active:bg-emerald-800 text-white font-black rounded-xl transition text-xs shadow-xs cursor-pointer"
                 >
-                  Confirm Settle
+                  {lang === 'ar' ? 'تأكيد التسديد' : 'Confirm Settle'}
                 </button>
               </div>
             </form>
           </div>
-        </div>
+        </div>,
+        document.body
       )}
 
       {/* Custom Customer Delete Dialog Overlay */}
-      {deletingCustomerId && (
-        <div className="fixed inset-0 bg-slate-900/60 backdrop-blur-xs flex items-center justify-center p-4 z-50">
+      {deletingCustomerId && createPortal(
+        <div 
+          className="fixed inset-0 z-[200] bg-slate-900/70 backdrop-blur-xs flex items-center justify-center p-4"
+          dir={isRTL ? 'rtl' : 'ltr'}
+        >
           <div className="bg-white rounded-2xl shadow-xl border border-slate-100 w-full max-w-md overflow-hidden p-6 space-y-4 animate-fade-in">
             <div className={`flex items-center gap-3 text-rose-600 pb-2 border-b border-slate-100 ${isRTL ? 'flex-row-reverse' : 'flex-row'}`}>
               <Trash2 className="w-6 h-6 shrink-0" />
@@ -781,7 +819,8 @@ export default function Customers({ customers, invoices, onSaveCustomer, onDelet
               </button>
             </div>
           </div>
-        </div>
+        </div>,
+        document.body
       )}
     </div>
   );
