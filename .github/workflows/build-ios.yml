@@ -28,12 +28,6 @@ jobs:
           npx vite build
           npx cap sync ios
 
-      - name: Configure iOS Camera Permission for Barcode Scanner
-        run: |
-          PLIST="ios/App/App/Info.plist"
-          /usr/libexec/PlistBuddy -c "Add :NSCameraUsageDescription string 'يحتاج التطبيق إلى الكاميرا لمسح الباركود ورموز QR للمنتجات'" "$PLIST" || \
-          /usr/libexec/PlistBuddy -c "Set :NSCameraUsageDescription 'يحتاج التطبيق إلى الكاميرا لمسح الباركود ورموز QR للمنتجات'" "$PLIST"
-
       - name: Build Xcode Project (Unsigned for Sideloading)
         run: |
           cd ios/App
@@ -60,7 +54,7 @@ jobs:
           cp "$ICON_SET/AppIcon-512@2x.png" Payload/App.app/iTunesArtwork@2x || true
           /usr/libexec/PlistBuddy -c "Add :CFBundleIconName string 'AppIcon'" "Payload/App.app/Info.plist" || \
           /usr/libexec/PlistBuddy -c "Set :CFBundleIconName 'AppIcon'" "Payload/App.app/Info.plist"
-          zip -r SmartPOS-Pro-iOS.ipa Payload
+          zip -ry SmartPOS-Pro-iOS.ipa Payload
 
       - name: Upload SmartPOS-Pro-iOS.ipa Artifact
         uses: actions/upload-artifact@v4

@@ -3,7 +3,7 @@ import { createPortal } from 'react-dom';
 import { Product, Language, StoreConfig, Warehouse } from '../types';
 import { languages } from '../languages';
 import { parseDecimal, sanitizeDecimalInput } from '../utils/numberInput';
-import { printHtmlContent, exportCsvFile } from '../utils/printService';
+import { printHtmlContent, exportStructuredPdf, PdfDocumentMeta, exportBarcodeStickersPdf, exportCsvFile } from '../utils/printService';
 import { compressImageFile } from '../utils/cloudSync';
 import { INITIAL_WAREHOUSES } from '../dataStore';
 import {
@@ -19,6 +19,7 @@ import {
   Upload,
   Barcode,
   Printer,
+  FileDown,
   Check,
   CheckCircle2,
   FileSpreadsheet,
@@ -200,6 +201,49 @@ export default function Inventory({ products, config, onSaveProduct, onDeletePro
 
   // Low stock alert products
   const lowStockProducts = products.filter((p) => p.stock <= p.minStock);
+
+  const buildLowStockPdfMeta = (): PdfDocumentMeta => {
+    const totalOrderCost = lowStockProducts.reduce((sum, p) => {
+      const suggested = Math.max(1, p.minStock * 2 - p.stock);
+      return sum + (suggested * p.purchasePrice);
+    }, 0);
+
+    return {
+      title: lang === 'ar' ? 'سند طلب شراء مواد ناقصة' : 'Purchase Order (Low Stock)',
+      subtitle: lang === 'ar' ? `حصر تلقائي لـ ${lowStockProducts.length} منتج وصل للحد الأدنى من المخزون` : `Reorder list for ${lowStockProducts.length} items below minimum stock`,
+      docNumber: `PO-${new Date().toISOString().slice(0, 10).replace(/-/g, '')}`,
+      date: new Date().toLocaleDateString('fr-FR'),
+      storeName: config?.name || 'Smart POS',
+      storePhone: config?.phone,
+      storeAddress: config?.address,
+      customerName: lang === 'ar' ? 'سند موجه للموردين' : 'Supplier Purchase Order',
+      currency,
+      mode: 'a4',
+      isRTL,
+      lang,
+      customTableHeaders: {
+        name: lang === 'ar' ? 'اسم المنتج والباركود' : 'Product & SKU',
+        qty: lang === 'ar' ? 'الكمية المطلوبة' : 'Order Qty',
+        price: lang === 'ar' ? 'سعر الشراء' : 'Unit Cost',
+        total: lang === 'ar' ? 'المجموع المقدر' : 'Total Cost',
+      },
+      items: lowStockProducts.map(p => {
+        const suggested = Math.max(1, p.minStock * 2 - p.stock);
+        const lineTotal = suggested * p.purchasePrice;
+        return {
+          name: `${p.name} (${p.sku}) [${lang === 'ar' ? 'المخزون الحالي:' : 'Stock:'} ${p.stock} ${p.unit}]`,
+          quantity: `${suggested} ${p.unit}`,
+          unitPrice: p.purchasePrice,
+          total: lineTotal,
+        };
+      }),
+      subtotal: totalOrderCost,
+      total: totalOrderCost,
+      hidePaymentDetails: true,
+      notes: lang === 'ar' ? 'يرجى تأكيد توفر الكميات وتحديد أقرب موعد للتسليم. شكراً.' : 'Please confirm item availability and delivery date.',
+      footerText: 'Smart POS Pro - Purchase Order Management',
+    };
+  };
 
   const generateUniqueSku = () => {
     const existingSkus = new Set(products.map(p => (p.sku || '').trim().toLowerCase()));
@@ -486,8 +530,42 @@ export default function Inventory({ products, config, onSaveProduct, onDeletePro
     `;
   };
 
+  const handleExportBarcodePdf = async () => {
+    const stickers: { name: string; sku: string; price: number }[] = [];
+    (Object.entries(barcodeSelection) as [string, number][]).forEach(([prodId, count]) => {
+      const prod = products.find(p => p.id === prodId);
+      const countNum = Number(count);
+      if (prod && countNum > 0) {
+        for (let i = 0; i < countNum; i++) {
+          stickers.push({ name: prod.name, sku: prod.sku, price: prod.sellingPrice });
+        }
+      }
+    });
+
+    if (stickers.length === 0) {
+      alert(lang === 'ar' ? 'يرجى تحديد منتج واحد على الأقل وتحديد عدد الملصقات.' : 'Please select at least one item.');
+      return;
+    }
+
+    await exportBarcodeStickersPdf(stickers, barcodePrintMode, storeName, currency);
+  };
+
   // Print Barcode stickers window (works on iPhone iOS & Desktop)
   const triggerPrintBarcodes = () => {
+    const isIOSDevice =
+      typeof navigator !== 'undefined' &&
+      (/iPad|iPhone|iPod/.test(navigator.userAgent) ||
+        (navigator.platform === 'MacIntel' && navigator.maxTouchPoints > 1));
+    const isCapacitorNative =
+      typeof (window as any).Capacitor !== 'undefined' &&
+      Boolean((window as any).Capacitor?.isNativePlatform?.() ?? (window as any).Capacitor?.isNative);
+
+    // On iOS native app, directly trigger the native PDF generator & AirPrint/Share sheet!
+    if (isIOSDevice && isCapacitorNative) {
+      handleExportBarcodePdf();
+      return;
+    }
+
     const stickers: Product[] = [];
     (Object.entries(barcodeSelection) as [string, number][]).forEach(([prodId, count]) => {
       const prod = products.find(p => p.id === prodId);
@@ -1856,15 +1934,26 @@ export default function Inventory({ products, config, onSaveProduct, onDeletePro
                 <ArrowLeft className={`w-4 h-4 shrink-0 ${isRTL ? 'rotate-180' : ''}`} />
                 <span>{lang === 'ar' ? 'إغلاق وعودة' : 'Fermer / Retour'}</span>
               </button>
-              <button
-                id="btn-print-barcode-stickers-bottom"
-                type="button"
-                onClick={triggerPrintBarcodes}
-                className="flex-1 sm:flex-none flex items-center justify-center gap-2 px-5 py-2.5 bg-indigo-600 hover:bg-indigo-700 active:bg-indigo-800 text-white text-xs font-black rounded-xl transition cursor-pointer shadow-xs"
-              >
-                <Printer className="w-4 h-4 shrink-0" />
-                <span>{lang === 'ar' ? 'بدء الطباعة الآن' : 'Print Labels Now'}</span>
-              </button>
+              <div className="flex items-center gap-2">
+                <button
+                  type="button"
+                  onClick={handleExportBarcodePdf}
+                  className="flex items-center justify-center gap-1.5 px-4 py-2.5 bg-rose-600 hover:bg-rose-700 active:bg-rose-800 text-white text-xs font-black rounded-xl transition cursor-pointer shadow-xs"
+                  title="PDF / AirPrint"
+                >
+                  <FileDown className="w-4 h-4 shrink-0" />
+                  <span>PDF</span>
+                </button>
+                <button
+                  id="btn-print-barcode-stickers-bottom"
+                  type="button"
+                  onClick={triggerPrintBarcodes}
+                  className="flex-1 sm:flex-none flex items-center justify-center gap-2 px-5 py-2.5 bg-indigo-600 hover:bg-indigo-700 active:bg-indigo-800 text-white text-xs font-black rounded-xl transition cursor-pointer shadow-xs"
+                >
+                  <Printer className="w-4 h-4 shrink-0" />
+                  <span>{lang === 'ar' ? 'بدء الطباعة الآن' : 'Print Labels Now'}</span>
+                </button>
+              </div>
             </div>
           </div>
         </div>,
@@ -1966,6 +2055,158 @@ export default function Inventory({ products, config, onSaveProduct, onDeletePro
             expectedProfit: catSellingVal - catPurchaseVal
           };
         }).sort((a, b) => b.sellingValue - a.sellingValue);
+
+        const buildInventoryStatsPdfMeta = (): PdfDocumentMeta => ({
+          title: lang === 'ar' ? 'تقرير إحصائيات المخزن ورأس المال الشاملة' : 'Inventory & Capital Valuation Report',
+          subtitle: lang === 'ar' ? 'بيانات تفصيلية دقيقة عن المخزون، رأس المال، والمنتجات' : 'Detailed inventory & stock valuation report',
+          docNumber: `INV-VAL-${new Date().toISOString().slice(0, 10).replace(/-/g, '')}`,
+          date: `${new Date().toLocaleDateString('fr-FR')} ${new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}`,
+          storeName: config?.name || 'Smart POS',
+          storePhone: config?.phone,
+          storeAddress: config?.address,
+          customerName: lang === 'ar' ? 'إدارة المؤسسة / المخزن' : 'Management / Store Admin',
+          currency,
+          mode: 'a4',
+          isRTL,
+          lang,
+          summaryCards: [
+            {
+              label: lang === 'ar' ? 'مجموع الأصناف' : 'Total Items',
+              value: `${totalProducts} ${lang === 'ar' ? 'صنف' : 'items'}`,
+              subValue: `${totalStockUnits.toLocaleString()} ${lang === 'ar' ? 'قطعة في المخزن' : 'units in stock'}`,
+              color: '#4338ca',
+            },
+            {
+              label: lang === 'ar' ? 'رأس المال (تكلفة الشراء)' : 'Capital (Purchase Cost)',
+              value: `${totalPurchaseValue.toFixed(2)} ${currency}`,
+              subValue: lang === 'ar' ? 'تكلفة شراء المخزون الحالي' : 'Stock cost basis',
+              color: '#1d4ed8',
+            },
+            {
+              label: lang === 'ar' ? 'قيمة البيع (المتوقعة)' : 'Total Selling Value',
+              value: `${totalSellingValue.toFixed(2)} ${currency}`,
+              subValue: lang === 'ar' ? 'القيمة السوقية للمخزن' : 'Market stock value',
+              color: '#059669',
+            },
+            {
+              label: lang === 'ar' ? 'صافي الربح المتوقع' : 'Expected Profit',
+              value: `${expectedProfit.toFixed(2)} ${currency}`,
+              subValue: `${lang === 'ar' ? 'هامش ربح' : 'Margin'}: %${profitMargin.toFixed(1)}`,
+              color: '#7c3aed',
+            },
+          ],
+          customTableHeaders: {
+            name: lang === 'ar' ? 'القسم / التصنيف' : 'Category',
+            qty: lang === 'ar' ? 'الأصناف والقطع' : 'Items & Units',
+            price: lang === 'ar' ? 'قيمة الشراء' : 'Purchase Cost',
+            total: lang === 'ar' ? 'قيمة البيع' : 'Selling Value',
+          },
+          items: categoryStats.map((cs) => ({
+            name: cs.category,
+            quantity: `${cs.count} ${lang === 'ar' ? 'صنف' : 'items'} (${cs.units} ${lang === 'ar' ? 'قطعة' : 'units'})`,
+            unitPrice: cs.purchaseValue,
+            total: cs.sellingValue,
+          })),
+          extraSections: [
+            {
+              title: lang === 'ar' ? 'حالة توفر السلع في المخزن' : 'Stock Availability Breakdown',
+              headers: [
+                lang === 'ar' ? 'الحالة' : 'Status',
+                lang === 'ar' ? 'عدد الأصناف' : 'Count',
+                lang === 'ar' ? 'النسبة' : 'Percentage',
+                lang === 'ar' ? 'البيان' : 'Description',
+              ],
+              rows: [
+                [
+                  lang === 'ar' ? 'منتجات متوفرة (سليمة)' : 'In Stock',
+                  `${inStockProducts.length}`,
+                  `${totalProducts > 0 ? ((inStockProducts.length / totalProducts) * 100).toFixed(1) : 0}%`,
+                  lang === 'ar' ? 'كميات كافية للبيع' : 'Sufficient units',
+                ],
+                [
+                  lang === 'ar' ? 'منتجات شارفت على النفاد' : 'Low Stock',
+                  `${lowStockList.length}`,
+                  `${totalProducts > 0 ? ((lowStockList.length / totalProducts) * 100).toFixed(1) : 0}%`,
+                  lang === 'ar' ? 'وصلت للحد الأدنى، تتطلب طلب شراء' : 'Reorder needed',
+                ],
+                [
+                  lang === 'ar' ? 'منتجات نفدت تماماً' : 'Out of Stock',
+                  `${outOfStockProducts.length}`,
+                  `${totalProducts > 0 ? ((outOfStockProducts.length / totalProducts) * 100).toFixed(1) : 0}%`,
+                  lang === 'ar' ? 'رصيد المخزن 0' : 'Zero balance',
+                ],
+              ],
+            },
+          ],
+          subtotal: totalPurchaseValue,
+          total: totalSellingValue,
+          hidePaymentDetails: true,
+          footerText: 'Smart POS Pro - Comprehensive Inventory Valuation',
+        });
+
+        const handlePrintStats = () => {
+          const meta = buildInventoryStatsPdfMeta();
+          const printHtml = `
+            <div style="font-family: Arial, sans-serif; padding: 20px; direction: ${isRTL ? 'rtl' : 'ltr'};">
+              <h2 style="margin: 0 0 8px 0; border-bottom: 2px solid #000; padding-bottom: 8px;">
+                ${config?.name || 'Smart POS'} - ${lang === 'ar' ? 'تقرير إحصائيات المخزن ورأس المال الشاملة' : 'Inventory & Capital Valuation Report'}
+              </h2>
+              <p style="font-size: 12px; color: #555; margin-bottom: 15px;">
+                ${lang === 'ar' ? 'تاريخ التقرير:' : 'Date:'} ${new Date().toLocaleDateString('fr-FR')} ${new Date().toLocaleTimeString()}
+              </p>
+              <div style="display: grid; grid-template-columns: repeat(4, 1fr); gap: 10px; margin-bottom: 20px;">
+                <div style="border: 1px solid #cbd5e1; border-radius: 8px; padding: 10px; background: #f8fafc;">
+                  <div style="font-size: 11px; color: #64748b; font-weight: bold;">${lang === 'ar' ? 'مجموع الأصناف' : 'Total Items'}</div>
+                  <div style="font-size: 18px; font-weight: 900; margin-top: 4px;">${totalProducts}</div>
+                  <div style="font-size: 10px; color: #475569;">${totalStockUnits.toLocaleString()} ${lang === 'ar' ? 'قطعة' : 'units'}</div>
+                </div>
+                <div style="border: 1px solid #cbd5e1; border-radius: 8px; padding: 10px; background: #f8fafc;">
+                  <div style="font-size: 11px; color: #64748b; font-weight: bold;">${lang === 'ar' ? 'رأس المال (قيمة الشراء)' : 'Capital (Cost)'}</div>
+                  <div style="font-size: 18px; font-weight: 900; margin-top: 4px; color: #1e3a8a;">${totalPurchaseValue.toFixed(2)} ${currency}</div>
+                </div>
+                <div style="border: 1px solid #cbd5e1; border-radius: 8px; padding: 10px; background: #f8fafc;">
+                  <div style="font-size: 11px; color: #64748b; font-weight: bold;">${lang === 'ar' ? 'قيمة البيع المتوقعة' : 'Selling Value'}</div>
+                  <div style="font-size: 18px; font-weight: 900; margin-top: 4px; color: #065f46;">${totalSellingValue.toFixed(2)} ${currency}</div>
+                </div>
+                <div style="border: 1px solid #cbd5e1; border-radius: 8px; padding: 10px; background: #f8fafc;">
+                  <div style="font-size: 11px; color: #64748b; font-weight: bold;">${lang === 'ar' ? 'الربح المتوقع' : 'Expected Profit'}</div>
+                  <div style="font-size: 18px; font-weight: 900; margin-top: 4px; color: #581c87;">+${expectedProfit.toFixed(2)} ${currency}</div>
+                  <div style="font-size: 10px; color: #581c87; font-weight: bold;">%${profitMargin.toFixed(1)}</div>
+                </div>
+              </div>
+              <h3 style="margin: 15px 0 8px 0; font-size: 14px;">${lang === 'ar' ? 'توزيع المخزون حسب الأقسام' : 'Breakdown by Category'}</h3>
+              <table style="width: 100%; border-collapse: collapse; font-size: 12px;">
+                <thead>
+                  <tr style="background: #f1f5f9; border-bottom: 2px solid #cbd5e1;">
+                    <th style="padding: 8px; text-align: ${isRTL ? 'right' : 'left'};">${lang === 'ar' ? 'القسم' : 'Category'}</th>
+                    <th style="padding: 8px; text-align: center;">${lang === 'ar' ? 'الأصناف' : 'Products'}</th>
+                    <th style="padding: 8px; text-align: center;">${lang === 'ar' ? 'القطع' : 'Units'}</th>
+                    <th style="padding: 8px; text-align: ${isRTL ? 'left' : 'right'};">${lang === 'ar' ? 'قيمة الشراء' : 'Cost'}</th>
+                    <th style="padding: 8px; text-align: ${isRTL ? 'left' : 'right'};">${lang === 'ar' ? 'قيمة البيع' : 'Selling'}</th>
+                    <th style="padding: 8px; text-align: ${isRTL ? 'left' : 'right'};">${lang === 'ar' ? 'الربح المتوقع' : 'Profit'}</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  ${categoryStats.map(cs => `
+                    <tr style="border-bottom: 1px solid #e2e8f0;">
+                      <td style="padding: 8px;"><b>${cs.category}</b></td>
+                      <td style="padding: 8px; text-align: center;">${cs.count}</td>
+                      <td style="padding: 8px; text-align: center;">${cs.units}</td>
+                      <td style="padding: 8px; text-align: ${isRTL ? 'left' : 'right'}; font-family: monospace;">${cs.purchaseValue.toFixed(2)} ${currency}</td>
+                      <td style="padding: 8px; text-align: ${isRTL ? 'left' : 'right'}; font-family: monospace;">${cs.sellingValue.toFixed(2)} ${currency}</td>
+                      <td style="padding: 8px; text-align: ${isRTL ? 'left' : 'right'}; font-family: monospace; font-weight: bold; color: #047857;">+${cs.expectedProfit.toFixed(2)} ${currency}</td>
+                    </tr>
+                  `).join('')}
+                </tbody>
+              </table>
+            </div>
+          `;
+          printHtmlContent({ html: printHtml, title: 'INVENTORY-STATS-REPORT', isRTL, mode: 'a4' }, meta);
+        };
+
+        const handleExportPdf = async () => {
+          await exportStructuredPdf(buildInventoryStatsPdfMeta(), `Inventory-Valuation-${new Date().toISOString().slice(0, 10)}.pdf`);
+        };
 
         return createPortal(
           <div className="fixed inset-0 bg-slate-900/70 backdrop-blur-xs flex items-center justify-center p-3 sm:p-5 z-[200] safe-modal-overlay" dir={isRTL ? 'rtl' : 'ltr'}>
@@ -2183,8 +2424,25 @@ export default function Inventory({ products, config, onSaveProduct, onDeletePro
                 <div className="flex items-center gap-2">
                   <button
                     type="button"
+                    onClick={handleExportPdf}
+                    className="flex items-center gap-1.5 px-3.5 py-2.5 bg-rose-600 hover:bg-rose-700 active:bg-rose-800 text-white text-xs font-black rounded-xl transition cursor-pointer shadow-xs"
+                    title="PDF"
+                  >
+                    <FileDown className="w-4 h-4 shrink-0" />
+                    <span>PDF</span>
+                  </button>
+                  <button
+                    type="button"
+                    onClick={handlePrintStats}
+                    className="flex items-center gap-1.5 px-4 py-2.5 bg-indigo-600 hover:bg-indigo-700 active:bg-indigo-800 text-white text-xs font-black rounded-xl transition cursor-pointer shadow-xs"
+                  >
+                    <Printer className="w-4 h-4 shrink-0" />
+                    <span>{lang === 'ar' ? 'طباعة تقرير الإحصائيات (A4)' : 'Print Report (A4)'}</span>
+                  </button>
+                  <button
+                    type="button"
                     onClick={() => setShowStatsModal(false)}
-                    className="px-5 py-2.5 bg-slate-800 hover:bg-slate-900 text-white text-xs font-black rounded-xl transition cursor-pointer shadow-xs"
+                    className="px-4 py-2.5 bg-slate-800 hover:bg-slate-900 text-white text-xs font-black rounded-xl transition cursor-pointer shadow-xs"
                   >
                     {lang === 'ar' ? 'إغلاق' : 'Close'}
                   </button>
@@ -2457,10 +2715,22 @@ export default function Inventory({ products, config, onSaveProduct, onDeletePro
                   <span>{lang === 'ar' ? 'واتساب' : 'WhatsApp'}</span>
                 </button>
 
+                {/* PDF Button */}
+                <button
+                  type="button"
+                  onClick={() => exportStructuredPdf(buildLowStockPdfMeta(), `PO-LowStock-${new Date().toISOString().slice(0, 10)}.pdf`)}
+                  className="flex items-center justify-center gap-1.5 px-2.5 py-2.5 bg-rose-600 hover:bg-rose-700 active:bg-rose-800 text-white rounded-xl text-[11px] sm:text-xs font-black transition cursor-pointer shadow-xs"
+                  title="PDF / AirPrint"
+                >
+                  <FileDown className="w-3.5 h-3.5 shrink-0" />
+                  <span>PDF</span>
+                </button>
+
                 {/* Print Order Button */}
                 <button
                   type="button"
                   onClick={() => {
+                    const meta = buildLowStockPdfMeta();
                     const printHtml = `
                       <div style="font-family: Arial, sans-serif; padding: 20px; direction: ${isRTL ? 'rtl' : 'ltr'};">
                         <h2 style="margin: 0 0 10px 0; border-bottom: 2px solid #000; padding-bottom: 8px;">
@@ -2493,7 +2763,7 @@ export default function Inventory({ products, config, onSaveProduct, onDeletePro
                         </table>
                       </div>
                     `;
-                    printHtmlContent({ html: printHtml, title: 'PURCHASE-ORDER-LOW-STOCK', isRTL, mode: 'a4' });
+                    printHtmlContent({ html: printHtml, title: 'PURCHASE-ORDER-LOW-STOCK', isRTL, mode: 'a4' }, meta);
                   }}
                   className="flex items-center justify-center gap-1.5 px-2.5 py-2.5 bg-indigo-600 hover:bg-indigo-700 active:bg-indigo-800 text-white rounded-xl text-[11px] sm:text-xs font-black transition cursor-pointer shadow-xs"
                 >

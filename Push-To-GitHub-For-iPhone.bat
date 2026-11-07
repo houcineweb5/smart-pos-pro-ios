@@ -27,15 +27,26 @@ if errorlevel 1 (
 )
 
 echo.
-echo [3/4] Suivi de la compilation sur GitHub Actions...
-echo (Veuillez patienter pendant la generation du fichier .ipa...)
-"C:\Program Files\GitHub CLI\gh.exe" run watch
+echo [3/4] Suivi de la compilation sur GitHub Actions (iOS)...
+echo (Veuillez patienter pendant la generation du fichier .ipa, environ 8 a 10 minutes...)
+timeout /t 5 /nobreak >nul
+for /f "tokens=*" %%i in ('"C:\Program Files\GitHub CLI\gh.exe" run list --workflow=build-ios.yml --limit 1 --json databaseId --jq ".[0].databaseId"') do set "IOS_RUN_ID=%%i"
 
-echo.
-echo [4/4] Telechargement automatique du nouveau fichier .ipa...
-if exist "%TEMP%\smartpos_ipa" rmdir /s /q "%TEMP%\smartpos_ipa"
-mkdir "%TEMP%\smartpos_ipa"
-"C:\Program Files\GitHub CLI\gh.exe" run download -n SmartPOS-Pro-iOS-IPA -D "%TEMP%\smartpos_ipa"
+if defined IOS_RUN_ID (
+    echo Build iOS detecte (ID: %IOS_RUN_ID%), suivi en direct...
+    "C:\Program Files\GitHub CLI\gh.exe" run watch %IOS_RUN_ID%
+    echo.
+    echo [4/4] Telechargement automatique du nouveau fichier .ipa...
+    if exist "%TEMP%\smartpos_ipa" rmdir /s /q "%TEMP%\smartpos_ipa"
+    mkdir "%TEMP%\smartpos_ipa"
+    "C:\Program Files\GitHub CLI\gh.exe" run download %IOS_RUN_ID% -n SmartPOS-Pro-iOS-IPA -D "%TEMP%\smartpos_ipa"
+) else (
+    echo Suivi standard...
+    "C:\Program Files\GitHub CLI\gh.exe" run watch
+    if exist "%TEMP%\smartpos_ipa" rmdir /s /q "%TEMP%\smartpos_ipa"
+    mkdir "%TEMP%\smartpos_ipa"
+    "C:\Program Files\GitHub CLI\gh.exe" run download -n SmartPOS-Pro-iOS-IPA -D "%TEMP%\smartpos_ipa"
+)
 
 if exist "%TEMP%\smartpos_ipa\SmartPOS-Pro-iOS.ipa" (
     copy /y "%TEMP%\smartpos_ipa\SmartPOS-Pro-iOS.ipa" "%USERPROFILE%\Desktop\SmartPOS-Pro-iOS.ipa" >nul

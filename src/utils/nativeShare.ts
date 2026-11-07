@@ -13,6 +13,7 @@ export interface ShareOptions {
   text: string;
   url?: string;
   phone?: string;
+  dialogTitle?: string;
 }
 
 export const canUseNativeShare = (): boolean => {

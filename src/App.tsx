@@ -2581,8 +2581,11 @@ export default function App() {
           {activeTab === 'suppliers' && (
             <Suppliers
               suppliers={suppliers}
+              purchases={purchases || []}
+              config={config}
               onSaveSupplier={handleSaveSupplier}
               onDeleteSupplier={handleDeleteSupplier}
+              onSettleDebt={handleSettleSupplierDebt}
               lang={lang}
             />
           )}

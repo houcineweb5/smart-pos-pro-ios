@@ -1945,15 +1945,15 @@ export default function Invoices({ invoices, products = [], customers = [], conf
                   {lang === 'ar' ? 'حدد الكميات المراد إرجاعها للمخزن:' : 'Specify items and quantities to return:'}
                 </label>
 
-                <div className="border border-slate-200 rounded-xl overflow-hidden">
-                  <table className="w-full text-xs text-start">
+                <div className="border border-slate-200 rounded-xl overflow-x-auto">
+                  <table className="w-full text-xs text-start min-w-[520px]">
                     <thead className="bg-slate-50 border-b border-slate-200 text-slate-500 font-bold text-[10px] uppercase">
                       <tr>
-                        <th className="p-3 text-start">{lang === 'ar' ? 'المنتج' : 'Item'}</th>
-                        <th className="p-3 text-center">{lang === 'ar' ? 'المباع' : 'Sold'}</th>
-                        <th className="p-3 text-center">{lang === 'ar' ? 'كمية الإرجاع' : 'Return Qty'}</th>
-                        <th className="p-3 text-end">{lang === 'ar' ? 'سعر الوحدة' : 'Unit Price'}</th>
-                        <th className="p-3 text-end">{lang === 'ar' ? 'المسترد' : 'Refund'}</th>
+                        <th className="p-3 text-start min-w-[180px]">{lang === 'ar' ? 'المنتج' : 'Item'}</th>
+                        <th className="p-3 text-center w-20">{lang === 'ar' ? 'المباع' : 'Sold'}</th>
+                        <th className="p-3 text-center w-32">{lang === 'ar' ? 'كمية الإرجاع' : 'Return Qty'}</th>
+                        <th className="p-3 text-end w-24">{lang === 'ar' ? 'سعر الوحدة' : 'Unit Price'}</th>
+                        <th className="p-3 text-end w-28">{lang === 'ar' ? 'المسترد' : 'Refund'}</th>
                       </tr>
                     </thead>
                     <tbody className="divide-y divide-slate-100 font-semibold">
@@ -1969,9 +1969,9 @@ export default function Invoices({ invoices, products = [], customers = [], conf
                         return (
                           <tr key={it.productId} className={maxAvailable === 0 ? 'opacity-40 bg-slate-50' : 'hover:bg-slate-50/50'}>
                             <td className="p-3">
-                              <p className="font-bold text-slate-850 line-clamp-1">{it.productName}</p>
+                              <p className="font-bold text-slate-900 whitespace-normal break-words leading-snug">{it.productName}</p>
                               {previouslyReturned > 0 && (
-                                <span className="text-[10px] text-purple-600 font-bold">
+                                <span className="text-[10px] text-purple-600 font-bold block mt-0.5">
                                   {lang === 'ar' ? `(أُرجع مسبقاً: ${previouslyReturned})` : `(Returned: ${previouslyReturned})`}
                                 </span>
                               )}

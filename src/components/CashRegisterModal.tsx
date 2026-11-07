@@ -161,63 +161,154 @@ export default function CashRegisterModal({
 
   // Print Thermal 80mm Z-Report
   const handlePrintZReport = () => {
+    const meta = buildZReportPdfMeta();
+    const storeTitle = config.name || 'Smart POS';
+    const storeAddress = config.address || '';
+    const storePhone = config.phone || '';
+    const dateStr = `${now.toLocaleDateString('fr-FR')} ${now.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit', second: '2-digit' })}`;
+    const cashierName = currentUser?.name || 'Administrator';
+    const currency = config.currency || 'MAD';
+
     const html = `
-      <div style="font-family: monospace, sans-serif; width: 72mm; margin: 0 auto; color: #000; font-size: 11px; line-height: 1.4; direction: ${isRTL ? 'rtl' : 'ltr'};">
-        <div style="text-align: center;">
-          <div style="font-size: 14px; font-weight: 900; margin-bottom: 2px;">${config.name}</div>
-          <div>${config.address || ''}</div>
-          <div>TEL: ${config.phone || ''}</div>
-          <div style="border-top: 1.5px solid #000; margin: 6px 0;"></div>
-          <div style="font-weight: bold; font-size: 13px;">=== RAPPORT Z / تقرير إغلاق الصندوق ===</div>
-          <div>${now.toLocaleDateString()} - ${now.toLocaleTimeString()}</div>
-          <div>المسؤول / Caissier: ${currentUser?.name || 'Administrator'}</div>
+      <div style="font-family: 'Segoe UI', Tahoma, Arial, sans-serif; width: 68mm; max-width: 68mm; margin: 0 auto; color: #000; font-size: 11px; line-height: 1.35; direction: ${isRTL ? 'rtl' : 'ltr'}; box-sizing: border-box; padding: 2px;">
+        <div style="text-align: center; margin-bottom: 6px;">
+          <div style="font-size: 15px; font-weight: 900; letter-spacing: 0.5px; margin-bottom: 3px; text-transform: uppercase;">${storeTitle}</div>
+          ${storeAddress ? `<div style="font-size: 10px; color: #333; margin-bottom: 2px;">${storeAddress}</div>` : ''}
+          ${storePhone ? `<div style="font-size: 10px; font-family: monospace; font-weight: bold; margin-bottom: 2px;">TEL: ${storePhone}</div>` : ''}
+          <div style="border-top: 1.5px dashed #000; margin: 6px 0;"></div>
+          <div style="font-weight: 900; font-size: 12px; letter-spacing: 0.5px;">=== RAPPORT Z / تقرير إغلاق الصندوق ===</div>
+          <div style="font-size: 10px; font-family: monospace; margin-top: 3px;">${dateStr}</div>
+          <div style="font-size: 10.5px; font-weight: bold; margin-top: 2px;">${isRTL ? 'المسؤول' : 'Caissier'}: <span style="font-weight: 900;">${cashierName}</span></div>
         </div>
+
+        <div style="border-top: 1.5px solid #000; margin: 5px 0;"></div>
+
+        <table style="width: 100%; border-collapse: collapse; font-size: 11px;">
+          <tbody>
+            <tr>
+              <td style="text-align: ${isRTL ? 'right' : 'left'}; padding: 3px 0; font-weight: bold; color: #222;">
+                ${isRTL ? 'عدد المبيعات:' : 'Nombre de ventes:'}
+              </td>
+              <td style="text-align: ${isRTL ? 'left' : 'right'}; padding: 3px 0; font-weight: 900; font-family: monospace; white-space: nowrap;" dir="ltr">
+                ${todayInvoices.length}
+              </td>
+            </tr>
+            <tr>
+              <td style="text-align: ${isRTL ? 'right' : 'left'}; padding: 3px 0; font-weight: bold; color: #222;">
+                ${isRTL ? 'إجمالي المبيعات:' : 'Total Ventes:'}
+              </td>
+              <td style="text-align: ${isRTL ? 'left' : 'right'}; padding: 3px 0; font-weight: 900; font-family: monospace; white-space: nowrap;" dir="ltr">
+                ${totalSalesToday.toFixed(2)} ${currency}
+              </td>
+            </tr>
+          </tbody>
+        </table>
+
+        <div style="border-top: 1px dashed #000; margin: 5px 0;"></div>
+
+        <table style="width: 100%; border-collapse: collapse; font-size: 11px;">
+          <tbody>
+            <tr>
+              <td style="text-align: ${isRTL ? 'right' : 'left'}; padding: 2.5px 0; font-weight: 600;">
+                (+) ${isRTL ? 'رصيد البداية:' : 'Fond initial:'}
+              </td>
+              <td style="text-align: ${isRTL ? 'left' : 'right'}; padding: 2.5px 0; font-weight: 900; font-family: monospace; white-space: nowrap;" dir="ltr">
+                ${openingVal.toFixed(2)} ${currency}
+              </td>
+            </tr>
+            <tr>
+              <td style="text-align: ${isRTL ? 'right' : 'left'}; padding: 2.5px 0; font-weight: 600;">
+                (+) ${isRTL ? 'مبيعات نقدية:' : 'Espèces:'}
+              </td>
+              <td style="text-align: ${isRTL ? 'left' : 'right'}; padding: 2.5px 0; font-weight: 900; font-family: monospace; white-space: nowrap;" dir="ltr">
+                ${cashSales.toFixed(2)} ${currency}
+              </td>
+            </tr>
+            ${cardSales > 0 ? `
+              <tr>
+                <td style="text-align: ${isRTL ? 'right' : 'left'}; padding: 2.5px 0; font-weight: 600;">
+                  (•) ${isRTL ? 'مبيعات بنكية (بطاقة):' : 'Carte bancaire:'}
+                </td>
+                <td style="text-align: ${isRTL ? 'left' : 'right'}; padding: 2.5px 0; font-weight: 900; font-family: monospace; white-space: nowrap;" dir="ltr">
+                  ${cardSales.toFixed(2)} ${currency}
+                </td>
+              </tr>
+            ` : ''}
+            ${debtSales > 0 ? `
+              <tr>
+                <td style="text-align: ${isRTL ? 'right' : 'left'}; padding: 2.5px 0; font-weight: 600;">
+                  (•) ${isRTL ? 'مبيعات بالكريدي:' : 'Crédit:'}
+                </td>
+                <td style="text-align: ${isRTL ? 'left' : 'right'}; padding: 2.5px 0; font-weight: 900; font-family: monospace; white-space: nowrap;" dir="ltr">
+                  ${debtSales.toFixed(2)} ${currency}
+                </td>
+              </tr>
+            ` : ''}
+            ${totalCashExpensesToday > 0 ? `
+              <tr>
+                <td style="text-align: ${isRTL ? 'right' : 'left'}; padding: 2.5px 0; font-weight: 600;">
+                  (-) ${isRTL ? 'مصاريف الصندوق:' : 'Dépenses caisse:'}
+                </td>
+                <td style="text-align: ${isRTL ? 'left' : 'right'}; padding: 2.5px 0; font-weight: 900; font-family: monospace; white-space: nowrap;" dir="ltr">
+                  -${totalCashExpensesToday.toFixed(2)} ${currency}
+                </td>
+              </tr>
+            ` : ''}
+          </tbody>
+        </table>
+
         <div style="border-top: 1.5px solid #000; margin: 6px 0;"></div>
-        <div style="display: flex; justify-content: space-between; margin: 2px 0;">
-          <span>عدد المبيعات / Nb Ventes:</span>
-          <b>${todayInvoices.length}</b>
-        </div>
-        <div style="display: flex; justify-content: space-between; margin: 2px 0;">
-          <span>إجمالي المبيعات / Total Ventes:</span>
-          <b>${totalSalesToday.toFixed(2)} ${config.currency}</b>
-        </div>
-        <div style="border-top: 1.5px solid #000; margin: 6px 0;"></div>
-        <div style="display: flex; justify-content: space-between; margin: 2px 0;">
-          <span>(+) رصيد البداية:</span>
-          <span>${openingVal.toFixed(2)} ${config.currency}</span>
-        </div>
-        <div style="display: flex; justify-content: space-between; margin: 2px 0;">
-          <span>(+) مبيعات نقدية:</span>
-          <b>${cashSales.toFixed(2)} ${config.currency}</b>
-        </div>
-        <div style="display: flex; justify-content: space-between; margin: 2px 0;">
-          <span>(-) مصاريف الصندوق:</span>
-          <span>-${totalCashExpensesToday.toFixed(2)} ${config.currency}</span>
-        </div>
-        <div style="border-top: 1.5px solid #000; margin: 6px 0;"></div>
-        <div style="display: flex; justify-content: space-between; font-size: 12px; font-weight: 900;">
-          <span>المتوقع في الصندوق:</span>
-          <span>${expectedCash.toFixed(2)} ${config.currency}</span>
-        </div>
-        ${actualVal !== null ? `
-          <div style="display: flex; justify-content: space-between; font-size: 12px; font-weight: 900;">
-            <span>الفعلي في الدرج:</span>
-            <span>${actualVal.toFixed(2)} ${config.currency}</span>
-          </div>
-          <div style="display: flex; justify-content: space-between; font-size: 12px; font-weight: 900; margin-top: 4px;">
-            <span>الفارق:</span>
-            <span>${(difference || 0) > 0 ? '+' : ''}${(difference || 0).toFixed(2)} ${config.currency}</span>
+
+        <table style="width: 100%; border-collapse: collapse; font-size: 11.5px;">
+          <tbody>
+            <tr style="background: #f8fafc;">
+              <td style="text-align: ${isRTL ? 'right' : 'left'}; padding: 4px 2px; font-weight: 900; font-size: 12px;">
+                ${isRTL ? 'المتوقع في الصندوق:' : 'Espèces attendues:'}
+              </td>
+              <td style="text-align: ${isRTL ? 'left' : 'right'}; padding: 4px 2px; font-weight: 900; font-size: 12px; font-family: monospace; white-space: nowrap;" dir="ltr">
+                ${expectedCash.toFixed(2)} ${currency}
+              </td>
+            </tr>
+            ${actualVal !== null ? `
+              <tr>
+                <td style="text-align: ${isRTL ? 'right' : 'left'}; padding: 3px 2px; font-weight: 900;">
+                  ${isRTL ? 'الفعلي في الدرج:' : 'Espèces réelles:'}
+                </td>
+                <td style="text-align: ${isRTL ? 'left' : 'right'}; padding: 3px 2px; font-weight: 900; font-family: monospace; white-space: nowrap;" dir="ltr">
+                  ${actualVal.toFixed(2)} ${currency}
+                </td>
+              </tr>
+              <tr>
+                <td style="text-align: ${isRTL ? 'right' : 'left'}; padding: 3px 2px; font-weight: 900;">
+                  ${isRTL ? 'الفارق:' : 'Écart:'}
+                </td>
+                <td style="text-align: ${isRTL ? 'left' : 'right'}; padding: 3px 2px; font-weight: 900; font-family: monospace; white-space: nowrap;" dir="ltr">
+                  ${(difference || 0) > 0 ? '+' : ''}${(difference || 0).toFixed(2)} ${currency}
+                </td>
+              </tr>
+            ` : ''}
+          </tbody>
+        </table>
+
+        ${notes ? `
+          <div style="border-top: 1px dashed #000; margin: 6px 0;"></div>
+          <div style="font-size: 10px; line-height: 1.3; margin-top: 3px;">
+            <b>${isRTL ? 'ملاحظات:' : 'Notes:'}</b> ${notes}
           </div>
         ` : ''}
-        ${notes ? `<div style="border-top: 1.5px solid #000; margin: 6px 0;"></div><div><b>ملاحظات:</b> ${notes}</div>` : ''}
+        
+        <div style="border-top: 1.5px dashed #000; margin: 8px 0 4px 0;"></div>
+        <div style="text-align: center; font-size: 9px; color: #555; text-transform: uppercase;">
+          Smart POS Pro System
+        </div>
       </div>
     `;
     printHtmlContent({
-      title: `Z-Report - ${now.toLocaleDateString()}`,
+      title: `Z-Report-${now.toISOString().slice(0, 10)}`,
       html,
       isRTL,
       mode: '80mm'
-    });
+    }, meta);
   };
 
   const handleShareZReportWhatsApp = () => {

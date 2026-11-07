@@ -903,7 +903,7 @@ export function buildStructuredA4Html(meta: PdfDocumentMeta): string {
  * Converts one or more base64 JPEG data URLs into a valid PDF 1.4 binary Uint8Array.
  * For A4 mode, every page is strictly standard A4 (595.28 x 841.89 pt = 210mm x 297mm).
  */
-function createPdfFromJpegPages(
+export function createPdfFromJpegPages(
   pages: { jpegDataUrl: string; widthPx: number; heightPx: number }[],
   mode: '80mm' | 'a4' = 'a4'
 ): Uint8Array {
@@ -2179,6 +2179,236 @@ export async function exportStructuredPdf(
     return true;
   } catch (err) {
     console.error('Failed to export PDF:', err);
+    return false;
+  }
+}
+
+export interface BarcodeStickerItem {
+  name: string;
+  sku: string;
+  price: number;
+}
+
+/**
+ * Draws barcode labels onto high-DPI HTML5 canvas and exports a multi-page PDF
+ * or triggers native iOS/Android share/AirPrint sheet.
+ */
+export async function exportBarcodeStickersPdf(
+  stickers: BarcodeStickerItem[],
+  mode: 'thermal' | 'a4',
+  storeName = 'Smart POS',
+  currency = 'MAD'
+): Promise<boolean> {
+  if (!stickers || stickers.length === 0) return false;
+  const isThermal = mode === 'thermal';
+  const scale = 2;
+  const pages: { jpegDataUrl: string; widthPx: number; heightPx: number }[] = [];
+
+  const drawStickerContent = (
+    ctx: CanvasRenderingContext2D,
+    x: number,
+    y: number,
+    w: number,
+    h: number,
+    stk: BarcodeStickerItem
+  ) => {
+    // Card background & border
+    ctx.fillStyle = '#ffffff';
+    ctx.fillRect(x, y, w, h);
+    ctx.strokeStyle = '#e2e8f0';
+    ctx.lineWidth = 1;
+    ctx.strokeRect(x, y, w, h);
+
+    // Store Name
+    ctx.fillStyle = '#64748b';
+    ctx.font = 'bold 9px "Segoe UI", Arial, sans-serif';
+    ctx.textAlign = 'center';
+    ctx.textBaseline = 'top';
+    const storeLabel = (storeName || 'Smart POS').toUpperCase();
+    ctx.fillText(storeLabel.slice(0, 28), x + w / 2, y + 6);
+
+    // Product Name (truncated if long)
+    ctx.fillStyle = '#0f172a';
+    ctx.font = 'bold 11px "Cairo", "Segoe UI", Arial, sans-serif';
+    let prodName = stk.name || '';
+    if (prodName.length > 25) prodName = prodName.slice(0, 23) + '...';
+    ctx.fillText(prodName, x + w / 2, y + 20);
+
+    // Vector Barcode (Code-39 using CODE39_MAP)
+    const cleanSku = (stk.sku || '000000').toUpperCase().replace(/[^0-9A-Z\-. $/+%]/g, '') || '000000';
+    const fullCode = `*${cleanSku}*`;
+    const narrow = isThermal ? 1.4 : 1.3;
+    const wide = isThermal ? 3.0 : 2.8;
+    const gap = isThermal ? 1.4 : 1.2;
+    const barHeight = isThermal ? 28 : 26;
+
+    let barcodeTotalW = 0;
+    for (let i = 0; i < fullCode.length; i++) {
+      const ch = fullCode[i];
+      const pattern = CODE39_MAP[ch] || CODE39_MAP['-'];
+      for (let j = 0; j < 9; j++) {
+        barcodeTotalW += pattern[j] === 'W' ? wide : narrow;
+      }
+      barcodeTotalW += gap;
+    }
+    barcodeTotalW -= gap;
+
+    // Center barcode horizontally in card
+    let barX = x + Math.max(8, (w - barcodeTotalW) / 2);
+    const barY = y + 36;
+    ctx.fillStyle = '#000000';
+    for (let i = 0; i < fullCode.length; i++) {
+      const ch = fullCode[i];
+      const pattern = CODE39_MAP[ch] || CODE39_MAP['-'];
+      for (let j = 0; j < 9; j++) {
+        const isBar = j % 2 === 0;
+        const barW = pattern[j] === 'W' ? wide : narrow;
+        if (isBar) {
+          ctx.fillRect(Math.round(barX), barY, Math.max(1, Math.round(barW)), barHeight);
+        }
+        barX += barW;
+      }
+      barX += gap;
+    }
+
+    // SKU Text
+    ctx.fillStyle = '#334155';
+    ctx.font = 'bold 9px monospace';
+    ctx.textAlign = 'center';
+    ctx.textBaseline = 'top';
+    ctx.fillText(cleanSku, x + w / 2, barY + barHeight + 3);
+
+    // Price Divider & Tag
+    const priceY = y + h - 22;
+    ctx.strokeStyle = '#f1f5f9';
+    ctx.lineWidth = 1;
+    ctx.beginPath();
+    ctx.moveTo(x + 10, priceY);
+    ctx.lineTo(x + w - 10, priceY);
+    ctx.stroke();
+
+    ctx.fillStyle = '#0f172a';
+    ctx.font = '900 12.5px monospace';
+    ctx.textAlign = 'center';
+    ctx.textBaseline = 'middle';
+    ctx.fillText(`${Number(stk.price || 0).toFixed(2)} ${currency}`, x + w / 2, priceY + 11);
+  };
+
+  try {
+    if (isThermal) {
+      // Thermal mode: 1 sticker per page (standard 80mm roll: 380 x 140 logical px)
+      const pageW = 380;
+      const pageH = 135;
+      for (const stk of stickers) {
+        const canvas = document.createElement('canvas');
+        canvas.width = Math.round(pageW * scale);
+        canvas.height = Math.round(pageH * scale);
+        const ctx = canvas.getContext('2d')!;
+        ctx.scale(scale, scale);
+        drawStickerContent(ctx, 10, 5, pageW - 20, pageH - 10, stk);
+        pages.push({
+          jpegDataUrl: canvas.toDataURL('image/jpeg', 0.95),
+          widthPx: canvas.width,
+          heightPx: canvas.height,
+        });
+      }
+    } else {
+      // A4 mode: 3 cols x 7 rows = 21 stickers per page
+      const pageW = 794;
+      const pageH = 1123;
+      const cols = 3;
+      const rows = 7;
+      const stickersPerPage = cols * rows;
+      const marginX = 24;
+      const marginY = 24;
+      const cardW = Math.floor((pageW - marginX * 2 - (cols - 1) * 12) / cols);
+      const cardH = Math.floor((pageH - marginY * 2 - (rows - 1) * 12) / rows);
+
+      for (let pIdx = 0; pIdx < stickers.length; pIdx += stickersPerPage) {
+        const chunk = stickers.slice(pIdx, pIdx + stickersPerPage);
+        const canvas = document.createElement('canvas');
+        canvas.width = Math.round(pageW * scale);
+        canvas.height = Math.round(pageH * scale);
+        const ctx = canvas.getContext('2d')!;
+        ctx.scale(scale, scale);
+
+        // White background for page
+        ctx.fillStyle = '#ffffff';
+        ctx.fillRect(0, 0, pageW, pageH);
+
+        chunk.forEach((stk, idx) => {
+          const c = idx % cols;
+          const r = Math.floor(idx / cols);
+          const x = marginX + c * (cardW + 12);
+          const y = marginY + r * (cardH + 12);
+          drawStickerContent(ctx, x, y, cardW, cardH, stk);
+        });
+
+        pages.push({
+          jpegDataUrl: canvas.toDataURL('image/jpeg', 0.95),
+          widthPx: canvas.width,
+          heightPx: canvas.height,
+        });
+      }
+    }
+
+    const pdfBytes = createPdfFromJpegPages(pages, isThermal ? '80mm' : 'a4');
+    const finalFilename = `Barcode-Labels-${new Date().toISOString().slice(0, 10)}.pdf`;
+
+    // 1. Android Native Bridge Support
+    if (typeof window !== 'undefined' && (window as any).AndroidNative?.shareOrSavePdf) {
+      try {
+        const base64 = uint8ArrayToBase64(pdfBytes);
+        (window as any).AndroidNative.shareOrSavePdf(base64, finalFilename, 'Barcode Stickers');
+        return true;
+      } catch (e) {
+        console.warn('AndroidNative shareOrSavePdf failed:', e);
+      }
+    }
+
+    const blob = new Blob([pdfBytes], { type: 'application/pdf' });
+    const file = new File([blob], finalFilename, { type: 'application/pdf' });
+
+    const isMobileDevice =
+      typeof navigator !== 'undefined' &&
+      (/iPad|iPhone|iPod|Android/i.test(navigator.userAgent) ||
+        (navigator.platform === 'MacIntel' && navigator.maxTouchPoints > 1));
+
+    // 2. Mobile Share Sheet (iOS AirPrint / Android)
+    if (
+      isMobileDevice &&
+      typeof navigator.share === 'function' &&
+      (typeof navigator.canShare !== 'function' || navigator.canShare({ files: [file] }))
+    ) {
+      try {
+        await navigator.share({
+          files: [file],
+          title: 'Barcode Stickers',
+          text: `Barcode Stickers - ${storeName}`,
+        });
+        return true;
+      } catch (err: any) {
+        if (err?.name === 'AbortError') return true;
+      }
+    }
+
+    // 3. Desktop download
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.href = url;
+    a.download = finalFilename;
+    a.style.display = 'none';
+    document.body.appendChild(a);
+    a.click();
+    setTimeout(() => {
+      try {
+        document.body.removeChild(a);
+        URL.revokeObjectURL(url);
+      } catch {}
+    }, 3000);
+    return true;
+  } catch (err) {
+    console.error('Failed to export barcode stickers PDF:', err);
     return false;
   }
 }
