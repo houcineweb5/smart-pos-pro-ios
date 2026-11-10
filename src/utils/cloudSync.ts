@@ -124,7 +124,7 @@ function cleanUrl(url: string): string {
 function formatFirebaseHttpError(status: number, errText: string): string {
   const lower = (errText || '').toLowerCase();
   if (status === 401 || status === 403 || lower.includes('permission denied')) {
-    return '⛔ رفض الوصول (Permission Denied): افتح Firebase Console ← Realtime Database ← تبويب Rules واجعل القواعد {"rules": {".read": true, ".write": true}} ثم اضغط Publish.';
+    return '⛔ رفض الوصول (Permission Denied): افتح Firebase Console ← Realtime Database ← تبويب Règles (Rules) وتأكد من نسخ كود الحماية الآمن من شاشة المزامنة ثم اضغط Publier (Publish).';
   }
   if (status === 404 || lower.includes('not found')) {
     return '❌ لم يتم العثور على قاعدة البيانات (404): تأكد من نسخ رابط Realtime Database الصحيح الذي ينتهي بـ firebaseio.com أو firebasedatabase.app';
