@@ -263,6 +263,35 @@ export function createExpressApp() {
     res.redirect(302, '/' + queryString);
   });
 
+  // Download endpoints for Android APK & iOS IPA packages
+  app.get(['/download/android', '/SmartPOS-Pro-Android.apk'], (req, res) => {
+    const candidatePaths = [
+      path.join(os.homedir(), 'Desktop', 'SmartPOS-Pro-Android.apk'),
+      path.join(process.cwd(), 'Android-Release', 'SmartPOS-Pro-Android.apk'),
+      path.join(process.cwd(), 'SmartPOS-Pro-Android.apk')
+    ];
+    const apkFile = candidatePaths.find((p) => fs.existsSync(p));
+    if (apkFile) {
+      res.download(apkFile, 'SmartPOS-Pro-Android.apk');
+    } else {
+      res.status(404).send('Android APK file not found');
+    }
+  });
+
+  app.get(['/download/ios', '/SmartPOS-Pro-iOS.ipa'], (req, res) => {
+    const candidatePaths = [
+      path.join(os.homedir(), 'Desktop', 'SmartPOS-Pro-iOS.ipa'),
+      path.join(process.cwd(), 'iOS-Release', 'SmartPOS-Pro-iOS.ipa'),
+      path.join(process.cwd(), 'SmartPOS-Pro-iOS.ipa')
+    ];
+    const ipaFile = candidatePaths.find((p) => fs.existsSync(p));
+    if (ipaFile) {
+      res.download(ipaFile, 'SmartPOS-Pro-iOS.ipa');
+    } else {
+      res.status(404).send('iOS IPA file not found');
+    }
+  });
+
   return app;
 }
 
