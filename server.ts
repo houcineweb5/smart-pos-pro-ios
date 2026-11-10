@@ -257,17 +257,10 @@ export function createExpressApp() {
     }
   });
 
-  // Serve mobile app on /mobile and /mobile.html
+  // Serve mobile app on /mobile and /mobile.html -> Redirect to modern responsive full app
   app.get(['/mobile', '/mobile.html'], (req, res) => {
-    const prodMobile = path.join(process.cwd(), 'dist', 'mobile.html');
-    const devMobile = path.join(process.cwd(), 'public', 'mobile.html');
-    if (fs.existsSync(prodMobile)) {
-      res.sendFile(prodMobile);
-    } else if (fs.existsSync(devMobile)) {
-      res.sendFile(devMobile);
-    } else {
-      res.status(404).send('Mobile app not found');
-    }
+    const queryString = req.url.includes('?') ? '?' + req.url.split('?')[1] : '';
+    res.redirect(302, '/' + queryString);
   });
 
   return app;

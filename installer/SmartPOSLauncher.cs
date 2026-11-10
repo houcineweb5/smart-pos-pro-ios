@@ -85,7 +85,7 @@ namespace SmartPOS
             this.Controls.Add(statusLabel);
 
             ipLabel = new Label();
-            ipLabel.Text = "📱 رابط تطبيق الهاتف (Wi-Fi): http://" + localIp + ":" + port + "/mobile.html";
+            ipLabel.Text = "📱 رابط تطبيق الهاتف (Wi-Fi): http://" + localIp + ":" + port + "/";
             ipLabel.Font = new Font("Tahoma", 9f, FontStyle.Regular);
             ipLabel.ForeColor = Color.FromArgb(148, 163, 184);
             ipLabel.AutoSize = false;

@@ -837,26 +837,21 @@ CREATE POLICY "Allow public sync" ON public.smartpos_sync FOR ALL USING (true) W
               </div>
             </div>
 
-            {/* Switch between Full Smart POS App vs Lightweight Mobile Companion */}
-            <div className="grid grid-cols-2 gap-1.5 bg-slate-100 p-1 rounded-2xl">
-              <button
-                type="button"
-                onClick={() => setQrTargetMode('full')}
-                className={`py-2 px-2 rounded-xl text-[11px] font-black transition cursor-pointer ${
-                  qrTargetMode === 'full' ? 'bg-indigo-600 text-white shadow-xs' : 'text-slate-600'
-                }`}
-              >
-                {lang === 'ar' ? 'النسخة الكاملة للهاتف (جميع الأقسام)' : 'Full App (All Modules)'}
-              </button>
-              <button
-                type="button"
-                onClick={() => setQrTargetMode('lite')}
-                className={`py-2 px-2 rounded-xl text-[11px] font-black transition cursor-pointer ${
-                  qrTargetMode === 'lite' ? 'bg-slate-900 text-white shadow-xs' : 'text-slate-600'
-                }`}
-              >
-                {lang === 'ar' ? 'النسخة السريعة المحمولة' : 'Lite Companion App'}
-              </button>
+            {/* Unified Mobile App info banner */}
+            <div className="bg-gradient-to-r from-indigo-500/10 via-purple-500/10 to-emerald-500/10 p-3 rounded-2xl border border-indigo-200/80 flex items-center gap-3">
+              <div className="w-9 h-9 rounded-xl bg-indigo-600 text-white flex items-center justify-center shrink-0 shadow-sm">
+                <Smartphone className="w-5 h-5" />
+              </div>
+              <div>
+                <b className="text-xs font-black text-slate-800 block">
+                  {lang === 'ar' ? '📱 تطبيق الهاتف الموحد (نفس ترتيب وأيقونات النسخة الكاملة):' : '📱 Unified Mobile App (Full Layout & Icons):'}
+                </b>
+                <span className="text-[11px] text-slate-600">
+                  {lang === 'ar'
+                    ? 'يعمل التطبيق على الأندرويد والآيفون بكامل الأقسام والأيقونات والشريط السفلي الأنيق مع سرعة فائقة ودعم العمل بدون إنترنت.'
+                    : 'Runs on Android & iPhone with full modules, Lucide icons, bottom navigation bar, and offline support.'}
+                </span>
+              </div>
             </div>
 
             {/* QR Code for instant opening & pairing */}
@@ -865,14 +860,14 @@ CREATE POLICY "Allow public sync" ON public.smartpos_sync FOR ALL USING (true) W
                 <Wifi className="w-4 h-4 text-emerald-600" />
                 <span>
                   {lang === 'ar'
-                    ? 'امسح رمز QR بكاميرا الأندرويد أو الآيفون لفتح وتثبيت التطبيق مربوطاً تلقائياً:'
-                    : 'Scan QR with Android or iPhone camera:'}
+                    ? 'امسح رمز QR بكاميرا هاتفك لفتح وتثبيت التطبيق مربوطاً تلقائياً بنفس شكل النسخة الكاملة:'
+                    : 'Scan QR with Android or iPhone camera to open & install the app with full layout:'}
                 </span>
               </div>
 
               <div className="bg-white p-3 rounded-2xl border border-slate-200 inline-block shadow-2xs">
                 <img
-                  src={`https://api.qrserver.com/v1/create-qr-code/?size=200x200&data=${encodeURIComponent(activeQrUrl)}`}
+                  src={`https://api.qrserver.com/v1/create-qr-code/?size=200x200&data=${encodeURIComponent(fullAppUrlWithPair)}`}
                   alt="Mobile App QR"
                   className="w-44 h-44 mx-auto"
                 />
@@ -886,7 +881,7 @@ CREATE POLICY "Allow public sync" ON public.smartpos_sync FOR ALL USING (true) W
                   dir="ltr"
                   className="text-xs font-mono font-black text-indigo-600 bg-white px-3 py-2 rounded-xl border border-slate-200 break-all select-all"
                 >
-                  {qrTargetMode === 'full' ? `${defaultServerOrigin}/` : `${defaultServerOrigin}/mobile.html`}
+                  {`${defaultServerOrigin}/`}
                 </div>
               </div>
             </div>
