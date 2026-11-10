@@ -1,4 +1,4 @@
-const CACHE_NAME = 'smartpos-pwa-v9';
+const CACHE_NAME = 'smartpos-pwa-v10';
 const CORE_ASSETS = [
   '/',
   '/index.html',
