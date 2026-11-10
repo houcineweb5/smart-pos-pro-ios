@@ -1044,7 +1044,7 @@ CREATE POLICY "Allow public sync" ON public.smartpos_sync FOR ALL USING (true) W
               <div className="p-4 rounded-2xl bg-gradient-to-br from-slate-900 to-indigo-950 text-white border border-slate-800 flex flex-col sm:flex-row sm:items-center justify-between gap-3">
                 <div className="space-y-1">
                   <div className="flex items-center gap-2">
-                    <span className="text-lg">🍏</span>
+                    <span className="text-lg">📱</span>
                     <span className="text-xs font-black text-white">
                       {lang === 'ar' ? 'تطبيق الآيفون (ملف IPA)' : 'iPhone App (.IPA)'}
                     </span>
@@ -1065,6 +1065,34 @@ CREATE POLICY "Allow public sync" ON public.smartpos_sync FOR ALL USING (true) W
                 >
                   <Download className="w-3.5 h-3.5" />
                   <span>{lang === 'ar' ? 'تحميل IPA' : 'Download IPA'}</span>
+                </a>
+              </div>
+
+              {/* macOS DMG */}
+              <div className="p-4 rounded-2xl bg-gradient-to-br from-slate-100 to-slate-200 border border-slate-300 text-slate-800 flex flex-col sm:flex-row sm:items-center justify-between gap-3">
+                <div className="space-y-1">
+                  <div className="flex items-center gap-2">
+                    <span className="text-lg">🍏</span>
+                    <span className="text-xs font-black text-slate-900">
+                      {lang === 'ar' ? 'تطبيق الماك (ملف DMG)' : 'macOS Application (.DMG)'}
+                    </span>
+                    <span className="text-[10px] bg-slate-800 text-white px-2 py-0.5 rounded-full font-bold">
+                      MacBook / iMac
+                    </span>
+                  </div>
+                  <p className="text-[11px] text-slate-600 font-medium leading-relaxed">
+                    {lang === 'ar'
+                      ? 'نسخة خاصة بحواسيب الماك (معالجات M1/M2/M3/M4 ومعالجات Intel).'
+                      : 'Dedicated macOS native app for Apple Silicon & Intel Macs.'}
+                  </p>
+                </div>
+                <a
+                  href="/download/mac"
+                  download="SmartPOS-Pro-macOS.dmg"
+                  className="px-4 py-2.5 bg-slate-900 hover:bg-slate-800 text-white text-xs font-black rounded-xl transition cursor-pointer flex items-center justify-center gap-2 shrink-0 shadow-sm"
+                >
+                  <Download className="w-3.5 h-3.5" />
+                  <span>{lang === 'ar' ? 'تحميل DMG' : 'Download DMG'}</span>
                 </a>
               </div>
 

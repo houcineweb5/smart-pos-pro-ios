@@ -292,6 +292,20 @@ export function createExpressApp() {
     }
   });
 
+  app.get(['/download/mac', '/SmartPOS-Pro-macOS.dmg'], (req, res) => {
+    const candidatePaths = [
+      path.join(os.homedir(), 'Desktop', 'SmartPOS-Pro-macOS.dmg'),
+      path.join(process.cwd(), 'Mac-Release', 'SmartPOS-Pro-macOS.dmg'),
+      path.join(process.cwd(), 'SmartPOS-Pro-macOS.dmg')
+    ];
+    const dmgFile = candidatePaths.find((p) => fs.existsSync(p));
+    if (dmgFile) {
+      res.download(dmgFile, 'SmartPOS-Pro-macOS.dmg');
+    } else {
+      res.status(404).send('macOS DMG file not found');
+    }
+  });
+
   return app;
 }
 

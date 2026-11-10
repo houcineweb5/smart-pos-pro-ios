@@ -1,0 +1,149 @@
+name: Build macOS DMG & App (Smart POS Pro)
+
+on:
+  push:
+    branches: [ main, master ]
+  workflow_dispatch:
+
+jobs:
+  build-mac:
+    name: Build Universal macOS Application (.dmg & .zip)
+    runs-on: macos-latest
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+          cache: 'npm'
+
+      - name: Install dependencies
+        run: npm install
+
+      - name: Build Web Assets & Server Bundle
+        run: npm run build
+
+      - name: Prepare Standalone macOS Universal App Bundle
+        run: |
+          mkdir -p "SmartPOS.app/Contents/MacOS"
+          mkdir -p "SmartPOS.app/Contents/Resources/app"
+
+          # 1. Download official Node 22 for arm64 (Apple Silicon) and x64 (Intel)
+          NODE_VERSION="v22.14.0"
+          curl -sL "https://nodejs.org/dist/${NODE_VERSION}/node-${NODE_VERSION}-darwin-arm64.tar.gz" | tar -xz
+          curl -sL "https://nodejs.org/dist/${NODE_VERSION}/node-${NODE_VERSION}-darwin-x64.tar.gz" | tar -xz
+
+          # 2. Create Universal 2 Node Binary with lipo
+          lipo -create "node-${NODE_VERSION}-darwin-arm64/bin/node" "node-${NODE_VERSION}-darwin-x64/bin/node" -output "SmartPOS.app/Contents/MacOS/node"
+          chmod +x "SmartPOS.app/Contents/MacOS/node"
+
+          # 3. Create macOS Icon (.icns) from sp-icon.png
+          mkdir -p AppIcon.iconset
+          sips -z 16 16     public/sp-icon.png --out AppIcon.iconset/icon_16x16.png
+          sips -z 32 32     public/sp-icon.png --out AppIcon.iconset/icon_16x16@2x.png
+          sips -z 32 32     public/sp-icon.png --out AppIcon.iconset/icon_32x32.png
+          sips -z 64 64     public/sp-icon.png --out AppIcon.iconset/icon_32x32@2x.png
+          sips -z 128 128   public/sp-icon.png --out AppIcon.iconset/icon_128x128.png
+          sips -z 256 256   public/sp-icon.png --out AppIcon.iconset/icon_128x128@2x.png
+          sips -z 256 256   public/sp-icon.png --out AppIcon.iconset/icon_256x256.png
+          sips -z 512 512   public/sp-icon.png --out AppIcon.iconset/icon_256x256@2x.png
+          sips -z 512 512   public/sp-icon.png --out AppIcon.iconset/icon_512x512.png
+          iconutil -c icns AppIcon.iconset -o "SmartPOS.app/Contents/Resources/AppIcon.icns"
+          rm -rf AppIcon.iconset
+
+          # 4. Copy app files and database
+          cp -r dist "SmartPOS.app/Contents/Resources/app/"
+          cp -r public "SmartPOS.app/Contents/Resources/app/"
+          cp package.json "SmartPOS.app/Contents/Resources/app/"
+          if [ -f database.sqlite ]; then
+            cp database.sqlite "SmartPOS.app/Contents/Resources/app/"
+          fi
+
+          # 5. Create Info.plist
+          cat << 'EOF' > "SmartPOS.app/Contents/Info.plist"
+          <?xml version="1.0" encoding="UTF-8"?>
+          <!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+          <plist version="1.0">
+          <dict>
+              <key>CFBundleExecutable</key>
+              <string>SmartPOS</string>
+              <key>CFBundleIconFile</key>
+              <string>AppIcon</string>
+              <key>CFBundleIdentifier</key>
+              <string>com.smartpos.app</string>
+              <key>CFBundleName</key>
+              <string>Smart POS Pro</string>
+              <key>CFBundleDisplayName</key>
+              <string>Smart POS Pro</string>
+              <key>CFBundlePackageType</key>
+              <string>APPL</string>
+              <key>CFBundleShortVersionString</key>
+              <string>1.0.0</string>
+              <key>CFBundleVersion</key>
+              <string>1</string>
+              <key>LSMinimumSystemVersion</key>
+              <string>11.0</string>
+              <key>NSHighResolutionCapable</key>
+              <true/>
+          </dict>
+          </plist>
+          EOF
+
+          # 6. Create Launch Script
+          cat << 'EOF' > "SmartPOS.app/Contents/MacOS/SmartPOS"
+          #!/bin/bash
+          DIR="$( cd "$( dirname "${BASH_SOURCE[0]}" )" && pwd )"
+          APP_DIR="$DIR/../Resources/app"
+          cd "$APP_DIR" || exit 1
+
+          PORT=3000
+          if ! nc -z 127.0.0.1 $PORT 2>/dev/null; then
+              "$DIR/node" dist/server.cjs >/dev/null 2>&1 &
+              for i in {1..30}; do
+                  if nc -z 127.0.0.1 $PORT 2>/dev/null; then
+                      break
+                  fi
+                  sleep 0.2
+              done
+          fi
+
+          URL="http://localhost:$PORT"
+          if [ -d "/Applications/Google Chrome.app" ]; then
+              open -na "/Applications/Google Chrome.app" --args --app="$URL"
+          elif [ -d "/Applications/Brave Browser.app" ]; then
+              open -na "/Applications/Brave Browser.app" --args --app="$URL"
+          elif [ -d "/Applications/Microsoft Edge.app" ]; then
+              open -na "/Applications/Microsoft Edge.app" --args --app="$URL"
+          else
+              open "$URL"
+          fi
+          EOF
+          chmod +x "SmartPOS.app/Contents/MacOS/SmartPOS"
+
+      - name: Build DMG & ZIP Installer
+        run: |
+          mkdir -p dmg_stage
+          cp -r SmartPOS.app dmg_stage/
+          ln -s /Applications dmg_stage/Applications
+
+          hdiutil create -volname "Smart POS Pro" -srcfolder dmg_stage -ov -format UDZO SmartPOS-Pro-macOS.dmg
+          zip -r SmartPOS-Pro-macOS.zip SmartPOS.app
+
+      - name: Upload SmartPOS-Pro-macOS.dmg Artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: SmartPOS-Pro-macOS-DMG
+          path: SmartPOS-Pro-macOS.dmg
+          if-no-files-found: error
+          retention-days: 30
+
+      - name: Upload SmartPOS-Pro-macOS.zip Artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: SmartPOS-Pro-macOS-ZIP
+          path: SmartPOS-Pro-macOS.zip
+          if-no-files-found: error
+          retention-days: 30
