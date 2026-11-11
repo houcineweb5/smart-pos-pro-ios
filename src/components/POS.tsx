@@ -16,7 +16,7 @@ import CashRegisterModal from './CashRegisterModal';
 import CameraBarcodeModal from './CameraBarcodeModal';
 import { generateBarcodeSvg } from '../utils/barcode';
 import { parseDecimal, sanitizeDecimalInput } from '../utils/numberInput';
-import { pullCloudBarcodeScan } from '../utils/cloudSync';
+import { pullCloudBarcodeScan, getDevicePrefix } from '../utils/cloudSync';
 import { triggerHaptic } from '../utils/haptics';
 import { shareContent } from '../utils/nativeShare';
 import { printHtmlContent, exportStructuredPdf, PdfDocumentMeta, buildUnified80mmReceiptHtml } from '../utils/printService';
@@ -627,6 +627,7 @@ export default function POS({ products, customers, config, onAddTransaction, onR
     return {
       title: lang === 'ar' ? 'وصل بيع نقدي' : 'Sales Receipt',
       docNumber: inv.invoiceNumber,
+      docNumberLabel: lang === 'ar' ? 'رقم :' : 'N°:',
       date: inv.date ? new Date(inv.date).toLocaleString() : '',
       storeName: config.name,
       storeAddress: config.showAddressOnInvoice !== false ? config.address : undefined,
@@ -857,25 +858,55 @@ export default function POS({ products, customers, config, onAddTransaction, onR
       ? 'partial' 
       : 'unpaid';
 
-    // Generate sequential collision-free invoice number
-    let nextInvoiceSeq = 1001;
+    // Generate sequential collision-free invoice number with device/terminal prefix
+    const devPrefix = getDevicePrefix();
+    let nextInvoiceSeq = 1;
+
     if (Array.isArray(invoices) && invoices.length > 0) {
+      let maxThisPrefix = 0;
+      let maxOverallPs = 0;
+
       invoices.forEach((inv) => {
-        if (inv && inv.invoiceNumber) {
-          const match = inv.invoiceNumber.match(/(\d+)$/);
-          if (match) {
-            const val = parseInt(match[1], 10);
-            if (!isNaN(val) && val >= nextInvoiceSeq) {
-              nextInvoiceSeq = val + 1;
+        if (!inv || !inv.invoiceNumber) return;
+
+        // Sequence number specifically for PS invoices
+        if (/^PS-/i.test(inv.invoiceNumber)) {
+          const matchDigits = inv.invoiceNumber.match(/(\d+)$/);
+          if (matchDigits) {
+            const val = parseInt(matchDigits[1], 10);
+            if (!isNaN(val) && val > maxOverallPs) {
+              maxOverallPs = val;
+            }
+          }
+        }
+
+        // Prefix-specific sequence number (e.g. PS-A-1 or PS-B-1)
+        if (devPrefix) {
+          const prefixRegex = new RegExp(`^PS-${devPrefix}-(\\d+)$`, 'i');
+          const matchPrefix = inv.invoiceNumber.match(prefixRegex);
+          if (matchPrefix) {
+            const val = parseInt(matchPrefix[1], 10);
+            if (!isNaN(val) && val > maxThisPrefix) {
+              maxThisPrefix = val;
             }
           }
         }
       });
+
+      if (maxThisPrefix > 0) {
+        nextInvoiceSeq = maxThisPrefix + 1;
+      } else if (maxOverallPs > 0) {
+        nextInvoiceSeq = maxOverallPs + 1;
+      } else {
+        nextInvoiceSeq = 1;
+      }
     }
+
+    const genInvoiceNumber = devPrefix ? `PS-${devPrefix}-${nextInvoiceSeq}` : `PS-${nextInvoiceSeq}`;
 
     const newInvoice: Invoice = {
       id: 'inv_' + Date.now(),
-      invoiceNumber: 'INV-' + nextInvoiceSeq,
+      invoiceNumber: genInvoiceNumber,
       date: new Date().toISOString(),
       customerId: customerId,
       customerName: customerName,

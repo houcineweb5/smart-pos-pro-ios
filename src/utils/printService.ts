@@ -357,7 +357,7 @@ export function buildUnified80mmReceiptHtml(
 
       <div style="border-top: 1.5px solid #000000 !important; border-bottom: 1.5px solid #000000 !important; padding: 6px 0; margin-bottom: 8px; font-size: 10px; font-weight: 700; color: #000000 !important;">
         <div style="display: flex; justify-content: space-between; align-items: center; gap: 4px;">
-          <span>${inv.docNumberLabel || (lang === 'ar' ? 'رقم الفاتورة:' : 'N°:')} <b style="font-family: ${numFont}; color: #000000 !important;">${inv.invoiceNumber || ''}</b></span>
+          <span>${inv.docNumberLabel || (lang === 'ar' ? 'رقم :' : 'N°:')} <b style="font-family: ${numFont}; color: #000000 !important;">${inv.invoiceNumber || ''}</b></span>
           <span style="font-family: ${numFont}; color: #000000 !important;" dir="ltr">${dateStr}</span>
         </div>
         <div style="display: flex; justify-content: space-between; align-items: center; gap: 4px; margin-top: 3px;">
@@ -1178,7 +1178,7 @@ function paintDocumentContentOnContext(
 
     // 2-Row Bordered Meta Box (Row 1: Invoice # + Date, Row 2: Customer + Seller)
     drawText(
-      `${meta.docNumberLabel || (isRTL ? 'رقم الفاتورة:' : 'N°:')} ${meta.docNumber || ''}`,
+      `${meta.docNumberLabel || (isRTL ? 'رقم :' : 'N°:')} ${meta.docNumber || ''}`,
       startX,
       y,
       { size: 11, weight: '800', color: '#000000', align: startAlign }

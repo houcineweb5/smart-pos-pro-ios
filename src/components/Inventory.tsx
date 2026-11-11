@@ -39,7 +39,8 @@ import {
   Copy,
   Share2,
   Tags,
-  ArrowLeft
+  ArrowLeft,
+  Sparkles
 } from 'lucide-react';
 import CameraBarcodeModal from './CameraBarcodeModal';
 
@@ -48,13 +49,26 @@ interface InventoryProps {
   config?: StoreConfig;
   onSaveProduct: (product: Product) => void;
   onDeleteProduct: (id: string) => void;
+  onBulkSaveProducts?: (products: Product[]) => void;
+  onDeduplicateProducts?: () => { mergedCount: number };
   lang: Language;
   warehouses?: Warehouse[];
   onSaveWarehouse?: (warehouse: Warehouse) => void;
   onDeleteWarehouse?: (id: string) => void;
 }
 
-export default function Inventory({ products, config, onSaveProduct, onDeleteProduct, lang, warehouses: initialWarehouses, onSaveWarehouse, onDeleteWarehouse }: InventoryProps) {
+export default function Inventory({
+  products,
+  config,
+  onSaveProduct,
+  onDeleteProduct,
+  onBulkSaveProducts,
+  onDeduplicateProducts,
+  lang,
+  warehouses: initialWarehouses,
+  onSaveWarehouse,
+  onDeleteWarehouse
+}: InventoryProps) {
   const t = languages[lang];
   const isRTL = t.direction === 'rtl';
   const currency = config?.currency || 'DH';
@@ -426,25 +440,40 @@ export default function Inventory({ products, config, onSaveProduct, onDeletePro
           return isNaN(n) ? 0 : n;
         };
 
+        const workingProducts = [...products];
+
         for (let i = startIdx; i < lines.length; i++) {
           const cols = parseCSVLine(lines[i]);
           if (cols.length < 5) continue;
 
-          const sku = cols[0] || Math.floor(10000000 + Math.random() * 90000000).toString();
-          const name = cols[1] || `Item ${i}`;
-          const category = cols[2] || 'General';
+          const rawSku = cols[0] ? cols[0].trim() : '';
+          const name = cols[1] ? cols[1].trim() : `Item ${i}`;
+          const category = cols[2] ? cols[2].trim() : 'General';
           const purchasePrice = parseNum(cols[3]);
           const sellingPrice = parseNum(cols[4]);
           const wholesalePrice = cols[5] ? parseNum(cols[5]) : sellingPrice;
           const stock = cols[6] ? parseInt(cols[6].replace(/,/g, '.')) : 0;
           const minStock = cols[7] ? parseInt(cols[7].replace(/,/g, '.')) : 5;
-          const unit = cols[8] || 'pcs';
+          const unit = cols[8] ? cols[8].trim() : 'pcs';
 
-          const existing = products.find(p => p.sku === sku);
-          if (existing) {
-            onSaveProduct({
+          const cleanName = name.toLowerCase().replace(/\s+/g, ' ');
+          const cleanSku = rawSku.toLowerCase();
+
+          // Intelligent match: Match existing by SKU (if non-empty) OR by exact normalized name
+          const existingIdx = workingProducts.findIndex((p) => {
+            const pName = (p.name || '').trim().toLowerCase().replace(/\s+/g, ' ');
+            const pSku = (p.sku || '').trim().toLowerCase();
+            const matchSku = Boolean(cleanSku && pSku && cleanSku === pSku);
+            const matchName = Boolean(cleanName && pName && cleanName === pName);
+            return matchSku || matchName;
+          });
+
+          if (existingIdx > -1) {
+            const existing = workingProducts[existingIdx];
+            workingProducts[existingIdx] = {
               ...existing,
               name: name || existing.name,
+              sku: (cleanSku ? rawSku : existing.sku) || existing.sku,
               category: category || existing.category,
               purchasePrice: purchasePrice || existing.purchasePrice,
               sellingPrice: sellingPrice || existing.sellingPrice,
@@ -452,12 +481,13 @@ export default function Inventory({ products, config, onSaveProduct, onDeletePro
               stock: !isNaN(stock) ? stock : existing.stock,
               minStock: !isNaN(minStock) ? minStock : existing.minStock,
               unit: unit || existing.unit,
-            });
+            };
             updatedCount++;
           } else {
-            onSaveProduct({
+            const generatedSku = rawSku || Math.floor(10000000 + Math.random() * 90000000).toString();
+            const newProd: Product = {
               id: 'prod_' + Date.now() + '_' + i,
-              sku,
+              sku: generatedSku,
               name,
               category,
               purchasePrice,
@@ -466,9 +496,16 @@ export default function Inventory({ products, config, onSaveProduct, onDeletePro
               stock: !isNaN(stock) ? stock : 0,
               minStock: !isNaN(minStock) ? minStock : 5,
               unit,
-            });
+            };
+            workingProducts.push(newProd);
             importedCount++;
           }
+        }
+
+        if (onBulkSaveProducts) {
+          onBulkSaveProducts(workingProducts);
+        } else {
+          workingProducts.forEach(p => onSaveProduct(p));
         }
 
         setImportSummary({
@@ -719,6 +756,29 @@ export default function Inventory({ products, config, onSaveProduct, onDeletePro
     });
   };
 
+  const handleDeduplicateClick = () => {
+    if (!onDeduplicateProducts) return;
+    const confirmMsg = lang === 'ar'
+      ? 'هل ترغب في فحص ودمج المنتجات المكررة تلقائياً، وتوحيد أرصدة المخزون، وتحديث روابط الفواتير؟'
+      : 'Do you want to scan and automatically merge duplicate products, unify stock balances, and update invoice references?';
+    if (!window.confirm(confirmMsg)) return;
+
+    const res = onDeduplicateProducts();
+    if (res.mergedCount > 0) {
+      alert(
+        lang === 'ar'
+          ? `✅ تم بنجاح دمج وتوحيد ${res.mergedCount} منتج مكرر، وتصحيح أرصدة المخزون بالكامل!`
+          : `✅ Successfully merged ${res.mergedCount} duplicate products and unified stock balances!`
+      );
+    } else {
+      alert(
+        lang === 'ar'
+          ? '✓ جميع المنتجات مضبوطة وفريدة، لا توجد أي منتجات مكررة حالياً.'
+          : '✓ All products are unique and accurate, no duplicate products found.'
+      );
+    }
+  };
+
   return (
     <div className="space-y-6" id="inventory-sec">
       {/* Header */}
@@ -765,6 +825,19 @@ export default function Inventory({ products, config, onSaveProduct, onDeletePro
             <Download className="w-4 h-4 text-emerald-600" />
             <span>{lang === 'ar' ? 'تصدير Excel' : 'Export Excel'}</span>
           </button>
+
+          {/* Deduplicate Products Button */}
+          {onDeduplicateProducts && (
+            <button
+              id="btn-dedup-products"
+              onClick={handleDeduplicateClick}
+              className="flex items-center gap-1.5 px-3.5 py-2.5 bg-amber-50 hover:bg-amber-100 text-amber-800 font-bold rounded-xl transition text-xs cursor-pointer border border-amber-200 shadow-2xs"
+              title={lang === 'ar' ? 'فحص ودمج المنتجات المكررة تلقائياً وتوحيد أرصدة المخزون' : 'Clean & merge duplicate products'}
+            >
+              <Sparkles className="w-4 h-4 text-amber-600" />
+              <span>{lang === 'ar' ? 'دمج المكرر' : 'Merge Duplicates'}</span>
+            </button>
+          )}
 
           {/* Inventory Statistics Modal Button */}
           <button

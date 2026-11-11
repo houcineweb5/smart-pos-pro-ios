@@ -16,6 +16,7 @@ import { parseDecimal, sanitizeDecimalInput } from '../utils/numberInput';
 import { printHtmlContent, exportStructuredPdf, buildUnified80mmReceiptHtml, buildStructuredA4Html } from '../utils/printService';
 import { amountToWordsAr, amountToWordsFr } from '../utils/numberToWords';
 import { generateBarcodeSvg } from '../utils/barcode';
+import { getDevicePrefix } from '../utils/cloudSync';
 
 interface CommercialDocumentsProps {
   initialType?: CommercialDocType;
@@ -142,30 +143,38 @@ export default function CommercialDocuments({
 
   const getDocTypePrefix = (type: CommercialDocType) => {
     switch (type) {
-      case 'devis': return 'DEV';
+      case 'devis': return 'DV';
       case 'bon_commande': return 'BC';
       case 'bon_livraison': return 'BL';
-      case 'facture': return 'FAC';
+      case 'facture': return 'FC';
     }
   };
 
   const generateNextDocNumber = (type: CommercialDocType) => {
     const prefix = getDocTypePrefix(type);
-    const year = new Date().getFullYear();
-    let maxSeq = 0;
+    const devPrefix = getDevicePrefix();
+    let maxThisPrefix = 0;
+    let maxOverall = 0;
+
     (documents || []).forEach((d) => {
-      if (d && d.docType === type && d.docNumber) {
-        const parts = d.docNumber.split('-');
-        if (parts.length >= 3 && parts[1] === String(year)) {
-          const num = parseInt(parts[2], 10);
-          if (!isNaN(num) && num > maxSeq) {
-            maxSeq = num;
+      if (!d || d.docType !== type || !d.docNumber) return;
+      const match = d.docNumber.match(/(\d+)$/);
+      if (match) {
+        const num = parseInt(match[1], 10);
+        if (!isNaN(num)) {
+          if (num > maxOverall) maxOverall = num;
+          if (devPrefix) {
+            const prefixRegex = new RegExp(`^${prefix}-${devPrefix}-(\\d+)$`, 'i');
+            if (prefixRegex.test(d.docNumber) && num > maxThisPrefix) {
+              maxThisPrefix = num;
+            }
           }
         }
       }
     });
-    const nextSeq = maxSeq + 1;
-    return `${prefix}-${year}-${String(nextSeq).padStart(3, '0')}`;
+
+    const nextSeq = maxThisPrefix > 0 ? maxThisPrefix + 1 : (maxOverall > 0 ? maxOverall + 1 : 1);
+    return devPrefix ? `${prefix}-${devPrefix}-${nextSeq}` : `${prefix}-${nextSeq}`;
   };
 
   const getSafeDocItems = (doc?: CommercialDocument | null) => {
@@ -771,7 +780,7 @@ export default function CommercialDocuments({
 
     return {
       title: getDocTypeLabel(doc?.docType || 'facture'),
-      docNumberLabel: lang === 'ar' ? 'رقم الوثيقة:' : 'N°:',
+      docNumberLabel: lang === 'ar' ? 'رقم :' : 'N°:',
       partyLabel: lang === 'ar' ? 'الزبون :' : 'Client :',
       docNumber: doc?.docNumber || '',
       date: doc?.date ? new Date(doc.date).toLocaleString('fr-FR') : '',
@@ -848,7 +857,7 @@ export default function CommercialDocuments({
           customerName: doc.customerName,
           sellerName: doc.sellerName || 'admin',
           docTitle: getDocTypeLabel(doc.docType),
-          docNumberLabel: lang === 'ar' ? 'رقم الوثيقة:' : 'N°:',
+          docNumberLabel: lang === 'ar' ? 'رقم :' : 'N°:',
           partyLabel: lang === 'ar' ? 'الزبون :' : 'Client :',
           items: safeItems.map((it) => ({
             productName: it.productName,
@@ -3028,7 +3037,7 @@ export default function CommercialDocuments({
                       customerName: receiptPreviewDoc.customerName,
                       sellerName: receiptPreviewDoc.sellerName || 'admin',
                       docTitle: getDocTypeLabel(receiptPreviewDoc.docType),
-                      docNumberLabel: lang === 'ar' ? 'رقم الوثيقة:' : 'N°:',
+                      docNumberLabel: lang === 'ar' ? 'رقم :' : 'N°:',
                       partyLabel: lang === 'ar' ? 'الزبون :' : 'Client :',
                       items: getSafeDocItems(receiptPreviewDoc).map((it) => ({
                         productName: it.productName,

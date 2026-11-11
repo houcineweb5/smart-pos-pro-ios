@@ -1369,6 +1369,112 @@ export default function App() {
     }, false, true);
   };
 
+  const handleBulkSaveProducts = (newProducts: Product[]) => {
+    updateDataState((prev) => {
+      if (!prev) return prev;
+      return { ...prev, products: newProducts };
+    });
+  };
+
+  const handleDeduplicateProducts = (): { mergedCount: number } => {
+    if (!data || !Array.isArray(data.products) || data.products.length === 0) {
+      return { mergedCount: 0 };
+    }
+
+    const prods = data.products;
+    const normalize = (s: string) => (s || '').trim().toLowerCase().replace(/\s+/g, ' ');
+
+    const groups = new Map<string, Product[]>();
+    for (const p of prods) {
+      const key = normalize(p.name);
+      if (!groups.has(key)) groups.set(key, []);
+      groups.get(key)!.push(p);
+    }
+
+    let duplicatesFound = 0;
+    for (const list of groups.values()) {
+      if (list.length > 1) {
+        duplicatesFound += (list.length - 1);
+      }
+    }
+
+    if (duplicatesFound === 0) {
+      return { mergedCount: 0 };
+    }
+
+    const mergedProducts: Product[] = [];
+    const idRemap = new Map<string, string>();
+    const removedIds: string[] = [];
+
+    for (const [, list] of groups.entries()) {
+      if (list.length === 1) {
+        mergedProducts.push({ ...list[0] });
+        continue;
+      }
+
+      list.sort((a, b) => b.id.localeCompare(a.id));
+      const primary = { ...list[0] };
+      const secondaries = list.slice(1);
+
+      primary.stock = list.reduce((sum, item) => sum + (Number(item.stock) || 0), 0);
+
+      for (const sec of secondaries) {
+        if ((!primary.sku || primary.sku.length <= 4) && sec.sku && sec.sku.length > (primary.sku?.length || 0)) {
+          primary.sku = sec.sku;
+        }
+        if (!primary.imageUrl && sec.imageUrl) primary.imageUrl = sec.imageUrl;
+        if (!primary.warehouseId && sec.warehouseId) primary.warehouseId = sec.warehouseId;
+        if (!primary.category && sec.category) primary.category = sec.category;
+        if (!primary.unit && sec.unit) primary.unit = sec.unit;
+
+        idRemap.set(sec.id, primary.id);
+        removedIds.push(sec.id);
+      }
+      mergedProducts.push(primary);
+    }
+
+    const nextInvoices = (data.invoices || []).map((inv) => ({
+      ...inv,
+      items: (inv.items || []).map((it) =>
+        it.productId && idRemap.has(it.productId) ? { ...it, productId: idRemap.get(it.productId)! } : it
+      ),
+    }));
+
+    const nextDocs = (data.commercialDocuments || []).map((doc) => ({
+      ...doc,
+      items: (doc.items || []).map((it) =>
+        it.productId && idRemap.has(it.productId) ? { ...it, productId: idRemap.get(it.productId)! } : it
+      ),
+    }));
+
+    const nextPurchases = (data.purchases || []).map((pur) => ({
+      ...pur,
+      items: (pur.items || []).map((it) =>
+        it.productId && idRemap.has(it.productId) ? { ...it, productId: idRemap.get(it.productId)! } : it
+      ),
+    }));
+
+    const nextDeletedIds = addDeletedIds([...(data.deletedIds || []), ...removedIds]);
+
+    updateDataState(
+      (prev) => {
+        if (!prev) return prev;
+        return {
+          ...prev,
+          products: mergedProducts,
+          invoices: nextInvoices,
+          commercialDocuments: nextDocs,
+          purchases: nextPurchases,
+          deletedIds: nextDeletedIds,
+        };
+      },
+      true,
+      true
+    );
+
+    return { mergedCount: duplicatesFound };
+  };
+
   const handleSaveWarehouse = (warehouse: Warehouse) => {
     updateDataState((prev) => {
       if (!prev) return prev;
@@ -2557,6 +2663,8 @@ export default function App() {
               config={config}
               onSaveProduct={handleSaveProduct}
               onDeleteProduct={handleDeleteProduct}
+              onBulkSaveProducts={handleBulkSaveProducts}
+              onDeduplicateProducts={handleDeduplicateProducts}
               lang={lang}
               warehouses={data?.warehouses}
               onSaveWarehouse={handleSaveWarehouse}

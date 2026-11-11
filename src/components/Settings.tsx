@@ -6,12 +6,13 @@
 import React, { useState, useEffect } from 'react';
 import { StoreConfig, Language, ActivityLog, Employee } from '../types';
 import { languages } from '../languages';
-import { compressImageFile } from '../utils/cloudSync';
+import { compressImageFile, getDevicePrefix, setDevicePrefix } from '../utils/cloudSync';
 import { 
   Settings as SettingsIcon, Save, Upload, 
   Palette, Building2, Coins, Keyboard, Check,
   Printer, FileText, Eye, CheckSquare, Square,
-  Sparkles, Sliders, LayoutTemplate, MessageSquare
+  Sparkles, Sliders, LayoutTemplate, MessageSquare,
+  Monitor, Smartphone, Tag
 } from 'lucide-react';
 import { A4_PRINT_THEMES } from '../utils/printService';
 
@@ -98,6 +99,15 @@ export default function Settings({
     }
     return 'Enter';
   });
+
+  // Device / Terminal Prefix state
+  const [devicePrefix, setLocalDevicePrefix] = useState<string>(() => getDevicePrefix());
+
+  const handleDevicePrefixChange = (val: string) => {
+    const clean = val.toUpperCase().replace(/[^A-Z0-9_-]/g, '').slice(0, 6);
+    setLocalDevicePrefix(clean);
+    setDevicePrefix(clean);
+  };
 
   // Sync hotkeys with selected user if currentUser changes
   useEffect(() => {
@@ -1026,6 +1036,113 @@ export default function Settings({
             <input type="hidden" id="hotkey-show-receipt-input" value={showReceiptKey} />
             <input type="hidden" id="hotkey-sell-direct-input" value={sellDirectKey} />
             <button type="button" id="btn-save-hotkeys" className="hidden" onClick={saveHotkeySettings} />
+          </div>
+        </div>
+
+        {/* Section 6: Device / Terminal Invoice Prefix */}
+        <div className="bg-white rounded-3xl border border-slate-200/80 shadow-xs overflow-hidden">
+          <div className="px-6 py-4.5 border-b border-slate-100 flex items-center justify-between bg-slate-50/50">
+            <div className="flex items-center gap-3">
+              <div className="p-2 bg-amber-50 text-amber-700 rounded-xl">
+                <Tag className="w-5 h-5" />
+              </div>
+              <div>
+                <h2 className="text-base sm:text-lg font-black text-slate-900">
+                  {lang === 'ar' ? 'بادئة ترقيم هذا الجهاز (منع تداخل الفواتير)' : 'Device / Terminal Invoice Prefix'}
+                </h2>
+                <p className="text-xs text-slate-400 font-medium">
+                  {lang === 'ar' ? 'تخصيص كود فريد لهذا الجهاز لتفادي تكرار الأرقام عند البيع بدون إنترنت' : 'Unique prefix for this terminal to prevent offline numbering collision'}
+                </p>
+              </div>
+            </div>
+            <span className="text-xs px-3 py-1 rounded-xl bg-amber-100 text-amber-800 font-bold border border-amber-200">
+              {devicePrefix ? `${lang === 'ar' ? 'البادئة:' : 'Prefix:'} ${devicePrefix}` : (lang === 'ar' ? 'بدون بادئة' : 'No prefix')}
+            </span>
+          </div>
+
+          <div className="p-6 sm:p-7 space-y-5">
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-5">
+              <div>
+                <label className="block text-xs sm:text-sm font-bold text-slate-700 mb-1.5">
+                  {lang === 'ar' ? 'كود أو بادئة هذا الجهاز:' : 'Device Prefix Code:'}
+                </label>
+                <div className="flex flex-col gap-2.5">
+                  <div className="flex items-center gap-2">
+                    <input
+                      type="text"
+                      maxLength={8}
+                      value={devicePrefix}
+                      onChange={(e) => handleDevicePrefixChange(e.target.value)}
+                      placeholder="A أو B أو PC"
+                      className="w-32 px-4 py-2 border border-slate-300 rounded-xl font-mono font-black text-base text-center uppercase bg-slate-50 focus:bg-white focus:outline-none focus:ring-2 focus:ring-amber-500"
+                    />
+                    <button
+                      type="button"
+                      onClick={() => handleDevicePrefixChange('')}
+                      className={`px-3 py-2 text-xs font-bold rounded-xl border transition cursor-pointer ${
+                        !devicePrefix
+                          ? 'bg-slate-800 text-white border-slate-800 shadow-xs'
+                          : 'bg-slate-100 hover:bg-slate-200 text-slate-500 border-slate-200'
+                      }`}
+                      title={lang === 'ar' ? 'إلغاء البادئة والترقيم بدون كود جهاز' : 'Clear prefix'}
+                    >
+                      {lang === 'ar' ? 'بدون بادئة' : 'None'}
+                    </button>
+                  </div>
+                  <div className="flex flex-wrap items-center gap-1.5">
+                    {['A', 'B', 'C', 'D', 'E', 'F', 'G', 'H', 'PC', 'M', 'POS1', 'POS2', 'TAB'].map((code) => (
+                      <button
+                        key={code}
+                        type="button"
+                        onClick={() => handleDevicePrefixChange(code)}
+                        className={`px-2.5 py-1.5 text-xs font-black rounded-lg border transition cursor-pointer ${
+                          devicePrefix === code
+                            ? 'bg-amber-600 text-white border-amber-600 shadow-xs'
+                            : 'bg-slate-100 hover:bg-slate-200 text-slate-700 border-slate-200'
+                        }`}
+                      >
+                        {code}
+                      </button>
+                    ))}
+                  </div>
+                </div>
+                <p className="text-xs text-slate-500 mt-2 font-medium leading-relaxed">
+                  {lang === 'ar' 
+                    ? '💡 اختر رمزاً لكل جهاز (مثال: A للحاسوب الرئيسي، و B للهاتف). بهذه الطريقة لا تتداخل الأرقام أبداً حتى لو انقطع الإنترنت.' 
+                    : '💡 Assign a prefix per device (e.g. A for PC, B for Mobile) to avoid collision when offline.'}
+                </p>
+              </div>
+
+              {/* Live Preview of formatted document numbers */}
+              <div className="bg-slate-50 border border-slate-200/80 rounded-2xl p-4">
+                <h4 className="text-xs font-black text-slate-700 mb-2.5 flex items-center gap-1.5">
+                  <Eye className="w-4 h-4 text-indigo-600" />
+                  <span>{lang === 'ar' ? 'معاينة صيغة الأرقام على هذا الجهاز:' : 'Document Number Preview for this Device:'}</span>
+                </h4>
+                <div className="grid grid-cols-2 gap-2 text-xs font-mono">
+                  <div className="bg-white p-2 rounded-xl border border-slate-200 flex flex-col">
+                    <span className="text-[10px] text-slate-400 font-sans font-bold">{lang === 'ar' ? 'نقطة البيع (الكاشير):' : 'Point of Sale:'}</span>
+                    <span className="text-indigo-600 font-black">PS-{devicePrefix ? `${devicePrefix}-` : ''}1</span>
+                  </div>
+                  <div className="bg-white p-2 rounded-xl border border-slate-200 flex flex-col">
+                    <span className="text-[10px] text-slate-400 font-sans font-bold">{lang === 'ar' ? 'فاتورة رسمية:' : 'Facture:'}</span>
+                    <span className="text-emerald-600 font-black">FC-{devicePrefix ? `${devicePrefix}-` : ''}1</span>
+                  </div>
+                  <div className="bg-white p-2 rounded-xl border border-slate-200 flex flex-col">
+                    <span className="text-[10px] text-slate-400 font-sans font-bold">{lang === 'ar' ? 'عروض الأسعار:' : 'Devis:'}</span>
+                    <span className="text-blue-600 font-black">DV-{devicePrefix ? `${devicePrefix}-` : ''}1</span>
+                  </div>
+                  <div className="bg-white p-2 rounded-xl border border-slate-200 flex flex-col">
+                    <span className="text-[10px] text-slate-400 font-sans font-bold">{lang === 'ar' ? 'سندات الطلبية:' : 'Bon Commande:'}</span>
+                    <span className="text-purple-600 font-black">BC-{devicePrefix ? `${devicePrefix}-` : ''}1</span>
+                  </div>
+                  <div className="bg-white p-2 rounded-xl border border-slate-200 flex flex-col col-span-2">
+                    <span className="text-[10px] text-slate-400 font-sans font-bold">{lang === 'ar' ? 'سندات التسليم:' : 'Bon Livraison:'}</span>
+                    <span className="text-amber-600 font-black">BL-{devicePrefix ? `${devicePrefix}-` : ''}1</span>
+                  </div>
+                </div>
+              </div>
+            </div>
           </div>
         </div>
 

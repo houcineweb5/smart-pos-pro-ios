@@ -378,7 +378,7 @@ export default function Purchases({
     const billDebt = Math.max(0, p.total - p.amountPaid);
     return {
       title: lang === 'ar' ? 'فاتورة مشتريات رسمية' : 'Bon de Réception - Achat',
-      docNumberLabel: lang === 'ar' ? 'رقم الفاتورة:' : 'N°:',
+      docNumberLabel: lang === 'ar' ? 'رقم :' : 'N°:',
       partyLabel: lang === 'ar' ? 'المورد :' : 'Fournisseur :',
       docNumber: p.purchaseNumber,
       date: p.date ? new Date(p.date).toLocaleString('fr-FR') : '',
@@ -435,7 +435,7 @@ export default function Purchases({
         customerName: p.supplierName,
         sellerName: 'admin',
         docTitle: lang === 'ar' ? 'فاتورة مشتريات' : "Bon d'Achat",
-        docNumberLabel: lang === 'ar' ? 'رقم الفاتورة:' : 'N°:',
+        docNumberLabel: lang === 'ar' ? 'رقم :' : 'N°:',
         partyLabel: lang === 'ar' ? 'المورد :' : 'Fournisseur :',
         items: (p.items || []).map((it) => ({
           productName: it.productName,
@@ -1706,7 +1706,7 @@ export default function Purchases({
                       customerName: receiptPreviewPurchase.supplierName,
                       sellerName: 'admin',
                       docTitle: lang === 'ar' ? 'فاتورة مشتريات' : "Bon d'Achat",
-                      docNumberLabel: lang === 'ar' ? 'رقم الفاتورة:' : 'N°:',
+                      docNumberLabel: lang === 'ar' ? 'رقم :' : 'N°:',
                       partyLabel: lang === 'ar' ? 'المورد :' : 'Fournisseur :',
                       items: (receiptPreviewPurchase.items || []).map((it) => ({
                         productName: it.productName,

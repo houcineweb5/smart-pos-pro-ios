@@ -67,6 +67,29 @@ export function getDeviceId(): string {
   }
 }
 
+const DEVICE_PREFIX_KEY = 'smartpos_device_prefix_v1';
+
+export function getDevicePrefix(): string {
+  try {
+    let p = localStorage.getItem(DEVICE_PREFIX_KEY);
+    if (!p) {
+      const isMobile = typeof navigator !== 'undefined' && /Android|iPhone|iPad|iPod/i.test(navigator.userAgent);
+      p = isMobile ? 'B' : 'A';
+      localStorage.setItem(DEVICE_PREFIX_KEY, p);
+    }
+    return p.trim().toUpperCase();
+  } catch {
+    return 'A';
+  }
+}
+
+export function setDevicePrefix(prefix: string): void {
+  try {
+    const clean = (prefix || '').trim().toUpperCase().replace(/[^A-Z0-9_-]/g, '').slice(0, 8);
+    localStorage.setItem(DEVICE_PREFIX_KEY, clean);
+  } catch {}
+}
+
 /**
  * Normalize and validate Firebase Realtime Database URL
  * Handles missing https://, trailing paths (/smartpos_stores/..., .json), and console.firebase.google.com links.
@@ -667,6 +690,16 @@ export function mergeStoreDatasets(
     if (!cInv || !cInv.id || deletedSet.has(cInv.id)) continue;
     const existing = localInvMap.get(cInv.id);
     if (!existing) {
+      // Safety collision guard: ensure no two distinct invoices share the same invoiceNumber
+      if (cInv.invoiceNumber) {
+        const hasCollision = Array.from(localInvMap.values()).some(
+          (li: any) => li && li.id !== cInv.id && li.invoiceNumber === cInv.invoiceNumber
+        );
+        if (hasCollision) {
+          cInv.invoiceNumber = `${cInv.invoiceNumber}-B`;
+          hasLocalChangesForCloud = true;
+        }
+      }
       newCloudInvoices.push(cInv);
       localInvMap.set(cInv.id, cInv);
       hasNewFromCloud = true;
@@ -725,10 +758,52 @@ export function mergeStoreDatasets(
 
   for (const cp of cloudProducts) {
     if (!cp || !cp.id || deletedSet.has(cp.id)) continue;
-    const existing = localProdMap.get(cp.id);
+    let existing = localProdMap.get(cp.id);
+    let matchedByAltKey = false;
+
+    // Guard: Prevent duplicate products created on separate devices with different IDs
+    if (!existing) {
+      const cleanCpName = (cp.name || '').trim().toLowerCase().replace(/\s+/g, ' ');
+      const cleanCpSku = (cp.sku || '').trim().toLowerCase();
+      if (cleanCpSku || cleanCpName) {
+        for (const lp of localProdMap.values()) {
+          const cleanLpName = (lp.name || '').trim().toLowerCase().replace(/\s+/g, ' ');
+          const cleanLpSku = (lp.sku || '').trim().toLowerCase();
+          const matchSku = Boolean(cleanCpSku && cleanLpSku && cleanCpSku === cleanLpSku);
+          const matchName = Boolean(cleanCpName && cleanLpName && cleanCpName === cleanLpName);
+          if (matchSku || matchName) {
+            existing = lp;
+            matchedByAltKey = true;
+            // Mark the redundant duplicate ID in deletedSet so it never gets reintroduced
+            mergedDeletedIds.push(cp.id);
+            deletedSet.add(cp.id);
+            hasLocalChangesForCloud = true;
+            // Remap any new cloud invoices referencing cp.id to existing.id
+            for (const nInv of newCloudInvoices) {
+              for (const it of nInv.items || []) {
+                if (it.productId === cp.id) it.productId = existing.id;
+              }
+            }
+            break;
+          }
+        }
+      }
+    }
+
     if (!existing) {
       localProdMap.set(cp.id, { ...cp });
       hasNewFromCloud = true;
+    } else if (matchedByAltKey) {
+      // Merge stock from the alternate duplicate product
+      const combinedStock = (Number(existing.stock) || 0) + (Number(cp.stock) || 0);
+      const upgradedSku = (!existing.sku || existing.sku.length <= 4) && cp.sku && cp.sku.length > existing.sku?.length ? cp.sku : existing.sku;
+      localProdMap.set(existing.id, {
+        ...existing,
+        stock: combinedStock,
+        sku: upgradedSku || existing.sku,
+        imageUrl: existing.imageUrl || cp.imageUrl || '',
+      });
+      hasLocalChangesForCloud = true;
     } else {
       const localSoldQty = localOnlySoldByProduct.get(cp.id) || 0;
       const cloudSoldQty = newCloudSoldByProduct.get(cp.id) || 0;

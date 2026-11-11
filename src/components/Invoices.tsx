@@ -390,7 +390,7 @@ export default function Invoices({ invoices, products = [], customers = [], conf
 
   const renderProfitBadge = (inv: Invoice) => {
     const profit = calculateInvoiceProfit(inv);
-    const isOfficial = String(inv.invoiceNumber || '').toUpperCase().startsWith('FAC-') || String(inv.id || '').startsWith('fac_inv_');
+    const isOfficial = /^(FAC|FC)-/i.test(String(inv.invoiceNumber || '')) || String(inv.id || '').startsWith('fac_inv_');
     return (
       <div className="flex flex-wrap items-center justify-center gap-1">
         <span
@@ -703,6 +703,7 @@ export default function Invoices({ invoices, products = [], customers = [], conf
     return {
       title: isOfficial ? (lang === 'ar' ? 'فاتورة رسمية' : 'Facture') : (mode === '80mm' ? (lang === 'ar' ? 'إيصال مبيعات' : 'Sales Receipt') : (lang === 'ar' ? 'فاتورة مبيعات' : 'Sales Invoice')),
       docNumber: inv.invoiceNumber || '',
+      docNumberLabel: mode === '80mm' ? (lang === 'ar' ? 'رقم :' : 'N°:') : undefined,
       date: inv.date ? new Date(inv.date).toLocaleString('fr-FR') : '',
       storeName: config.name,
       storeAddress: config.showAddressOnInvoice !== false ? config.address : undefined,
