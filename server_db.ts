@@ -29,6 +29,18 @@ export async function initDB() {
   const sqliteMod: any = await import('node:sqlite');
   const rawDb = new sqliteMod.DatabaseSync(dbFilePath);
 
+  // Enable WAL (Write-Ahead Logging) and busy timeout to prevent database lock issues under concurrency
+  try {
+    const currentMode = rawDb.prepare('PRAGMA journal_mode;').get() as any;
+    if (currentMode?.journal_mode !== 'wal') {
+      rawDb.exec('PRAGMA journal_mode = WAL;');
+    }
+    rawDb.exec('PRAGMA busy_timeout = 5000;');
+    rawDb.exec('PRAGMA synchronous = NORMAL;');
+  } catch (e) {
+    // Ignore if already set or locked by active reader
+  }
+
   db = {
     exec: async (sql: string) => {
       rawDb.exec(sql);

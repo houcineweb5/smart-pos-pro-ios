@@ -125,10 +125,6 @@ export function getStoredData() {
   if (storedProd) {
     try {
       products = JSON.parse(storedProd);
-      if (products.some((p: Product) => p.name === 'iPhone 15 Pro 256GB')) {
-        products = INITIAL_PRODUCTS;
-        localStorage.setItem(KEYS.products, JSON.stringify(INITIAL_PRODUCTS));
-      }
     } catch (e) {
       products = INITIAL_PRODUCTS;
     }
@@ -140,25 +136,20 @@ export function getStoredData() {
   if (storedCust) {
     try {
       customers = JSON.parse(storedCust);
-      if (customers.some((c: Customer) => c.name === 'Ahmad Al-Mansour')) {
-        customers = INITIAL_CUSTOMERS;
-        localStorage.setItem(KEYS.customers, JSON.stringify(INITIAL_CUSTOMERS));
-      } else {
-        let changed = false;
-        customers = customers.map((c: Customer) => {
-          if (c.id === 'walk-in' || c.name === 'زبون عابر' || c.name === 'Walk-in' || c.name === 'Client de passage') {
-            changed = true;
-            return { ...c, name: 'Client Divers' };
-          }
-          return c;
-        });
-        if (!customers.some((c: Customer) => c.id === 'walk-in' || c.name === 'Client Divers')) {
-          customers = [INITIAL_CUSTOMERS[0], ...customers];
+      let changed = false;
+      customers = customers.map((c: Customer) => {
+        if (c.id === 'walk-in' || c.name === 'زبون عابر' || c.name === 'Walk-in' || c.name === 'Client de passage') {
           changed = true;
+          return { ...c, name: 'Client Divers' };
         }
-        if (changed) {
-          localStorage.setItem(KEYS.customers, JSON.stringify(customers));
-        }
+        return c;
+      });
+      if (!customers.some((c: Customer) => c.id === 'walk-in' || c.name === 'Client Divers')) {
+        customers = [INITIAL_CUSTOMERS[0], ...customers];
+        changed = true;
+      }
+      if (changed) {
+        localStorage.setItem(KEYS.customers, JSON.stringify(customers));
       }
     } catch (e) {
       customers = INITIAL_CUSTOMERS;

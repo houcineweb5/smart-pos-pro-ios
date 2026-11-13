@@ -542,7 +542,8 @@ export default function App() {
           const reconciled = reconcileFacturesDataset(merged);
           if (hasNewFromCloud || hasLocalChangesForCloud || showFeedback) {
             saveStoredData(reconciled);
-            authFetch('/api/save', {
+            const apiBase = cloudCfg.provider === 'server' && cloudCfg.serverUrl ? cloudCfg.serverUrl.replace(/\/+$/, '') : '';
+            authFetch(`${apiBase}/api/save`, {
               method: 'POST',
               headers: { 'Content-Type': 'application/json' },
               body: JSON.stringify(reconciled),
@@ -2796,7 +2797,9 @@ export default function App() {
                 const reconciled = reconcileFacturesDataset(merged);
                 setData(reconciled);
                 saveStoredData(reconciled);
-                authFetch('/api/save', {
+                const syncCfg = getCloudSyncConfig();
+                const apiBase = syncCfg.provider === 'server' && syncCfg.serverUrl ? syncCfg.serverUrl.replace(/\/+$/, '') : '';
+                authFetch(`${apiBase}/api/save`, {
                   method: 'POST',
                   headers: { 'Content-Type': 'application/json' },
                   body: JSON.stringify(reconciled),

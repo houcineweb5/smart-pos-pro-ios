@@ -59,12 +59,29 @@ export function createExpressApp() {
     next();
   });
 
-  // CORS: Allow local network and paired origins
+  // CORS: Allow local network, loopback, and Capacitor paired origins safely
   app.use((req, res, next) => {
-    res.header('Access-Control-Allow-Origin', req.headers.origin || '*');
+    const origin = req.headers.origin;
+    if (origin) {
+      const isAllowedOrigin =
+        origin === 'null' ||
+        origin.startsWith('http://localhost') ||
+        origin.startsWith('http://127.0.0.1') ||
+        origin.startsWith('capacitor://') ||
+        origin.startsWith('ionic://') ||
+        /^https?:\/\/(192\.168\.|10\.|172\.(1[6-9]|2[0-9]|3[0-1])\.)/.test(origin);
+
+      if (isAllowedOrigin) {
+        res.header('Access-Control-Allow-Origin', origin);
+        res.header('Access-Control-Allow-Credentials', 'true');
+      } else {
+        res.header('Access-Control-Allow-Origin', origin);
+      }
+    } else {
+      res.header('Access-Control-Allow-Origin', '*');
+    }
     res.header('Access-Control-Allow-Methods', 'GET, POST, PUT, DELETE, OPTIONS');
     res.header('Access-Control-Allow-Headers', 'Content-Type, Authorization');
-    res.header('Access-Control-Allow-Credentials', 'true');
     if (req.method === 'OPTIONS') {
       res.sendStatus(200);
       return;
@@ -184,11 +201,17 @@ export function createExpressApp() {
     }
   });
 
-  // Barcode Relay (Phone -> PC POS)
+  // Barcode Relay (Phone -> PC POS) with length checks and bounded queue
   app.post('/api/remote-barcode', (req, res) => {
-    const code = req.body?.code ? String(req.body.code).trim() : '';
-    if (code) {
-      remoteBarcodeQueue.push(code);
+    const raw = req.body?.code;
+    if (typeof raw === 'string') {
+      const code = raw.trim().slice(0, 100);
+      if (code) {
+        if (remoteBarcodeQueue.length > 50) {
+          remoteBarcodeQueue.shift();
+        }
+        remoteBarcodeQueue.push(code);
+      }
     }
     res.json({ ok: true });
   });
@@ -209,9 +232,23 @@ export function createExpressApp() {
     }
   });
 
-  // PROTECTED: Incremental safe save
+  // PROTECTED: Incremental safe save with Role-Based Access Control
   app.post('/api/save', requireAuth, async (req, res) => {
     try {
+      const user = (req as any).user;
+      if (user && user.role !== 'admin') {
+        // Cashiers/users cannot modify employee credentials or roles
+        if (req.body && req.body.employees && Array.isArray(req.body.employees)) {
+          return res.status(403).json({
+            ok: false,
+            error: 'Forbidden: Only administrators can modify employee accounts or permissions'
+          });
+        }
+        // Disallow normal users from tampering with store config
+        if (req.body && req.body.config) {
+          delete req.body.config;
+        }
+      }
       await saveData(req.body);
       res.json({ success: true });
     } catch (err: any) {

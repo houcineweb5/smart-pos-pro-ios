@@ -99,3 +99,39 @@ test('API Security: Cashier user cannot access admin-only /api/reset (403 Forbid
   });
   assert.strictEqual(resetRes.status, 403, 'Must reject cashier with 403 Forbidden');
 });
+
+test('API Security: Cashier user cannot modify employee accounts or escalate privileges via /api/save', async () => {
+  // Login with cashier user1
+  const loginRes = await fetch(`${baseUrl}/api/auth/login`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ username: 'user1', password: 'user1' }),
+  });
+  assert.strictEqual(loginRes.status, 200);
+  const loginBody = await loginRes.json();
+
+  // Cashier attempts to tamper with employees table via /api/save
+  const tamperRes = await fetch(`${baseUrl}/api/save`, {
+    method: 'POST',
+    headers: {
+      'Content-Type': 'application/json',
+      Authorization: `Bearer ${loginBody.token}`,
+    },
+    body: JSON.stringify({
+      employees: [
+        {
+          id: 'emp-user1',
+          username: 'user1',
+          name: 'Hacked Admin',
+          role: 'admin',
+          passwordHash: 'hacked123',
+          allowedTabs: ['home', 'pos', 'settings', 'users'],
+        },
+      ],
+    }),
+  });
+
+  assert.strictEqual(tamperRes.status, 403, 'Cashier must be blocked from tampering with employees');
+  const body = await tamperRes.json();
+  assert.strictEqual(body.ok, false);
+});
