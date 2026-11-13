@@ -1,10 +1,24 @@
 @echo off
 title Smart POS Pro - iOS App Builder (GitHub Actions)
-cd /d "%~dp0"
 set "PATH=%LOCALAPPDATA%\Programs\MinGit\cmd;C:\Program Files\GitHub CLI;%PATH%"
+
+:: Automatic project directory detection (works from Desktop, Downloads, or repository folder)
+set "REPO_DIR=%~dp0"
+if exist "%~dp0.git" (
+    set "REPO_DIR=%~dp0"
+) else if exist "%USERPROFILE%\Downloads\sales-and-invoicing-system\.git" (
+    set "REPO_DIR=%USERPROFILE%\Downloads\sales-and-invoicing-system"
+) else if exist "%USERPROFILE%\Desktop\sales-and-invoicing-system\.git" (
+    set "REPO_DIR=%USERPROFILE%\Desktop\sales-and-invoicing-system"
+) else if exist "%~dp0sales-and-invoicing-system\.git" (
+    set "REPO_DIR=%~dp0sales-and-invoicing-system"
+)
+
+cd /d "%REPO_DIR%"
 
 echo ================================================================
 echo   Smart POS Pro - Preparation et Envoi vers GitHub (iOS .ipa)
+echo   Dossier source: %CD%
 echo ================================================================
 echo.
 
@@ -18,18 +32,21 @@ if errorlevel 1 (
 
 echo.
 echo [2/4] Enregistrement des dernieres modifications et envoi vers GitHub...
-"%LOCALAPPDATA%\Programs\MinGit\cmd\git.exe" add -A
-"%LOCALAPPDATA%\Programs\MinGit\cmd\git.exe" commit -m "Update Smart POS Pro iOS with latest features" >nul 2>&1
-"C:\Program Files\GitHub CLI\gh.exe" repo create smart-pos-pro-ios --private --source=. --remote=origin --push >nul 2>&1
+git add -A
+git diff --cached --quiet
 if errorlevel 1 (
-    echo Mise a jour du code sur GitHub...
-    "%LOCALAPPDATA%\Programs\MinGit\cmd\git.exe" push -u origin main
+    git commit -m "Update Smart POS Pro iOS with latest features (%date% %time%)"
+    git push origin main
+) else (
+    echo Aucun nouveau commit requis, declenchement direct du workflow iOS...
+    "C:\Program Files\GitHub CLI\gh.exe" workflow run build-ios.yml --ref main
 )
 
 echo.
 echo [3/4] Suivi de la compilation sur GitHub Actions (iOS)...
-echo (Veuillez patienter pendant la generation du fichier .ipa, environ 8 a 10 minutes...)
-timeout /t 5 /nobreak >nul
+echo (Veuillez patienter pendant la generation du fichier .ipa, environ 6 a 8 minutes...)
+timeout /t 6 /nobreak >nul
+
 for /f "tokens=*" %%i in ('"C:\Program Files\GitHub CLI\gh.exe" run list --workflow=build-ios.yml --limit 1 --json databaseId --jq ".[0].databaseId"') do set "IOS_RUN_ID=%%i"
 
 if defined IOS_RUN_ID (
@@ -41,7 +58,6 @@ if defined IOS_RUN_ID (
     mkdir "%TEMP%\smartpos_ipa"
     "C:\Program Files\GitHub CLI\gh.exe" run download %IOS_RUN_ID% -n SmartPOS-Pro-iOS-IPA -D "%TEMP%\smartpos_ipa"
 ) else (
-    echo Suivi standard...
     "C:\Program Files\GitHub CLI\gh.exe" run watch
     if exist "%TEMP%\smartpos_ipa" rmdir /s /q "%TEMP%\smartpos_ipa"
     mkdir "%TEMP%\smartpos_ipa"
@@ -50,15 +66,15 @@ if defined IOS_RUN_ID (
 
 if exist "%TEMP%\smartpos_ipa\SmartPOS-Pro-iOS.ipa" (
     copy /y "%TEMP%\smartpos_ipa\SmartPOS-Pro-iOS.ipa" "%USERPROFILE%\Desktop\SmartPOS-Pro-iOS.ipa" >nul
-    if not exist "%~dp0iOS-Release" mkdir "%~dp0iOS-Release"
-    copy /y "%TEMP%\smartpos_ipa\SmartPOS-Pro-iOS.ipa" "%~dp0iOS-Release\SmartPOS-Pro-iOS.ipa" >nul
+    if not exist "%REPO_DIR%\iOS-Release" mkdir "%REPO_DIR%\iOS-Release"
+    copy /y "%TEMP%\smartpos_ipa\SmartPOS-Pro-iOS.ipa" "%REPO_DIR%\iOS-Release\SmartPOS-Pro-iOS.ipa" >nul
     rmdir /s /q "%TEMP%\smartpos_ipa"
     echo.
     echo ================================================================
     echo   SUCCES ! Le nouveau fichier .ipa a ete copie avec succes:
-    echo   1. Sur votre Bureau (Desktop\SmartPOS-Pro-iOS.ipa)
-    echo   2. Dans le dossier iOS-Release
-    echo   Vous pouvez maintenant l'installer via Sideloadly !
+    echo   1. Sur votre Bureau: %USERPROFILE%\Desktop\SmartPOS-Pro-iOS.ipa
+    echo   2. Dans le dossier: %REPO_DIR%\iOS-Release
+    echo   Vous pouvez maintenant l'installer sur votre iPhone avec Sideloadly / AltStore / TrollStore !
     echo ================================================================
 ) else (
     echo.
