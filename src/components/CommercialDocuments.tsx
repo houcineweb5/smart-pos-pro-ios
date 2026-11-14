@@ -66,6 +66,7 @@ export default function CommercialDocuments({
   const [isCreating, setIsCreating] = useState(false);
   const [deletingId, setDeletingId] = useState<string | null>(null);
   const [toastMessage, setToastMessage] = useState<string | null>(null);
+  const [selectedDocId, setSelectedDocId] = useState<string | null>(null);
 
   // Form State for Create / Edit
   const [formCustomerId, setFormCustomerId] = useState<string>('');
@@ -2182,11 +2183,17 @@ export default function CommercialDocuments({
             const prevBal = Number(doc.previousBalance || 0);
             const docTotal = Number(doc.total || 0);
             const safeItems = getSafeDocItems(doc);
+            const isSelected = selectedDocId === doc.id;
 
             return (
               <div
                 key={doc.id}
-                className="bg-white rounded-2xl border border-slate-200/90 p-3.5 shadow-2xs space-y-3"
+                onClick={() => setSelectedDocId(doc.id)}
+                className={`rounded-2xl border p-3.5 shadow-2xs space-y-3 cursor-pointer transition-all duration-150 ${
+                  isSelected
+                    ? 'bg-indigo-50/70 border-indigo-500 ring-2 ring-indigo-500/40 shadow-sm border-l-4 rtl:border-r-4 border-l-indigo-600 rtl:border-r-indigo-600'
+                    : 'bg-white border-slate-200/90 hover:border-slate-300 hover:bg-slate-50/70'
+                }`}
               >
                 {/* Row 1: Document Number, Customer Name & Date */}
                 <div className="flex items-start justify-between gap-2 border-b border-slate-100 pb-2.5">
@@ -2388,8 +2395,17 @@ export default function CommercialDocuments({
                   const docProfit = doc.docType === 'facture' ? calculateDocProfit(doc) : null;
                   const prevBal = Number(doc.previousBalance || 0);
                   const safeItems = getSafeDocItems(doc);
+                  const isSelected = selectedDocId === doc.id;
                   return (
-                    <tr key={doc.id} className="hover:bg-slate-50/50 transition">
+                    <tr
+                      key={doc.id}
+                      onClick={() => setSelectedDocId(doc.id)}
+                      className={`transition-all duration-150 cursor-pointer ${
+                        isSelected
+                          ? 'bg-indigo-50/90 text-indigo-950 font-bold border-l-4 rtl:border-r-4 border-indigo-600 shadow-2xs ring-1 ring-inset ring-indigo-400/30'
+                          : 'hover:bg-indigo-50/35 hover:text-slate-900'
+                      }`}
+                    >
                       <td className="px-3.5 py-2.5 font-mono font-bold text-slate-800 text-start">
                         {doc.docNumber}
                       </td>

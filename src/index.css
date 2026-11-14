@@ -3,65 +3,57 @@
 /* Bundled local offline fonts - explicitly declared for all platforms including macOS WebKit */
 @font-face {
   font-family: 'Cairo';
-  src: url('/fonts/Cairo-Variable.ttf') format('truetype-variations'),
+  src: local('Cairo'), local('Cairo Regular'), local('Cairo-Regular'),
+       url('/fonts/Cairo-Variable.ttf') format('truetype-variations'),
        url('/fonts/Cairo-Variable.ttf') format('truetype');
   font-weight: 400;
   font-style: normal;
   font-display: swap;
+  font-variation-settings: "slnt" 0, "ital" 0;
 }
 
 @font-face {
   font-family: 'Cairo';
-  src: url('/fonts/Cairo-Variable.ttf') format('truetype-variations'),
+  src: local('Cairo SemiBold'), local('Cairo-SemiBold'),
+       url('/fonts/Cairo-Variable.ttf') format('truetype-variations'),
        url('/fonts/Cairo-Variable.ttf') format('truetype');
-  font-weight: 500;
+  font-weight: 500 600;
   font-style: normal;
   font-display: swap;
+  font-variation-settings: "slnt" 0, "ital" 0;
 }
 
 @font-face {
   font-family: 'Cairo';
-  src: url('/fonts/Cairo-Variable.ttf') format('truetype-variations'),
+  src: local('Cairo Bold'), local('Cairo-Bold'),
+       url('/fonts/Cairo-Variable.ttf') format('truetype-variations'),
        url('/fonts/Cairo-Variable.ttf') format('truetype');
-  font-weight: 600;
+  font-weight: 700 800;
   font-style: normal;
   font-display: swap;
+  font-variation-settings: "slnt" 0, "ital" 0;
 }
 
 @font-face {
   font-family: 'Cairo';
-  src: url('/fonts/Cairo-Variable.ttf') format('truetype-variations'),
-       url('/fonts/Cairo-Variable.ttf') format('truetype');
-  font-weight: 700;
-  font-style: normal;
-  font-display: swap;
-}
-
-@font-face {
-  font-family: 'Cairo';
-  src: url('/fonts/Cairo-Variable.ttf') format('truetype-variations'),
-       url('/fonts/Cairo-Variable.ttf') format('truetype');
-  font-weight: 800;
-  font-style: normal;
-  font-display: swap;
-}
-
-@font-face {
-  font-family: 'Cairo';
-  src: url('/fonts/Cairo-Variable.ttf') format('truetype-variations'),
+  src: local('Cairo Black'), local('Cairo-Black'),
+       url('/fonts/Cairo-Variable.ttf') format('truetype-variations'),
        url('/fonts/Cairo-Variable.ttf') format('truetype');
   font-weight: 900;
   font-style: normal;
   font-display: swap;
+  font-variation-settings: "slnt" 0, "ital" 0;
 }
 
 @font-face {
   font-family: 'Cairo';
-  src: url('/fonts/Cairo-Variable.ttf') format('truetype-variations'),
+  src: local('Cairo'),
+       url('/fonts/Cairo-Variable.ttf') format('truetype-variations'),
        url('/fonts/Cairo-Variable.ttf') format('truetype');
   font-weight: 200 1000;
   font-style: normal;
   font-display: swap;
+  font-variation-settings: "slnt" 0, "ital" 0;
 }
 
 @font-face {
@@ -115,13 +107,23 @@
 @import "tailwindcss";
 
 @theme {
-  --font-sans: 'Cairo', 'Tajawal', -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
-  --font-heading: 'Cairo', 'Tajawal', -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+  --font-sans: 'Cairo', 'Tajawal', 'Segoe UI', Tahoma, Arial, sans-serif;
+  --font-heading: 'Cairo', 'Tajawal', 'Segoe UI', Tahoma, Arial, sans-serif;
   --font-mono: 'JetBrains Mono', 'Cairo', 'Tajawal', ui-monospace, SFMono-Regular, monospace;
 }
 
+/* Global Font Rendering & Anti-Slant Rules for macOS & Windows */
+*, *::before, *::after {
+  font-synthesis: none !important;
+  -webkit-font-synthesis: none !important;
+}
+
 html, body, #root {
-  font-family: 'Cairo', 'Tajawal', -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif !important;
+  font-family: 'Cairo', 'Tajawal', 'Segoe UI', Tahoma, Arial, sans-serif !important;
+  font-style: normal !important;
+  font-synthesis: none !important;
+  -webkit-font-synthesis: none !important;
+  font-variation-settings: "slnt" 0, "ital" 0 !important;
   font-weight: 600;
   color: #0f172a;
   -webkit-font-smoothing: antialiased;
@@ -130,11 +132,13 @@ html, body, #root {
 }
 
 h1, h2, h3, h4, h5, h6, .font-heading {
-  font-family: 'Cairo', 'Tajawal', -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif !important;
+  font-family: 'Cairo', 'Tajawal', 'Segoe UI', Tahoma, Arial, sans-serif !important;
+  font-style: normal !important;
 }
 
 button, input, select, textarea, optgroup, option {
-  font-family: 'Cairo', 'Tajawal', -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif !important;
+  font-family: 'Cairo', 'Tajawal', 'Segoe UI', Tahoma, Arial, sans-serif !important;
+  font-style: normal !important;
 }
 
 select {

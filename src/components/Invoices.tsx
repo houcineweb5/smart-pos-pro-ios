@@ -72,6 +72,10 @@ export default function Invoices({ invoices, products = [], customers = [], conf
   const [showBarcodeScannerModal, setShowBarcodeScannerModal] = useState(false);
   const [barcodeScanToast, setBarcodeScanToast] = useState<string | null>(null);
 
+  // Active selected row state & Show top profit toggle
+  const [selectedRowId, setSelectedRowId] = useState<string | null>(null);
+  const [showTopProfit, setShowTopProfit] = useState<boolean>(false);
+
   const playInvoiceScanBeep = () => {
     try {
       const AudioCtx = window.AudioContext || (window as any).webkitAudioContext;
@@ -601,6 +605,7 @@ export default function Invoices({ invoices, products = [], customers = [], conf
   };
 
   const handleOpenDetails = (inv: Invoice) => {
+    setSelectedRowId(inv.id);
     const safeInv: Invoice = {
       ...inv,
       items: getSafeItems(inv),
@@ -853,11 +858,27 @@ export default function Invoices({ invoices, products = [], customers = [], conf
             <span>{lang === 'ar' ? 'الإجمالي:' : 'Total:'}</span>
             <span className="font-mono">{filteredTotalAmount.toFixed(2)} {config.currency}</span>
           </div>
-          <div className="flex-1 sm:flex-initial bg-emerald-50/80 border border-emerald-200 px-3 py-1.5 rounded-xl text-xs font-black text-emerald-800 flex items-center justify-between sm:justify-start gap-1.5">
+          <button
+            type="button"
+            onClick={() => setShowTopProfit(!showTopProfit)}
+            className="flex-1 sm:flex-initial bg-emerald-50/80 hover:bg-emerald-100/90 border border-emerald-300/80 px-3 py-1.5 rounded-xl text-xs font-black text-emerald-800 flex items-center justify-between sm:justify-start gap-2 transition cursor-pointer select-none active:scale-95 shadow-2xs"
+            title={showTopProfit ? (lang === 'ar' ? 'إخفاء صافي الأرباح' : 'Masquer le bénéfice net') : (lang === 'ar' ? 'إظهار صافي الأرباح' : 'Afficher le bénéfice net')}
+          >
             <TrendingUp className="w-3.5 h-3.5 text-emerald-600 shrink-0" />
             <span>{lang === 'ar' ? 'صافي الأرباح:' : 'Net Profit:'}</span>
-            <span className="font-mono">{filteredTotalProfit >= 0 ? `+${filteredTotalProfit.toFixed(2)}` : filteredTotalProfit.toFixed(2)} {config.currency}</span>
-          </div>
+            {showTopProfit ? (
+              <span className="font-mono flex items-center gap-1.5 text-emerald-900 bg-emerald-100/80 px-2 py-0.5 rounded-lg border border-emerald-300">
+                {filteredTotalProfit >= 0 ? `+${filteredTotalProfit.toFixed(2)}` : filteredTotalProfit.toFixed(2)} {config.currency}
+                <EyeOff className="w-3.5 h-3.5 text-emerald-700 shrink-0" />
+              </span>
+            ) : (
+              <span className="flex items-center gap-1.5 text-emerald-700 bg-emerald-100/60 px-2 py-0.5 rounded-lg border border-emerald-200 text-[11px]">
+                <span className="tracking-widest font-mono text-emerald-600">••••••</span>
+                <Eye className="w-3 h-3 text-emerald-700 shrink-0" />
+                <span className="font-bold">{lang === 'ar' ? 'إظهار' : 'Afficher'}</span>
+              </span>
+            )}
+          </button>
         </div>
       </div>
 
@@ -1058,11 +1079,17 @@ export default function Invoices({ invoices, products = [], customers = [], conf
             const invPaid = Number(inv.amountPaid) || 0;
             const prevBal = Number(inv.previousBalance) || 0;
             const unpaidAmt = Math.max(0, invTotal - invPaid);
+            const isSelected = selectedRowId === inv.id;
 
             return (
               <div
                 key={inv.id}
-                className="bg-white rounded-2xl border border-slate-200/90 p-3.5 shadow-2xs space-y-3"
+                onClick={() => setSelectedRowId(inv.id)}
+                className={`rounded-2xl border p-3.5 shadow-2xs space-y-3 cursor-pointer transition-all duration-150 ${
+                  isSelected
+                    ? 'bg-indigo-50/70 border-indigo-500 ring-2 ring-indigo-500/40 shadow-sm border-l-4 rtl:border-r-4 border-l-indigo-600 rtl:border-r-indigo-600'
+                    : 'bg-white border-slate-200/90 hover:border-slate-300 hover:bg-slate-50/70'
+                }`}
               >
                 {/* Row 1: Invoice Number, Customer Name & Date */}
                 <div className="flex items-start justify-between gap-2 border-b border-slate-100 pb-2.5">
@@ -1214,9 +1241,18 @@ export default function Invoices({ invoices, products = [], customers = [], conf
                   const invTotal = Number(inv.total) || 0;
                   const invPaid = Number(inv.amountPaid) || 0;
                   const prevBal = Number(inv.previousBalance) || 0;
+                  const isSelected = selectedRowId === inv.id;
 
                   return (
-                    <tr key={inv.id} className="hover:bg-slate-50/50 transition">
+                    <tr
+                      key={inv.id}
+                      onClick={() => setSelectedRowId(inv.id)}
+                      className={`transition-all duration-150 cursor-pointer ${
+                        isSelected
+                          ? 'bg-indigo-50/90 text-indigo-950 font-bold border-l-4 rtl:border-r-4 border-indigo-600 shadow-2xs ring-1 ring-inset ring-indigo-400/30'
+                          : 'hover:bg-indigo-50/35 hover:text-slate-900'
+                      }`}
+                    >
                       <td className="px-3.5 py-2.5 font-mono font-bold text-slate-800 text-start">{inv.invoiceNumber}</td>
                       <td className="px-3.5 py-2.5 text-slate-500 text-start">{inv.date ? new Date(inv.date).toLocaleString('fr-FR') : ''}</td>
                       <td className="px-3.5 py-2.5 text-slate-800 text-start font-bold">{inv.customerName}</td>

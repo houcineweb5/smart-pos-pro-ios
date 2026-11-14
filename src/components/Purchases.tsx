@@ -70,6 +70,7 @@ export default function Purchases({
   const [receiptPreviewPurchase, setReceiptPreviewPurchase] = useState<Purchase | null>(null);
   const [deletingPurchaseId, setDeletingPurchaseId] = useState<string | null>(null);
   const [overpayTarget, setOverpayTarget] = useState<{ supplierId: string; amount: number; notes?: string } | null>(null);
+  const [selectedPurchaseId, setSelectedPurchaseId] = useState<string | null>(null);
 
   // Settle Debt Form state
   const [settleSupplierId, setSettleSupplierId] = useState('');
@@ -611,11 +612,17 @@ export default function Purchases({
               const pTotal = Number(p.total) || 0;
               const pPaid = Number(p.amountPaid) || 0;
               const billDebt = Math.max(0, pTotal - pPaid);
+              const isSelected = selectedPurchaseId === p.id;
 
               return (
                 <div
                   key={p.id}
-                  className="bg-white rounded-2xl border border-slate-200/90 p-3.5 shadow-2xs space-y-3"
+                  onClick={() => setSelectedPurchaseId(p.id)}
+                  className={`rounded-2xl border p-3.5 shadow-2xs space-y-3 cursor-pointer transition-all duration-150 ${
+                    isSelected
+                      ? 'bg-indigo-50/70 border-indigo-500 ring-2 ring-indigo-500/40 shadow-sm border-l-4 rtl:border-r-4 border-l-indigo-600 rtl:border-r-indigo-600'
+                      : 'bg-white border-slate-200/90 hover:border-slate-300 hover:bg-slate-50/70'
+                  }`}
                 >
                   {/* Row 1: Purchase Number, Supplier Name & Date + Status Badge */}
                   <div className="flex items-start justify-between gap-2 border-b border-slate-100 pb-2.5">
@@ -740,8 +747,17 @@ export default function Purchases({
               {filteredPurchases.length > 0 ? (
                 filteredPurchases.map((p) => {
                   const billDebt = Math.max(0, p.total - p.amountPaid);
+                  const isSelected = selectedPurchaseId === p.id;
                   return (
-                    <tr key={p.id} className="hover:bg-slate-50/50 transition">
+                    <tr
+                      key={p.id}
+                      onClick={() => setSelectedPurchaseId(p.id)}
+                      className={`transition-all duration-150 cursor-pointer ${
+                        isSelected
+                          ? 'bg-indigo-50/90 text-indigo-950 font-bold border-l-4 rtl:border-r-4 border-indigo-600 shadow-2xs ring-1 ring-inset ring-indigo-400/30'
+                          : 'hover:bg-indigo-50/35 hover:text-slate-900'
+                      }`}
+                    >
                       <td className="px-4 py-3.5 font-bold font-mono text-slate-900">{p.purchaseNumber}</td>
                       <td className="px-4 py-3.5 text-slate-400">
                         {p.date ? new Date(p.date).toLocaleString(undefined, {

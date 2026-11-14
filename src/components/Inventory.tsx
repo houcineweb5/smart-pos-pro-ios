@@ -84,6 +84,7 @@ export default function Inventory({
   const [sortBy, setSortBy] = useState<'sku' | 'name' | 'category' | 'purchasePrice' | 'sellingPrice' | 'stock'>('name');
   const [sortOrder, setSortOrder] = useState<'asc' | 'desc'>('asc');
   const [deletingProductId, setDeletingProductId] = useState<string | null>(null);
+  const [selectedProductId, setSelectedProductId] = useState<string | null>(null);
 
   // Category selection modes & horizontal scroll ref
   const catScrollRef = useRef<HTMLDivElement>(null);
@@ -1054,11 +1055,17 @@ export default function Inventory({
           sortedProducts.map((p) => {
             const isLow = p.stock <= p.minStock;
             const isOut = p.stock === 0;
+            const isSelected = selectedProductId === p.id;
 
             return (
               <div
                 key={p.id}
-                className="bg-white border border-slate-200/80 rounded-2xl p-3.5 shadow-xs space-y-3"
+                onClick={() => setSelectedProductId(p.id)}
+                className={`rounded-2xl p-3.5 shadow-xs space-y-3 cursor-pointer transition-all duration-150 ${
+                  isSelected
+                    ? 'bg-indigo-50/70 border border-indigo-500 ring-2 ring-indigo-500/40 shadow-sm border-l-4 rtl:border-r-4 border-l-indigo-600 rtl:border-r-indigo-600'
+                    : 'bg-white border border-slate-200/80 hover:border-slate-300 hover:bg-slate-50/70'
+                }`}
               >
                 {/* Header: Name, Image, Category & Stock Status */}
                 <div className="flex items-start justify-between gap-3">
@@ -1217,9 +1224,18 @@ export default function Inventory({
                 sortedProducts.map((p) => {
                   const isLow = p.stock <= p.minStock;
                   const isOut = p.stock === 0;
+                  const isSelected = selectedProductId === p.id;
 
                   return (
-                    <tr key={p.id} className="hover:bg-slate-50/50 transition">
+                    <tr
+                      key={p.id}
+                      onClick={() => setSelectedProductId(p.id)}
+                      className={`transition-all duration-150 cursor-pointer ${
+                        isSelected
+                          ? 'bg-indigo-50/90 text-indigo-950 font-bold border-l-4 rtl:border-r-4 border-indigo-600 shadow-2xs ring-1 ring-inset ring-indigo-400/30'
+                          : 'hover:bg-indigo-50/35 hover:text-slate-900'
+                      }`}
+                    >
                       <td className="px-6 py-4 font-mono font-medium text-slate-500 text-start">{p.sku}</td>
                       <td className="px-6 py-4 text-slate-900 font-semibold text-start">
                         <div className="flex items-center gap-2.5">
