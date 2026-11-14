@@ -123,11 +123,39 @@ jobs:
           EOF
           chmod +x "SmartPOS.app/Contents/MacOS/SmartPOS"
 
+          # 7. Ad-hoc codesign to make bundle valid
+          codesign --force --deep --sign - "SmartPOS.app" || true
+
       - name: Build DMG & ZIP Installer
         run: |
           mkdir -p dmg_stage
           cp -r SmartPOS.app dmg_stage/
           ln -s /Applications dmg_stage/Applications
+
+          cat << 'EOF' > dmg_stage/INSTRUCTIONS_POUR_OUVRIR.txt
+          ===============================================================
+            Smart POS Pro - Guide de premier lancement sur macOS
+          ===============================================================
+          Si macOS affiche le message:
+          "Apple n'a pas pu confirmer que SmartPOS ne contenait pas de logiciel malveillant"
+
+          Pour ouvrir l'application la première fois (très simple):
+          Option 1 (Le plus simple):
+          1. Allez dans le dossier Applications
+          2. Faites un CLIC DROIT (ou Ctrl + Clic) sur SmartPOS
+          3. Cliquez sur "Ouvrir" dans le menu
+          4. Dans la boîte de dialogue, cliquez sur le bouton "Ouvrir".
+          (Une fois fait, l'application s'ouvrira toujours directement par double-clic !)
+
+          Option 2 (Via Réglages Système):
+          1. Ouvrez Réglages Système -> Confidentialité et sécurité
+          2. Descendez à la section "Sécurité"
+          3. Cliquez sur "Ouvrir quand même" à côté de SmartPOS.
+
+          Option 3 (Commande Terminal en 1 seconde):
+          xattr -cr /Applications/SmartPOS.app
+          ===============================================================
+          EOF
 
           hdiutil create -volname "Smart POS Pro" -srcfolder dmg_stage -ov -format UDZO SmartPOS-Pro-macOS.dmg
           zip -r SmartPOS-Pro-macOS.zip SmartPOS.app

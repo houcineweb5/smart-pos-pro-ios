@@ -248,6 +248,30 @@ namespace SmartPOSSetup
                     string startMenuDir = Environment.GetFolderPath(Environment.SpecialFolder.Programs);
                     CreateShortcut(Path.Combine(startMenuDir, "Smart Pos.lnk"), exePath, targetDir);
 
+                    string uninstallerExe = Path.Combine(targetDir, "Uninstall.exe");
+                    if (File.Exists(uninstallerExe))
+                    {
+                        CreateShortcut(Path.Combine(startMenuDir, "إلغاء تثبيت Smart Pos.lnk"), uninstallerExe, targetDir);
+                    }
+
+                    // تسجيل في سجل ويندوز (Windows Registry) للبرامج والميزات
+                    try
+                    {
+                        using (RegistryKey key = Registry.CurrentUser.CreateSubKey(@"Software\Microsoft\Windows\CurrentVersion\Uninstall\SmartPOS"))
+                        {
+                            if (key != null)
+                            {
+                                key.SetValue("DisplayName", "Smart Pos - نظام المبيعات والفوترة الذكي");
+                                key.SetValue("DisplayIcon", Path.Combine(targetDir, "SmartPOS.ico") + ",0");
+                                key.SetValue("UninstallString", "\"" + uninstallerExe + "\"");
+                                key.SetValue("InstallLocation", targetDir);
+                                key.SetValue("Publisher", "Smart POS Pro");
+                                key.SetValue("DisplayVersion", "1.0.0");
+                            }
+                        }
+                    }
+                    catch { }
+
                     // تحديث كاش الأيقونات فوراً في Windows Explorer
                     try
                     {
