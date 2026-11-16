@@ -67,6 +67,7 @@ export default function CommercialDocuments({
   const [deletingId, setDeletingId] = useState<string | null>(null);
   const [toastMessage, setToastMessage] = useState<string | null>(null);
   const [selectedDocId, setSelectedDocId] = useState<string | null>(null);
+  const [showTopProfit, setShowTopProfit] = useState<boolean>(false);
 
   // Form State for Create / Edit
   const [formCustomerId, setFormCustomerId] = useState<string>('');
@@ -1927,7 +1928,7 @@ export default function CommercialDocuments({
           <button
             type="button"
             onClick={handleOpenCreate}
-            className="w-full sm:w-auto px-3.5 py-2 bg-indigo-600 hover:bg-indigo-700 text-white rounded-xl text-xs font-black flex items-center justify-center gap-1.5 transition cursor-pointer shadow-xs active:scale-95"
+            className="w-full sm:w-auto px-3.5 py-2 bg-indigo-600 hover:bg-indigo-700 text-white rounded-xl text-xs font-black flex items-center justify-center gap-1.5 transition cursor-pointer shadow-xs"
           >
             <Plus className="w-3.5 h-3.5 shrink-0" />
             <span>
@@ -1942,11 +1943,27 @@ export default function CommercialDocuments({
             <span className="font-mono">{filteredTotalAmount.toFixed(2)} {config.currency}</span>
           </div>
           {activeType === 'facture' && (
-            <div className="flex-1 sm:flex-initial bg-emerald-50/80 border border-emerald-200 px-3 py-1.5 rounded-xl text-xs font-black text-emerald-800 flex items-center justify-between sm:justify-start gap-1.5">
+            <button
+              type="button"
+              onClick={() => setShowTopProfit(!showTopProfit)}
+              className="flex-1 sm:flex-initial bg-emerald-50/80 hover:bg-emerald-100/90 border border-emerald-300/80 px-3 py-1.5 rounded-xl text-xs font-black text-emerald-800 flex items-center justify-between sm:justify-start gap-2 transition cursor-pointer select-none shadow-2xs"
+              title={showTopProfit ? (lang === 'ar' ? 'إخفاء صافي الأرباح' : 'Masquer le bénéfice net') : (lang === 'ar' ? 'إظهار صافي الأرباح' : 'Afficher le bénéfice net')}
+            >
               <TrendingUp className="w-3.5 h-3.5 text-emerald-600 shrink-0" />
               <span>{lang === 'ar' ? 'صافي الأرباح:' : 'Net Profit:'}</span>
-              <span className="font-mono">{filteredTotalProfit >= 0 ? `+${filteredTotalProfit.toFixed(2)}` : filteredTotalProfit.toFixed(2)} {config.currency}</span>
-            </div>
+              {showTopProfit ? (
+                <span className="font-mono flex items-center gap-1.5 text-emerald-900 bg-emerald-100/80 px-2 py-0.5 rounded-lg border border-emerald-300">
+                  {filteredTotalProfit >= 0 ? `+${filteredTotalProfit.toFixed(2)}` : filteredTotalProfit.toFixed(2)} {config.currency}
+                  <EyeOff className="w-3.5 h-3.5 text-emerald-700 shrink-0" />
+                </span>
+              ) : (
+                <span className="flex items-center gap-1.5 text-emerald-700 bg-emerald-100/60 px-2 py-0.5 rounded-lg border border-emerald-200 text-[11px]">
+                  <span className="tracking-widest font-mono text-emerald-600">••••••</span>
+                  <Eye className="w-3 h-3 text-emerald-700 shrink-0" />
+                  <span className="font-bold">{lang === 'ar' ? 'إظهار' : 'Afficher'}</span>
+                </span>
+              )}
+            </button>
           )}
         </div>
       </div>
@@ -2189,10 +2206,10 @@ export default function CommercialDocuments({
               <div
                 key={doc.id}
                 onClick={() => setSelectedDocId(doc.id)}
-                className={`rounded-2xl border p-3.5 shadow-2xs space-y-3 cursor-pointer transition-all duration-150 ${
+                className={`rounded-2xl border p-3.5 space-y-3 cursor-pointer transition-colors duration-150 ${
                   isSelected
-                    ? 'bg-indigo-50/70 border-indigo-500 ring-2 ring-indigo-500/40 shadow-sm border-l-4 rtl:border-r-4 border-l-indigo-600 rtl:border-r-indigo-600'
-                    : 'bg-white border-slate-200/90 hover:border-slate-300 hover:bg-slate-50/70'
+                    ? 'bg-blue-50/80 border-blue-400'
+                    : 'bg-white border-slate-200/90 hover:bg-slate-50/70'
                 }`}
               >
                 {/* Row 1: Document Number, Customer Name & Date */}
@@ -2400,10 +2417,10 @@ export default function CommercialDocuments({
                     <tr
                       key={doc.id}
                       onClick={() => setSelectedDocId(doc.id)}
-                      className={`transition-all duration-150 cursor-pointer ${
+                      className={`cursor-pointer transition-colors duration-150 ${
                         isSelected
-                          ? 'bg-indigo-50/90 text-indigo-950 font-bold border-l-4 rtl:border-r-4 border-indigo-600 shadow-2xs ring-1 ring-inset ring-indigo-400/30'
-                          : 'hover:bg-indigo-50/35 hover:text-slate-900'
+                          ? 'bg-blue-50/80 text-slate-900 font-bold'
+                          : 'hover:bg-slate-50/80'
                       }`}
                     >
                       <td className="px-3.5 py-2.5 font-mono font-bold text-slate-800 text-start">

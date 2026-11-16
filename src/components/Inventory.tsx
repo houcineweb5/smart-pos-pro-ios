@@ -1061,10 +1061,10 @@ export default function Inventory({
               <div
                 key={p.id}
                 onClick={() => setSelectedProductId(p.id)}
-                className={`rounded-2xl p-3.5 shadow-xs space-y-3 cursor-pointer transition-all duration-150 ${
+                className={`rounded-2xl border p-3.5 space-y-3 cursor-pointer transition-colors duration-150 ${
                   isSelected
-                    ? 'bg-indigo-50/70 border border-indigo-500 ring-2 ring-indigo-500/40 shadow-sm border-l-4 rtl:border-r-4 border-l-indigo-600 rtl:border-r-indigo-600'
-                    : 'bg-white border border-slate-200/80 hover:border-slate-300 hover:bg-slate-50/70'
+                    ? 'bg-blue-50/80 border-blue-400'
+                    : 'bg-white border-slate-200/80 hover:bg-slate-50/70'
                 }`}
               >
                 {/* Header: Name, Image, Category & Stock Status */}
@@ -1230,10 +1230,10 @@ export default function Inventory({
                     <tr
                       key={p.id}
                       onClick={() => setSelectedProductId(p.id)}
-                      className={`transition-all duration-150 cursor-pointer ${
+                      className={`cursor-pointer transition-colors duration-150 ${
                         isSelected
-                          ? 'bg-indigo-50/90 text-indigo-950 font-bold border-l-4 rtl:border-r-4 border-indigo-600 shadow-2xs ring-1 ring-inset ring-indigo-400/30'
-                          : 'hover:bg-indigo-50/35 hover:text-slate-900'
+                          ? 'bg-blue-50/80 text-slate-900 font-bold'
+                          : 'hover:bg-slate-50/80'
                       }`}
                     >
                       <td className="px-6 py-4 font-mono font-medium text-slate-500 text-start">{p.sku}</td>

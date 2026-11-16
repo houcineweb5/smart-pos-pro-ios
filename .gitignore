@@ -9,8 +9,15 @@ coverage/
 
 Final-Release/
 iOS-Release/
+Android-Release/
+Mac-Release/
+backups/
+installer/payload.zip
 installer/IconGenerator.exe
 SmartPOS.exe
+*.dmg
+*.apk
+*.ipa
 database.rar
 database.sqlite*
 *.bak*

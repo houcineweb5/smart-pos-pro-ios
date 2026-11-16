@@ -233,6 +233,26 @@ namespace SmartPOSSetup
 
                 string exePath = Path.Combine(targetDir, "SmartPOS.exe");
 
+                // التأكد من وجود ملف إزالة التثبيت Uninstall.exe داخل مجلد التثبيت
+                string uninstallerExe = Path.Combine(targetDir, "Uninstall.exe");
+                if (!File.Exists(uninstallerExe))
+                {
+                    try
+                    {
+                        using (Stream uStream = Assembly.GetExecutingAssembly().GetManifestResourceStream("Uninstall.exe"))
+                        {
+                            if (uStream != null)
+                            {
+                                using (FileStream ufs = new FileStream(uninstallerExe, FileMode.Create, FileAccess.Write))
+                                {
+                                    uStream.CopyTo(ufs);
+                                }
+                            }
+                        }
+                    }
+                    catch { }
+                }
+
                 // تثبيت خطوط البرنامج في نظام ويندوز (Cairo و Tajawal و JetBrains Mono)
                 UpdateProgress(85, "⏳ جاري تثبيت خطوط البرنامج (Cairo و Tajawal) في ويندوز...");
                 InstallFontsToWindows(targetDir);
@@ -248,7 +268,6 @@ namespace SmartPOSSetup
                     string startMenuDir = Environment.GetFolderPath(Environment.SpecialFolder.Programs);
                     CreateShortcut(Path.Combine(startMenuDir, "Smart Pos.lnk"), exePath, targetDir);
 
-                    string uninstallerExe = Path.Combine(targetDir, "Uninstall.exe");
                     if (File.Exists(uninstallerExe))
                     {
                         CreateShortcut(Path.Combine(startMenuDir, "إلغاء تثبيت Smart Pos.lnk"), uninstallerExe, targetDir);
