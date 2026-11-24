@@ -221,6 +221,20 @@ namespace SmartPOSSetup
 
                         if (!string.IsNullOrEmpty(entry.Name))
                         {
+                            // حماية قاعدة بيانات المستخدم القائمة عند التحديث أو إعادة التثبيت
+                            if (entry.Name.Equals("database.sqlite", StringComparison.OrdinalIgnoreCase) && File.Exists(fullPath))
+                            {
+                                try
+                                {
+                                    string backupDir = Path.Combine(targetDir, "backups");
+                                    if (!Directory.Exists(backupDir)) Directory.CreateDirectory(backupDir);
+                                    string backupFile = Path.Combine(backupDir, "database_update_backup_" + DateTime.Now.ToString("yyyyMMdd_HHmmss") + ".sqlite");
+                                    File.Copy(fullPath, backupFile, true);
+                                }
+                                catch { }
+                                continue; // تجاوز استبدال قاعدة بيانات العميل
+                            }
+
                             entry.ExtractToFile(fullPath, true);
                         }
 
@@ -232,6 +246,26 @@ namespace SmartPOSSetup
                 try { File.Delete(tempZip); } catch { }
 
                 string exePath = Path.Combine(targetDir, "SmartPOS.exe");
+
+                // التأكد من وجود ملف إزالة التثبيت Uninstall.exe داخل مجلد التثبيت
+                string uninstallerExe = Path.Combine(targetDir, "Uninstall.exe");
+                if (!File.Exists(uninstallerExe))
+                {
+                    try
+                    {
+                        using (Stream uStream = Assembly.GetExecutingAssembly().GetManifestResourceStream("Uninstall.exe"))
+                        {
+                            if (uStream != null)
+                            {
+                                using (FileStream ufs = new FileStream(uninstallerExe, FileMode.Create, FileAccess.Write))
+                                {
+                                    uStream.CopyTo(ufs);
+                                }
+                            }
+                        }
+                    }
+                    catch { }
+                }
 
                 // تثبيت خطوط البرنامج في نظام ويندوز (Cairo و Tajawal و JetBrains Mono)
                 UpdateProgress(85, "⏳ جاري تثبيت خطوط البرنامج (Cairo و Tajawal) في ويندوز...");
@@ -248,7 +282,6 @@ namespace SmartPOSSetup
                     string startMenuDir = Environment.GetFolderPath(Environment.SpecialFolder.Programs);
                     CreateShortcut(Path.Combine(startMenuDir, "Smart Pos.lnk"), exePath, targetDir);
 
-                    string uninstallerExe = Path.Combine(targetDir, "Uninstall.exe");
                     if (File.Exists(uninstallerExe))
                     {
                         CreateShortcut(Path.Combine(startMenuDir, "إلغاء تثبيت Smart Pos.lnk"), uninstallerExe, targetDir);

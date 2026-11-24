@@ -174,6 +174,7 @@ export interface StoreConfig {
   receiptFooterMessage?: string;
   receiptReturnPolicy?: string;
   invoiceNotesDefault?: string;
+  isConfigured?: boolean;
 }
 
 export interface DashboardStats {

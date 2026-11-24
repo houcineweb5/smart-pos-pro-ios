@@ -9,8 +9,16 @@ coverage/
 
 Final-Release/
 iOS-Release/
+Android-Release/
+Mac-Release/
 installer/IconGenerator.exe
+installer/payload.zip
 SmartPOS.exe
+SmartPOS-MasterTool.exe
 database.rar
 database.sqlite*
+database_clean.sqlite
+generated_keys.json
+backups/
 *.bak*
+

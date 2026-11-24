@@ -17,7 +17,10 @@ import {
   getEmployeeByUsername,
   getEmployeeById,
   addStockMovement,
-  getStockMovements
+  getStockMovements,
+  getLicenseStatusFromDB,
+  activateLicenseInDB,
+  performDailyAutoBackup
 } from './server_db.js';
 import { verifyPassword, hashPassword } from './server_src/security.js';
 import { 
@@ -232,7 +235,7 @@ export function createExpressApp() {
     }
   });
 
-  // PROTECTED: Incremental safe save with Role-Based Access Control
+  // PROTECTED: Incremental safe save with Role-Based Access Control and License Check
   app.post('/api/save', requireAuth, async (req, res) => {
     try {
       const user = (req as any).user;
@@ -249,11 +252,101 @@ export function createExpressApp() {
           delete req.body.config;
         }
       }
+
+      // Check Trial License Limit on New Invoices
+      if (req.body && req.body.invoices && Array.isArray(req.body.invoices)) {
+        try {
+          const license = await getLicenseStatusFromDB();
+          if (license.isTrialExpired) {
+            const currentData = await getData();
+            const currentCount = currentData.invoices?.length || 0;
+            if (req.body.invoices.length > currentCount) {
+              return res.status(403).json({
+                ok: false,
+                error: 'TRIAL_EXPIRED',
+                message: 'انتهت الفترة التجريبية للبرنامج (15 يوماً أو 50 فاتورة). يرجى إدخال مفتاح التفعيل للمتابعة.'
+              });
+            }
+          }
+        } catch (licErr) {
+          console.error('License check error during save:', licErr);
+        }
+      }
+
       await saveData(req.body);
       res.json({ success: true });
     } catch (err: any) {
       console.error('Error saving data to SQLite:', err);
       res.status(500).json({ error: err.message || 'Internal Server Error' });
+    }
+  });
+
+  // PUBLIC/PROTECTED: License Status & Activation
+  app.get('/api/license/status', async (req, res) => {
+    try {
+      const status = await getLicenseStatusFromDB();
+      res.json(status);
+    } catch (err: any) {
+      res.status(500).json({ error: err.message || 'Failed to get license status' });
+    }
+  });
+
+  app.post('/api/license/activate', async (req, res) => {
+    try {
+      const { key, customerName } = req.body || {};
+      if (!key) {
+        return res.status(400).json({ success: false, message: 'مفتاح التفعيل مطلوب.' });
+      }
+      const result = await activateLicenseInDB(key, customerName);
+      if (!result.success) {
+        return res.status(400).json(result);
+      }
+      res.json(result);
+    } catch (err: any) {
+      res.status(500).json({ success: false, message: err.message });
+    }
+  });
+
+  // PROTECTED: Auto & Manual Backups Management
+  app.post('/api/backup/now', requireAuth, requireAdmin, async (req, res) => {
+    try {
+      const cwd = process.cwd();
+      const dbPath = path.join(cwd, 'database.sqlite');
+      const backupDir = path.join(cwd, 'backups');
+      if (!fs.existsSync(backupDir)) fs.mkdirSync(backupDir, { recursive: true });
+
+      const timestamp = new Date().toISOString().replace(/[:.]/g, '-');
+      const backupFileName = `database_manual_${timestamp}.sqlite`;
+      const targetFile = path.join(backupDir, backupFileName);
+      fs.copyFileSync(dbPath, targetFile);
+
+      res.json({ ok: true, filename: backupFileName });
+    } catch (err: any) {
+      res.status(500).json({ ok: false, error: err.message });
+    }
+  });
+
+  app.get('/api/backup/list', requireAuth, requireAdmin, async (req, res) => {
+    try {
+      const backupDir = path.join(process.cwd(), 'backups');
+      if (!fs.existsSync(backupDir)) {
+        return res.json({ backups: [] });
+      }
+      const files = fs.readdirSync(backupDir)
+        .filter(f => f.endsWith('.sqlite'))
+        .map(f => {
+          const stats = fs.statSync(path.join(backupDir, f));
+          return {
+            filename: f,
+            size: stats.size,
+            createdAt: stats.mtime.toISOString(),
+            isAuto: f.startsWith('database_auto_')
+          };
+        })
+        .sort((a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime());
+      res.json({ backups: files });
+    } catch (err: any) {
+      res.status(500).json({ backups: [], error: err.message });
     }
   });
 
@@ -354,6 +447,7 @@ async function startServer() {
   try {
     await initDB();
     console.log('SQLite database initialized successfully');
+    await performDailyAutoBackup();
   } catch (err) {
     console.error('Failed to initialize SQLite database:', err);
   }

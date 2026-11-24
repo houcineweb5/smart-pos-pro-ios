@@ -26,6 +26,8 @@ import PurchaseEntry from './components/PurchaseEntry';
 import CommercialDocuments from './components/CommercialDocuments';
 import BackupManagement from './components/BackupManagement';
 import MobileAndCloudSync from './components/MobileAndCloudSync';
+import FirstRunWizardModal from './components/FirstRunWizardModal';
+import LicenseManagerModal, { LicenseStatusData } from './components/LicenseManagerModal';
 import { getCloudSyncConfig, saveCloudSyncConfig, loadCloudSyncConfigFromServer, pushDataToCloud, pullDataFromCloud, mergeStoreDatasets, decodePairingCode, getDeletedIds, addDeletedIds, clearDeletedIds, compressImageDataUrl } from './utils/cloudSync';
 import { exportDatabaseBackupFile } from './utils/printService';
 import { Pin, ChevronLeft, ChevronRight, Home as SmartHome, LayoutDashboard, ShoppingCart, Receipt, Package, Users, Truck, ShoppingBag, Settings as SettingsIcon, Globe, PhoneCall, Shield, LogOut, ClipboardList, PenTool, ReceiptText, Moon, Sun, FileText, ScrollText, CheckSquare, FileSpreadsheet, Database, Smartphone, Menu, X, RefreshCw, Cloud } from 'lucide-react';
@@ -228,6 +230,43 @@ export default function App() {
     }
     return null;
   });
+
+  // Licensing & Setup States
+  const [showWizardModal, setShowWizardModal] = useState(false);
+  const [licenseStatus, setLicenseStatus] = useState<LicenseStatusData | null>(null);
+  const [showBlockingLicenseModal, setShowBlockingLicenseModal] = useState(false);
+
+  // Check Commercial License & Expiry on mount
+  useEffect(() => {
+    const checkLicense = async () => {
+      try {
+        const res = await fetch('/api/license/status');
+        if (res.ok) {
+          const lic: LicenseStatusData = await res.json();
+          setLicenseStatus(lic);
+          if (lic.isTrialExpired) {
+            setShowBlockingLicenseModal(true);
+          }
+        }
+      } catch {
+        // Standalone offline or mobile
+      }
+    };
+    checkLicense();
+  }, []);
+
+  // First-run store onboarding setup trigger
+  useEffect(() => {
+    if (data?.config && currentUser?.role === 'admin') {
+      const isUnconfigured = data.config.isConfigured !== true &&
+        !data.config.phone &&
+        !data.config.address &&
+        (data.config.name === 'Smart Pos' || data.config.name === 'Store');
+      if (isUnconfigured) {
+        setShowWizardModal(true);
+      }
+    }
+  }, [data?.config, currentUser]);
 
   // Auto-detect ?pair=... or ?tab=... in URL on smartphone launch
   useEffect(() => {
@@ -1974,6 +2013,22 @@ export default function App() {
     }
   };
 
+  const handleCompleteFirstRunWizard = async (updatedConfig: StoreConfig, newPassword?: string) => {
+    handleSaveConfig(updatedConfig);
+    if (newPassword && currentUser && currentUser.role === 'admin') {
+      const updatedEmployees = (data?.employees || []).map((emp) => {
+        if (emp.id === currentUser.id || emp.username === 'admin') {
+          return { ...emp, passwordHash: newPassword };
+        }
+        return emp;
+      });
+      updateDataState((prev) => {
+        if (!prev) return prev;
+        return { ...prev, employees: updatedEmployees };
+      });
+    }
+  };
+
   const handleImportBackup = (imported: typeof data) => {
     setData(imported);
     saveStoredData(imported);
@@ -2622,6 +2677,7 @@ export default function App() {
               onReturnInvoice={handleReturnInvoiceItems}
               onNavigate={(tab) => selectTab(tab, tab === 'commercial-documents')}
               lang={lang}
+              currentUser={currentUser}
             />
           )}
 
@@ -2670,6 +2726,7 @@ export default function App() {
               warehouses={data?.warehouses}
               onSaveWarehouse={handleSaveWarehouse}
               onDeleteWarehouse={handleDeleteWarehouse}
+              currentUser={currentUser}
             />
           )}
 
@@ -2879,9 +2936,29 @@ export default function App() {
 
         {/* Small humble footer pinned at the bottom panel on Desktop */}
         <footer className="hidden lg:flex h-8 bg-white border-t border-slate-200 items-center justify-between px-6 text-[10px] text-slate-400 font-semibold shrink-0">
-          <span>{config.name} © 2026</span>
+          <span>{config.name} © 2026 - SmartPOS Pro Enterprise</span>
           <span className="font-mono text-[9px]">{isRTL ? 'البيانات مخزنة ومؤمنة محلياً وسحابياً' : 'All multilingual data secured locally & in cloud'}</span>
         </footer>
+
+        {/* First-Run Store Onboarding Wizard */}
+        <FirstRunWizardModal
+          isOpen={showWizardModal}
+          onClose={() => setShowWizardModal(false)}
+          config={config}
+          onComplete={handleCompleteFirstRunWizard}
+          lang={lang}
+        />
+
+        {/* Blocking Trial Expiry License Modal */}
+        <LicenseManagerModal
+          isOpen={showBlockingLicenseModal}
+          onClose={() => setShowBlockingLicenseModal(false)}
+          lang={lang}
+          isBlocking={true}
+          onActivated={() => {
+            setShowBlockingLicenseModal(false);
+          }}
+        />
       </main>
     </div>
   );

@@ -12,8 +12,9 @@ import {
   Palette, Building2, Coins, Keyboard, Check,
   Printer, FileText, Eye, CheckSquare, Square,
   Sparkles, Sliders, LayoutTemplate, MessageSquare,
-  Monitor, Smartphone, Tag
+  Monitor, Smartphone, Tag, KeyRound, ShieldCheck, PhoneCall
 } from 'lucide-react';
+import LicenseManagerModal, { LicenseStatusData } from './LicenseManagerModal';
 import { A4_PRINT_THEMES } from '../utils/printService';
 
 interface SettingsProps {
@@ -50,7 +51,23 @@ export default function Settings({
   }, [config]);
 
   const [successMsg, setSuccessMsg] = useState('');
+  const [showLicenseModal, setShowLicenseModal] = useState(false);
   const [previewDocType, setPreviewDocType] = useState<'a4' | 'receipt'>('a4');
+  const [licenseStatus, setLicenseStatus] = useState<LicenseStatusData | null>(null);
+
+  const fetchLicenseStatus = async () => {
+    try {
+      const res = await fetch('/api/license/status');
+      if (res.ok) {
+        const d = await res.json();
+        setLicenseStatus(d);
+      }
+    } catch {}
+  };
+
+  useEffect(() => {
+    fetchLicenseStatus();
+  }, []);
 
   const handleLogoUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
@@ -1145,6 +1162,83 @@ export default function Settings({
             </div>
           </div>
         </div>
+
+        {/* 6. Software Licensing & Enterprise Protection */}
+        <div className="bg-white rounded-3xl p-6 sm:p-7 border border-slate-200/80 shadow-xs space-y-4">
+          <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
+            <div className="flex items-center gap-3.5">
+              <div className={`p-3 rounded-2xl shrink-0 ${licenseStatus?.isActivated ? 'bg-emerald-50 text-emerald-600' : 'bg-indigo-50 text-indigo-600'}`}>
+                {licenseStatus?.isActivated ? (
+                  <ShieldCheck className="w-5 h-5 sm:w-6 sm:h-6" />
+                ) : (
+                  <KeyRound className="w-5 h-5 sm:w-6 sm:h-6" />
+                )}
+              </div>
+              <div>
+                <div className="flex items-center gap-2 flex-wrap">
+                  <h2 className="text-base sm:text-lg font-black text-slate-900">
+                    {lang === 'ar' ? 'ترخيص وتفعيل النظام (SmartPOS Pro Enterprise)' : 'Software License & Activation'}
+                  </h2>
+                  {licenseStatus && (
+                    <span className={`px-2.5 py-0.5 rounded-full text-[11px] font-black ${
+                      licenseStatus.isActivated
+                        ? 'bg-emerald-100 text-emerald-800 border border-emerald-300'
+                        : licenseStatus.isTrialExpired
+                          ? 'bg-rose-100 text-rose-800 border border-rose-300'
+                          : 'bg-amber-100 text-amber-800 border border-amber-300'
+                    }`}>
+                      {licenseStatus.isActivated
+                        ? (lang === 'ar' ? '🟢 مفعّل مدى الحياة' : '🟢 Lifetime Activated')
+                        : licenseStatus.isTrialExpired
+                          ? (lang === 'ar' ? '🔴 انتهت التجربة' : '🔴 Trial Expired')
+                          : (lang === 'ar' ? `🟡 تجريبي (متبقي ${licenseStatus.daysRemaining} يوم)` : `🟡 Trial (${licenseStatus.daysRemaining} days left)`)}
+                    </span>
+                  )}
+                </div>
+                <p className="text-xs text-slate-400 font-medium mt-0.5">
+                  {licenseStatus?.isActivated
+                    ? (lang === 'ar' 
+                        ? `هذا الجهاز مرخص تجارياً بنجاح ومدى الحياة ${licenseStatus.customerName ? `(المرخص له: ${licenseStatus.customerName})` : ''}` 
+                        : `This device is permanently licensed ${licenseStatus.customerName ? `(Licensed to: ${licenseStatus.customerName})` : ''}`)
+                    : (lang === 'ar' ? 'إدارة ترخيص هذا الجهاز، معرف العتاد (Machine ID)، وإدخال مفاتيح التفعيل الرسمية' : 'Manage device license, Hardware ID, and activate commercial license')}
+                </p>
+              </div>
+            </div>
+
+            <button
+              type="button"
+              onClick={() => setShowLicenseModal(true)}
+              className="flex items-center gap-2 px-5 py-2.5 bg-gradient-to-r from-indigo-600 to-purple-600 hover:from-indigo-700 hover:to-purple-700 text-white font-black text-xs rounded-xl shadow-md transition cursor-pointer active:scale-95 shrink-0"
+            >
+              <ShieldCheck className="w-4 h-4 text-amber-300" />
+              <span>{lang === 'ar' ? 'إدارة ترخيص وتفعيل البرنامج' : 'Manage License & Keys'}</span>
+            </button>
+          </div>
+
+          {/* Support Phone & Contact Banner */}
+          <div className="bg-slate-50 border border-slate-200/80 rounded-2xl p-3 sm:p-4 flex flex-col sm:flex-row sm:items-center justify-between gap-2.5 text-xs">
+            <div className="flex items-center gap-2 text-slate-600 font-bold flex-wrap">
+              <PhoneCall className="w-4 h-4 text-emerald-600" />
+              <span>{lang === 'ar' ? 'الدعم الفني وشراء التراخيص:' : 'Technical Support & Licensing:'}</span>
+              <a href="tel:0677212982" className="text-indigo-600 font-mono font-black text-sm hover:underline">0677212982</a>
+              <span className="text-slate-400 font-normal hidden sm:inline">(WhatsApp: +212 677 212 982)</span>
+            </div>
+            <div className="text-[11px] text-slate-400 font-mono">
+              Machine ID: <span className="font-bold text-slate-700">{licenseStatus?.machineId || 'SPOS-0614-30DF-C10F'}</span>
+            </div>
+          </div>
+        </div>
+
+        {/* License Manager Modal */}
+        <LicenseManagerModal
+          isOpen={showLicenseModal}
+          onClose={() => {
+            setShowLicenseModal(false);
+            fetchLicenseStatus();
+          }}
+          onActivated={() => fetchLicenseStatus()}
+          lang={lang}
+        />
 
         {/* Bottom Save Bar (The sole, prominent save button with clean success state) */}
         <div className="pt-4 flex justify-end items-center">

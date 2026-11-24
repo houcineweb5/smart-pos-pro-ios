@@ -4,7 +4,17 @@
  */
 
 import path from 'path';
+import fs from 'fs';
 import { hashPassword, isHashed } from './server_src/security.js';
+import { 
+  getMachineId, 
+  generateActivationKey, 
+  verifyActivationKey, 
+  TRIAL_DAYS_LIMIT, 
+  TRIAL_INVOICES_LIMIT,
+  LicenseRecord,
+  LicenseStatus
+} from './server_src/license.js';
 import { 
   INITIAL_PRODUCTS, 
   INITIAL_CUSTOMERS, 
@@ -37,6 +47,8 @@ export async function initDB() {
     }
     rawDb.exec('PRAGMA busy_timeout = 5000;');
     rawDb.exec('PRAGMA synchronous = NORMAL;');
+    rawDb.exec('PRAGMA cache_size = -64000;');
+    rawDb.exec('PRAGMA temp_store = MEMORY;');
   } catch (e) {
     // Ignore if already set or locked by active reader
   }
@@ -60,7 +72,8 @@ export async function initDB() {
       }
       const stmt = rawDb.prepare(sql);
       return stmt.run(...params);
-    }
+    },
+    prepare: (sql: string) => rawDb.prepare(sql)
   };
 
   // 1. products
@@ -561,21 +574,23 @@ export async function saveData(data: any) {
 
   await database.run('BEGIN TRANSACTION');
   try {
-    // 0. Handle explicit deletions
+    // 0. Handle explicit deletions in fast chunks
     if (Array.isArray(data.deletedIds) && data.deletedIds.length > 0) {
-      for (const delId of data.deletedIds) {
-        if (!delId) continue;
-        await database.run('DELETE FROM products WHERE id = ?', [delId]);
-        await database.run('DELETE FROM customers WHERE id = ?', [delId]);
-        await database.run('DELETE FROM suppliers WHERE id = ?', [delId]);
-        await database.run('DELETE FROM purchases WHERE id = ?', [delId]);
-        await database.run('DELETE FROM invoices WHERE id = ?', [delId]);
-        await database.run('DELETE FROM commercial_documents WHERE id = ?', [delId]);
-        await database.run('DELETE FROM repairs WHERE id = ?', [delId]);
-        await database.run('DELETE FROM expenses WHERE id = ?', [delId]);
-        await database.run('DELETE FROM employees WHERE id = ?', [delId]);
-        await database.run('DELETE FROM customer_payments WHERE id = ?', [delId]);
-        await database.run('DELETE FROM warehouses WHERE id = ?', [delId]);
+      const validDelIds = data.deletedIds.filter(Boolean);
+      for (let i = 0; i < validDelIds.length; i += 50) {
+        const chunk = validDelIds.slice(i, i + 50);
+        const placeholders = chunk.map(() => '?').join(',');
+        await database.run(`DELETE FROM products WHERE id IN (${placeholders})`, chunk);
+        await database.run(`DELETE FROM customers WHERE id IN (${placeholders})`, chunk);
+        await database.run(`DELETE FROM suppliers WHERE id IN (${placeholders})`, chunk);
+        await database.run(`DELETE FROM purchases WHERE id IN (${placeholders})`, chunk);
+        await database.run(`DELETE FROM invoices WHERE id IN (${placeholders})`, chunk);
+        await database.run(`DELETE FROM commercial_documents WHERE id IN (${placeholders})`, chunk);
+        await database.run(`DELETE FROM repairs WHERE id IN (${placeholders})`, chunk);
+        await database.run(`DELETE FROM expenses WHERE id IN (${placeholders})`, chunk);
+        await database.run(`DELETE FROM employees WHERE id IN (${placeholders})`, chunk);
+        await database.run(`DELETE FROM customer_payments WHERE id IN (${placeholders})`, chunk);
+        await database.run(`DELETE FROM warehouses WHERE id IN (${placeholders})`, chunk);
       }
     }
 
@@ -583,16 +598,16 @@ export async function saveData(data: any) {
     if (data.products && Array.isArray(data.products)) {
       const newIds = new Set(data.products.map((p: any) => p.id));
       const existing = await database.all('SELECT id FROM products');
-      for (const row of existing) {
-        if (!newIds.has(row.id)) {
-          await database.run('DELETE FROM products WHERE id = ?', [row.id]);
-        }
+      const toDel = existing.filter((r: any) => !newIds.has(r.id)).map((r: any) => r.id);
+      for (let i = 0; i < toDel.length; i += 50) {
+        const chunk = toDel.slice(i, i + 50);
+        await database.run(`DELETE FROM products WHERE id IN (${chunk.map(() => '?').join(',')})`, chunk);
       }
+      const stmtProd = database.prepare(
+        'INSERT OR REPLACE INTO products (id, sku, name, category, purchasePrice, sellingPrice, wholesalePrice, stock, minStock, unit, imageUrl, warehouseId) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)'
+      );
       for (const p of data.products) {
-        await database.run(
-          'INSERT OR REPLACE INTO products (id, sku, name, category, purchasePrice, sellingPrice, wholesalePrice, stock, minStock, unit, imageUrl, warehouseId) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)',
-          [p.id, p.sku, p.name, p.category, p.purchasePrice, p.sellingPrice, p.wholesalePrice || p.sellingPrice, p.stock, p.minStock, p.unit, p.imageUrl || '', p.warehouseId || '']
-        );
+        stmtProd.run(p.id, p.sku, p.name, p.category, p.purchasePrice, p.sellingPrice, p.wholesalePrice || p.sellingPrice, p.stock, p.minStock, p.unit, p.imageUrl || '', p.warehouseId || '');
       }
     }
 
@@ -600,16 +615,16 @@ export async function saveData(data: any) {
     if (data.customers && Array.isArray(data.customers)) {
       const newIds = new Set(data.customers.map((c: any) => c.id));
       const existing = await database.all('SELECT id FROM customers');
-      for (const row of existing) {
-        if (!newIds.has(row.id)) {
-          await database.run('DELETE FROM customers WHERE id = ?', [row.id]);
-        }
+      const toDel = existing.filter((r: any) => !newIds.has(r.id)).map((r: any) => r.id);
+      for (let i = 0; i < toDel.length; i += 50) {
+        const chunk = toDel.slice(i, i + 50);
+        await database.run(`DELETE FROM customers WHERE id IN (${chunk.map(() => '?').join(',')})`, chunk);
       }
+      const stmtCust = database.prepare(
+        'INSERT OR REPLACE INTO customers (id, name, phone, email, ice, address, debt, notes, createdAt, creditLimit) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)'
+      );
       for (const c of data.customers) {
-        await database.run(
-          'INSERT OR REPLACE INTO customers (id, name, phone, email, ice, address, debt, notes, createdAt, creditLimit) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)',
-          [c.id, c.name, c.phone, c.email, c.ice || '', c.address || '', c.debt, c.notes, c.createdAt, c.creditLimit !== undefined ? c.creditLimit : null]
-        );
+        stmtCust.run(c.id, c.name, c.phone || '', c.email || '', c.ice || '', c.address || '', c.debt || 0, c.notes || '', c.createdAt || new Date().toISOString(), c.creditLimit !== undefined ? c.creditLimit : null);
       }
     }
 
@@ -617,16 +632,16 @@ export async function saveData(data: any) {
     if (data.suppliers && Array.isArray(data.suppliers)) {
       const newIds = new Set(data.suppliers.map((s: any) => s.id));
       const existing = await database.all('SELECT id FROM suppliers');
-      for (const row of existing) {
-        if (!newIds.has(row.id)) {
-          await database.run('DELETE FROM suppliers WHERE id = ?', [row.id]);
-        }
+      const toDel = existing.filter((r: any) => !newIds.has(r.id)).map((r: any) => r.id);
+      for (let i = 0; i < toDel.length; i += 50) {
+        const chunk = toDel.slice(i, i + 50);
+        await database.run(`DELETE FROM suppliers WHERE id IN (${chunk.map(() => '?').join(',')})`, chunk);
       }
+      const stmtSupp = database.prepare(
+        'INSERT OR REPLACE INTO suppliers (id, name, phone, email, company, debt, notes, createdAt) VALUES (?, ?, ?, ?, ?, ?, ?, ?)'
+      );
       for (const s of data.suppliers) {
-        await database.run(
-          'INSERT OR REPLACE INTO suppliers (id, name, phone, email, company, debt, notes, createdAt) VALUES (?, ?, ?, ?, ?, ?, ?)',
-          [s.id, s.name, s.phone, s.email, s.company, s.debt, s.notes, s.createdAt]
-        );
+        stmtSupp.run(s.id, s.name, s.phone || '', s.email || '', s.company || '', s.debt || 0, s.notes || '', s.createdAt || new Date().toISOString());
       }
     }
 
@@ -634,19 +649,19 @@ export async function saveData(data: any) {
     if (data.purchases && Array.isArray(data.purchases)) {
       const newIds = new Set(data.purchases.map((pur: any) => pur.id));
       const existing = await database.all('SELECT id FROM purchases');
-      for (const row of existing) {
-        if (!newIds.has(row.id)) {
-          await database.run('DELETE FROM purchases WHERE id = ?', [row.id]);
-        }
+      const toDel = existing.filter((r: any) => !newIds.has(r.id)).map((r: any) => r.id);
+      for (let i = 0; i < toDel.length; i += 50) {
+        const chunk = toDel.slice(i, i + 50);
+        await database.run(`DELETE FROM purchases WHERE id IN (${chunk.map(() => '?').join(',')})`, chunk);
       }
+      const stmtPur = database.prepare(
+        'INSERT OR REPLACE INTO purchases (id, purchaseNumber, date, supplierId, supplierName, items, total, amountPaid, status, notes, payments) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)'
+      );
       for (const pur of data.purchases) {
-        await database.run(
-          'INSERT OR REPLACE INTO purchases (id, purchaseNumber, date, supplierId, supplierName, items, total, amountPaid, status, notes, payments) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)',
-          [
-            pur.id, pur.purchaseNumber, pur.date, pur.supplierId, pur.supplierName, JSON.stringify(pur.items),
-            pur.total, pur.amountPaid, pur.status, pur.notes || '',
-            pur.payments ? JSON.stringify(pur.payments) : '[]'
-          ]
+        stmtPur.run(
+          pur.id, pur.purchaseNumber, pur.date, pur.supplierId, pur.supplierName, JSON.stringify(pur.items || []),
+          pur.total, pur.amountPaid, pur.status, pur.notes || '',
+          pur.payments ? JSON.stringify(pur.payments) : '[]'
         );
       }
     }
@@ -655,20 +670,20 @@ export async function saveData(data: any) {
     if (data.invoices && Array.isArray(data.invoices)) {
       const newIds = new Set(data.invoices.map((inv: any) => inv.id));
       const existing = await database.all('SELECT id FROM invoices');
-      for (const row of existing) {
-        if (!newIds.has(row.id)) {
-          await database.run('DELETE FROM invoices WHERE id = ?', [row.id]);
-        }
+      const toDel = existing.filter((r: any) => !newIds.has(r.id)).map((r: any) => r.id);
+      for (let i = 0; i < toDel.length; i += 50) {
+        const chunk = toDel.slice(i, i + 50);
+        await database.run(`DELETE FROM invoices WHERE id IN (${chunk.map(() => '?').join(',')})`, chunk);
       }
+      const stmtInv = database.prepare(
+        'INSERT OR REPLACE INTO invoices (id, invoiceNumber, date, customerId, customerName, items, subtotal, discount, tax, total, amountPaid, previousBalance, paymentMethod, status, notes, returnedItems, sellerId, sellerName) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)'
+      );
       for (const inv of data.invoices) {
-        await database.run(
-          'INSERT OR REPLACE INTO invoices (id, invoiceNumber, date, customerId, customerName, items, subtotal, discount, tax, total, amountPaid, previousBalance, paymentMethod, status, notes, returnedItems, sellerId, sellerName) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)',
-          [
-            inv.id, inv.invoiceNumber, inv.date, inv.customerId || '', inv.customerName, JSON.stringify(inv.items),
-            inv.subtotal, inv.discount, inv.tax, inv.total, inv.amountPaid, Number(inv.previousBalance || 0), inv.paymentMethod, inv.status, inv.notes || '',
-            inv.returnedItems ? JSON.stringify(inv.returnedItems) : '[]',
-            inv.sellerId || '', inv.sellerName || ''
-          ]
+        stmtInv.run(
+          inv.id, inv.invoiceNumber, inv.date, inv.customerId || '', inv.customerName, JSON.stringify(inv.items || []),
+          inv.subtotal, inv.discount, inv.tax, inv.total, inv.amountPaid, Number(inv.previousBalance || 0), inv.paymentMethod, inv.status, inv.notes || '',
+          inv.returnedItems ? JSON.stringify(inv.returnedItems) : '[]',
+          inv.sellerId || '', inv.sellerName || ''
         );
       }
     }
@@ -720,19 +735,19 @@ export async function saveData(data: any) {
     if (data.repairs && Array.isArray(data.repairs)) {
       const newIds = new Set(data.repairs.map((r: any) => r.id));
       const existing = await database.all('SELECT id FROM repairs');
-      for (const row of existing) {
-        if (!newIds.has(row.id)) {
-          await database.run('DELETE FROM repairs WHERE id = ?', [row.id]);
-        }
+      const toDel = existing.filter((row: any) => !newIds.has(row.id)).map((row: any) => row.id);
+      for (let i = 0; i < toDel.length; i += 50) {
+        const chunk = toDel.slice(i, i + 50);
+        await database.run(`DELETE FROM repairs WHERE id IN (${chunk.map(() => '?').join(',')})`, chunk);
       }
+      const stmtRep = database.prepare(
+        'INSERT OR REPLACE INTO repairs (id, orderNumber, customerName, customerPhone, itemName, itemSerial, issueDescription, status, estimatedCost, amountPaid, createdAt, estimatedDeliveryDate, notes, sellerId, sellerName) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)'
+      );
       for (const r of data.repairs) {
-        await database.run(
-          'INSERT OR REPLACE INTO repairs (id, orderNumber, customerName, customerPhone, itemName, itemSerial, issueDescription, status, estimatedCost, amountPaid, createdAt, estimatedDeliveryDate, notes, sellerId, sellerName) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)',
-          [
-            r.id, r.orderNumber, r.customerName, r.customerPhone, r.itemName, r.itemSerial || '', r.issueDescription, 
-            r.status, r.estimatedCost, r.amountPaid, r.createdAt, r.estimatedDeliveryDate || '', r.notes || '', 
-            r.sellerId || '', r.sellerName || ''
-          ]
+        stmtRep.run(
+          r.id, r.orderNumber, r.customerName, r.customerPhone, r.itemName, r.itemSerial || '', r.issueDescription, 
+          r.status, r.estimatedCost, r.amountPaid, r.createdAt, r.estimatedDeliveryDate || '', r.notes || '', 
+          r.sellerId || '', r.sellerName || ''
         );
       }
     }
@@ -741,16 +756,16 @@ export async function saveData(data: any) {
     if (data.expenses && Array.isArray(data.expenses)) {
       const newIds = new Set(data.expenses.map((ex: any) => ex.id));
       const existing = await database.all('SELECT id FROM expenses');
-      for (const row of existing) {
-        if (!newIds.has(row.id)) {
-          await database.run('DELETE FROM expenses WHERE id = ?', [row.id]);
-        }
+      const toDel = existing.filter((row: any) => !newIds.has(row.id)).map((row: any) => row.id);
+      for (let i = 0; i < toDel.length; i += 50) {
+        const chunk = toDel.slice(i, i + 50);
+        await database.run(`DELETE FROM expenses WHERE id IN (${chunk.map(() => '?').join(',')})`, chunk);
       }
+      const stmtExp = database.prepare(
+        'INSERT OR REPLACE INTO expenses (id, title, amount, category, date, notes, createdByName) VALUES (?, ?, ?, ?, ?, ?, ?)'
+      );
       for (const ex of data.expenses) {
-        await database.run(
-          'INSERT OR REPLACE INTO expenses (id, title, amount, category, date, notes, createdByName) VALUES (?, ?, ?, ?, ?, ?, ?)',
-          [ex.id, ex.title, ex.amount, ex.category, ex.date, ex.notes || '', ex.createdByName || '']
-        );
+        stmtExp.run(ex.id, ex.title, ex.amount, ex.category, ex.date, ex.notes || '', ex.createdByName || '');
       }
     }
 
@@ -758,26 +773,26 @@ export async function saveData(data: any) {
     if (data.commercialDocuments && Array.isArray(data.commercialDocuments)) {
       const newIds = new Set(data.commercialDocuments.map((d: any) => d.id));
       const existing = await database.all('SELECT id FROM commercial_documents');
-      for (const row of existing) {
-        if (!newIds.has(row.id)) {
-          await database.run('DELETE FROM commercial_documents WHERE id = ?', [row.id]);
-        }
+      const toDel = existing.filter((row: any) => !newIds.has(row.id)).map((row: any) => row.id);
+      for (let i = 0; i < toDel.length; i += 50) {
+        const chunk = toDel.slice(i, i + 50);
+        await database.run(`DELETE FROM commercial_documents WHERE id IN (${chunk.map(() => '?').join(',')})`, chunk);
       }
+      const stmtDoc = database.prepare(
+        'INSERT OR REPLACE INTO commercial_documents (id, docType, docNumber, date, validUntil, customerId, customerName, customerPhone, customerAddress, items, subtotal, discount, tax, total, amountPaid, previousBalance, paymentMethod, status, notes, convertedTo, convertedFrom, sellerName) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)'
+      );
       for (const d of data.commercialDocuments) {
-        await database.run(
-          'INSERT OR REPLACE INTO commercial_documents (id, docType, docNumber, date, validUntil, customerId, customerName, customerPhone, customerAddress, items, subtotal, discount, tax, total, amountPaid, previousBalance, paymentMethod, status, notes, convertedTo, convertedFrom, sellerName) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)',
-          [
-            d.id, d.docType, d.docNumber, d.date, d.validUntil || '',
-            d.customerId || '', d.customerName || '', d.customerPhone || '', d.customerAddress || '',
-            JSON.stringify(d.items || []), d.subtotal || 0, d.discount || 0, d.tax || 0, d.total || 0,
-            d.amountPaid !== undefined ? Number(d.amountPaid) : (d.total || 0),
-            Number(d.previousBalance || 0),
-            d.paymentMethod || 'cash',
-            d.status || 'draft', d.notes || '',
-            d.convertedTo ? JSON.stringify(d.convertedTo) : '',
-            d.convertedFrom ? JSON.stringify(d.convertedFrom) : '',
-            d.sellerName || ''
-          ]
+        stmtDoc.run(
+          d.id, d.docType, d.docNumber, d.date, d.validUntil || '',
+          d.customerId || '', d.customerName || '', d.customerPhone || '', d.customerAddress || '',
+          JSON.stringify(d.items || []), d.subtotal || 0, d.discount || 0, d.tax || 0, d.total || 0,
+          d.amountPaid !== undefined ? Number(d.amountPaid) : (d.total || 0),
+          Number(d.previousBalance || 0),
+          d.paymentMethod || 'cash',
+          d.status || 'draft', d.notes || '',
+          d.convertedTo ? JSON.stringify(d.convertedTo) : '',
+          d.convertedFrom ? JSON.stringify(d.convertedFrom) : '',
+          d.sellerName || ''
         );
       }
     }
@@ -786,16 +801,16 @@ export async function saveData(data: any) {
     if (data.customerPayments && Array.isArray(data.customerPayments)) {
       const newIds = new Set(data.customerPayments.map((cp: any) => cp.id));
       const existing = await database.all('SELECT id FROM customer_payments');
-      for (const row of existing) {
-        if (!newIds.has(row.id)) {
-          await database.run('DELETE FROM customer_payments WHERE id = ?', [row.id]);
-        }
+      const toDel = existing.filter((row: any) => !newIds.has(row.id)).map((row: any) => row.id);
+      for (let i = 0; i < toDel.length; i += 50) {
+        const chunk = toDel.slice(i, i + 50);
+        await database.run(`DELETE FROM customer_payments WHERE id IN (${chunk.map(() => '?').join(',')})`, chunk);
       }
+      const stmtCp = database.prepare(
+        'INSERT OR REPLACE INTO customer_payments (id, customerId, customerName, amount, date, notes, receivedByName) VALUES (?, ?, ?, ?, ?, ?, ?)'
+      );
       for (const cp of data.customerPayments) {
-        await database.run(
-          'INSERT OR REPLACE INTO customer_payments (id, customerId, customerName, amount, date, notes, receivedByName) VALUES (?, ?, ?, ?, ?, ?, ?)',
-          [cp.id, cp.customerId, cp.customerName, cp.amount, cp.date, cp.notes || '', cp.receivedByName || '']
-        );
+        stmtCp.run(cp.id, cp.customerId, cp.customerName, cp.amount, cp.date, cp.notes || '', cp.receivedByName || '');
       }
     }
 
@@ -803,16 +818,16 @@ export async function saveData(data: any) {
     if (data.warehouses && Array.isArray(data.warehouses)) {
       const newIds = new Set(data.warehouses.map((w: any) => w.id));
       const existing = await database.all('SELECT id FROM warehouses');
-      for (const row of existing) {
-        if (!newIds.has(row.id)) {
-          await database.run('DELETE FROM warehouses WHERE id = ?', [row.id]);
-        }
+      const toDel = existing.filter((row: any) => !newIds.has(row.id)).map((row: any) => row.id);
+      for (let i = 0; i < toDel.length; i += 50) {
+        const chunk = toDel.slice(i, i + 50);
+        await database.run(`DELETE FROM warehouses WHERE id IN (${chunk.map(() => '?').join(',')})`, chunk);
       }
+      const stmtWh = database.prepare(
+        'INSERT OR REPLACE INTO warehouses (id, name, location, isDefault, notes) VALUES (?, ?, ?, ?, ?)'
+      );
       for (const w of data.warehouses) {
-        await database.run(
-          'INSERT OR REPLACE INTO warehouses (id, name, location, isDefault, notes) VALUES (?, ?, ?, ?, ?)',
-          [w.id, w.name, w.location || '', w.isDefault ? 1 : 0, w.notes || '']
-        );
+        stmtWh.run(w.id, w.name, w.location || '', w.isDefault ? 1 : 0, w.notes || '');
       }
     }
 
@@ -916,4 +931,137 @@ export async function getStockMovements(limit = 100, productId?: string) {
   }
   return database.all('SELECT * FROM stock_movements ORDER BY timestamp DESC LIMIT ?', [limit]);
 }
+
+export async function getLicenseStatusFromDB(): Promise<LicenseStatus> {
+  const database = await initDB();
+  const machineId = getMachineId();
+  const row = await database.get('SELECT value FROM config WHERE key = ?', ['license_info']);
+  
+  let record: LicenseRecord;
+  if (row && row.value) {
+    try {
+      record = JSON.parse(row.value);
+    } catch {
+      record = {
+        isActivated: false,
+        machineId,
+        firstLaunchDate: new Date().toISOString()
+      };
+    }
+  } else {
+    record = {
+      isActivated: false,
+      machineId,
+      firstLaunchDate: new Date().toISOString()
+    };
+    await database.run('INSERT OR REPLACE INTO config (key, value) VALUES (?, ?)', ['license_info', JSON.stringify(record)]);
+  }
+
+  // If activated, verify key is genuine for current machine ID or recorded machine ID
+  let isActivated = false;
+  if (record.isActivated && record.activationKey) {
+    isActivated = verifyActivationKey(machineId, record.activationKey) ||
+                  (record.machineId ? verifyActivationKey(record.machineId, record.activationKey) : false);
+  }
+
+  const invoiceCountRow = await database.get('SELECT COUNT(*) as count FROM invoices');
+  const invoiceCount = Number(invoiceCountRow?.count || 0);
+
+  const firstLaunchMs = new Date(record.firstLaunchDate).getTime() || Date.now();
+  const daysPassed = Math.floor((Date.now() - firstLaunchMs) / (1000 * 60 * 60 * 24));
+  const daysRemaining = Math.max(0, TRIAL_DAYS_LIMIT - daysPassed);
+  const invoicesRemaining = Math.max(0, TRIAL_INVOICES_LIMIT - invoiceCount);
+
+  const isTrialExpired = !isActivated && (daysRemaining <= 0 || invoicesRemaining <= 0);
+
+  return {
+    isActivated,
+    machineId: record.machineId || machineId,
+    firstLaunchDate: record.firstLaunchDate,
+    daysRemaining,
+    isTrialExpired,
+    invoiceCount,
+    maxTrialInvoices: TRIAL_INVOICES_LIMIT,
+    invoicesRemaining,
+    customerName: record.customerName,
+    activatedAt: record.activatedAt
+  };
+}
+
+export async function activateLicenseInDB(key: string, customerName?: string): Promise<{ success: boolean; message: string }> {
+  const database = await initDB();
+  const machineId = getMachineId();
+  const cleanKey = key.trim().toUpperCase();
+
+  const validForCurrent = verifyActivationKey(machineId, cleanKey);
+  const row = await database.get('SELECT value FROM config WHERE key = ?', ['license_info']);
+  let prevMachineId = '';
+  if (row && row.value) {
+    try {
+      const parsed = JSON.parse(row.value);
+      if (parsed && parsed.machineId) prevMachineId = parsed.machineId;
+    } catch {}
+  }
+  const validForPrev = prevMachineId ? verifyActivationKey(prevMachineId, cleanKey) : false;
+
+  if (!validForCurrent && !validForPrev) {
+    return { success: false, message: 'مفتاح التفعيل غير صحيح لهذا الجهاز.' };
+  }
+
+  const effectiveMachineId = validForCurrent ? machineId : (prevMachineId || machineId);
+
+  const record: LicenseRecord = {
+    isActivated: true,
+    activationKey: cleanKey,
+    activatedAt: new Date().toISOString(),
+    machineId: effectiveMachineId,
+    firstLaunchDate: (row && row.value ? JSON.parse(row.value).firstLaunchDate : null) || new Date().toISOString(),
+    customerName: customerName?.trim() || 'Valued Customer'
+  };
+
+  await database.run('INSERT OR REPLACE INTO config (key, value) VALUES (?, ?)', ['license_info', JSON.stringify(record)]);
+  return { success: true, message: 'تم تفعيل البرنامج بنجاح بترخيص دائم مدى الحياة!' };
+}
+
+export async function performDailyAutoBackup(): Promise<{ backedUp: boolean; path?: string }> {
+  try {
+    const cwd = process.cwd();
+    const dbPath = path.join(cwd, 'database.sqlite');
+    if (!fs.existsSync(dbPath)) return { backedUp: false };
+
+    const backupDir = path.join(cwd, 'backups');
+    if (!fs.existsSync(backupDir)) {
+      fs.mkdirSync(backupDir, { recursive: true });
+    }
+
+    const todayStr = new Date().toISOString().split('T')[0];
+    const backupFile = path.join(backupDir, `database_auto_${todayStr}.sqlite`);
+
+    if (!fs.existsSync(backupFile)) {
+      fs.copyFileSync(dbPath, backupFile);
+      console.log(`[AutoBackup] Daily backup created: ${backupFile}`);
+
+      try {
+        const files = fs.readdirSync(backupDir)
+          .filter(f => f.startsWith('database_auto_') && f.endsWith('.sqlite'))
+          .sort();
+        if (files.length > 14) {
+          const toDelete = files.slice(0, files.length - 14);
+          for (const f of toDelete) {
+            try { fs.unlinkSync(path.join(backupDir, f)); } catch {}
+          }
+        }
+      } catch (cleanupErr) {
+        console.error('[AutoBackup] Cleanup warning:', cleanupErr);
+      }
+
+      return { backedUp: true, path: backupFile };
+    }
+    return { backedUp: false };
+  } catch (err) {
+    console.error('[AutoBackup] Error creating daily backup:', err);
+    return { backedUp: false };
+  }
+}
+
 

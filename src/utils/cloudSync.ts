@@ -1180,8 +1180,11 @@ export async function pushCloudBarcodeScan(
 /**
  * Pull remote barcode scan from Cloud (Firebase) if phone is used as wireless barcode scanner over internet
  */
+let lastBarcodeCloudErrorTime = 0;
+
 export async function pullCloudBarcodeScan(cfg: CloudSyncConfig = getCloudSyncConfig()): Promise<string | null> {
   if (!cfg.enabled || !cfg.firebaseUrl) return null;
+  if (Date.now() - lastBarcodeCloudErrorTime < 60000) return null;
   try {
     const norm = normalizeFirebaseUrl(cfg.firebaseUrl);
     if (!norm.url) return null;
@@ -1193,7 +1196,10 @@ export async function pullCloudBarcodeScan(cfg: CloudSyncConfig = getCloudSyncCo
     const targetUrl = `${baseTargetUrl}?${queryParts.join('&')}`;
 
     const res = await fetch(targetUrl, { method: 'GET', cache: 'no-store' });
-    if (!res.ok) return null;
+    if (!res.ok) {
+      if (res.status === 401 || res.status === 403) lastBarcodeCloudErrorTime = Date.now();
+      return null;
+    }
     const data = await res.json();
     if (data && data.code && data.timestamp) {
       // Clear it immediately from Firebase so it's only processed once

@@ -26,11 +26,13 @@ interface InvoicesProps {
   onReturnInvoice?: (invoiceId: string, returnList: { productId: string; quantity: number; unitPrice: number }[], notes?: string) => void;
   onNavigate?: (tab: ActiveTab) => void;
   lang: Language;
+  currentUser?: Employee | null;
 }
 
-export default function Invoices({ invoices, products = [], customers = [], config, onPayInvoiceBalance, onEditInvoice, onDeleteInvoice, onReturnInvoice, onNavigate, lang }: InvoicesProps) {
+export default function Invoices({ invoices, products = [], customers = [], config, onPayInvoiceBalance, onEditInvoice, onDeleteInvoice, onReturnInvoice, onNavigate, lang, currentUser }: InvoicesProps) {
   const t = languages[lang];
   const isRTL = t.direction === 'rtl';
+  const isAdmin = !currentUser || currentUser.role === 'admin';
 
   const [search, setSearch] = useState('');
   const [selectedStatus, setSelectedStatus] = useState<string>('all');
@@ -167,6 +169,7 @@ export default function Invoices({ invoices, products = [], customers = [], conf
   useEffect(() => {
     let tickCount = 0;
     const interval = setInterval(async () => {
+      if (typeof document !== 'undefined' && document.visibilityState === 'hidden') return;
       // 1. Check local PC Wi-Fi endpoint
       try {
         const res = await fetch('/api/remote-barcode');
@@ -178,7 +181,7 @@ export default function Invoices({ invoices, products = [], customers = [], conf
         }
       } catch {}
 
-      // 2. Check Firebase cloud barcode node every ~6s (every 4th tick)
+      // 2. Check Firebase cloud barcode node every ~16s (every 4th tick)
       tickCount++;
       if (tickCount % 4 === 0) {
         try {
@@ -188,7 +191,7 @@ export default function Invoices({ invoices, products = [], customers = [], conf
           }
         } catch {}
       }
-    }, 1500);
+    }, 4000);
 
     return () => clearInterval(interval);
   }, []);
@@ -861,7 +864,7 @@ export default function Invoices({ invoices, products = [], customers = [], conf
           <button
             type="button"
             onClick={() => setShowTopProfit(!showTopProfit)}
-            className="flex-1 sm:flex-initial bg-emerald-50/80 hover:bg-emerald-100/90 border border-emerald-300/80 px-3 py-1.5 rounded-xl text-xs font-black text-emerald-800 flex items-center justify-between sm:justify-start gap-2 transition cursor-pointer select-none active:scale-95 shadow-2xs"
+            className="flex-1 sm:flex-initial bg-emerald-50/80 hover:bg-emerald-100/90 border border-emerald-300/80 px-3 py-1.5 rounded-xl text-xs font-black text-emerald-800 flex items-center justify-between sm:justify-start gap-2 transition cursor-pointer select-none shadow-2xs"
             title={showTopProfit ? (lang === 'ar' ? 'إخفاء صافي الأرباح' : 'Masquer le bénéfice net') : (lang === 'ar' ? 'إظهار صافي الأرباح' : 'Afficher le bénéfice net')}
           >
             <TrendingUp className="w-3.5 h-3.5 text-emerald-600 shrink-0" />
@@ -1085,10 +1088,10 @@ export default function Invoices({ invoices, products = [], customers = [], conf
               <div
                 key={inv.id}
                 onClick={() => setSelectedRowId(inv.id)}
-                className={`rounded-2xl border p-3.5 shadow-2xs space-y-3 cursor-pointer transition-all duration-150 ${
+                className={`rounded-2xl border p-3.5 space-y-3 cursor-pointer transition-colors duration-150 ${
                   isSelected
-                    ? 'bg-indigo-50/70 border-indigo-500 ring-2 ring-indigo-500/40 shadow-sm border-l-4 rtl:border-r-4 border-l-indigo-600 rtl:border-r-indigo-600'
-                    : 'bg-white border-slate-200/90 hover:border-slate-300 hover:bg-slate-50/70'
+                    ? 'bg-blue-50/80 border-blue-400'
+                    : 'bg-white border-slate-200/90 hover:bg-slate-50/70'
                 }`}
               >
                 {/* Row 1: Invoice Number, Customer Name & Date */}
@@ -1200,14 +1203,16 @@ export default function Invoices({ invoices, products = [], customers = [], conf
                     </button>
                   )}
 
-                  <button
-                    type="button"
-                    onClick={() => setDeletingInvoiceId(inv.id)}
-                    className="p-2 text-rose-600 bg-rose-50/60 hover:bg-rose-100 rounded-xl border border-rose-200/70 transition cursor-pointer"
-                    title={lang === 'ar' ? 'حذف الفاتورة' : 'Delete'}
-                  >
-                    <Trash2 className="w-4 h-4" />
-                  </button>
+                  {isAdmin && (
+                    <button
+                      type="button"
+                      onClick={() => setDeletingInvoiceId(inv.id)}
+                      className="p-2 text-rose-600 bg-rose-50/60 hover:bg-rose-100 rounded-xl border border-rose-200/70 transition cursor-pointer"
+                      title={lang === 'ar' ? 'حذف الفاتورة' : 'Delete'}
+                    >
+                      <Trash2 className="w-4 h-4" />
+                    </button>
+                  )}
                 </div>
               </div>
             );
@@ -1247,10 +1252,10 @@ export default function Invoices({ invoices, products = [], customers = [], conf
                     <tr
                       key={inv.id}
                       onClick={() => setSelectedRowId(inv.id)}
-                      className={`transition-all duration-150 cursor-pointer ${
+                      className={`cursor-pointer transition-colors duration-150 ${
                         isSelected
-                          ? 'bg-indigo-50/90 text-indigo-950 font-bold border-l-4 rtl:border-r-4 border-indigo-600 shadow-2xs ring-1 ring-inset ring-indigo-400/30'
-                          : 'hover:bg-indigo-50/35 hover:text-slate-900'
+                          ? 'bg-blue-50/80 text-slate-900 font-bold'
+                          : 'hover:bg-slate-50/80'
                       }`}
                     >
                       <td className="px-3.5 py-2.5 font-mono font-bold text-slate-800 text-start">{inv.invoiceNumber}</td>
@@ -1343,15 +1348,17 @@ export default function Invoices({ invoices, products = [], customers = [], conf
                               <span>{lang === 'ar' ? 'إرجاع' : 'Return'}</span>
                             </button>
                           )}
-                          <button
-                            id={`delete-btn-${inv.id}`}
-                            type="button"
-                            onClick={() => setDeletingInvoiceId(inv.id)}
-                            className="p-1.5 text-rose-600 hover:bg-rose-50 rounded-lg border border-transparent hover:border-rose-100 transition cursor-pointer"
-                            title={lang === 'ar' ? 'حذف الفاتورة' : 'Delete Invoice'}
-                          >
-                            <Trash2 className="w-4 h-4" />
-                          </button>
+                          {isAdmin && (
+                            <button
+                              id={`delete-btn-${inv.id}`}
+                              type="button"
+                              onClick={() => setDeletingInvoiceId(inv.id)}
+                              className="p-1.5 text-rose-600 hover:bg-rose-50 rounded-lg border border-transparent hover:border-rose-100 transition cursor-pointer"
+                              title={lang === 'ar' ? 'حذف الفاتورة' : 'Delete Invoice'}
+                            >
+                              <Trash2 className="w-4 h-4" />
+                            </button>
+                          )}
                         </div>
                       </td>
                     </tr>
