@@ -8,7 +8,7 @@ on:
 jobs:
   build-mac:
     name: Build Universal macOS Application (.dmg & .zip)
-    runs-on: macos-latest
+    runs-on: macos-15-intel
 
     steps:
       - name: Checkout repository

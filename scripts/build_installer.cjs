@@ -26,8 +26,8 @@ console.log('===================================================================
 // 1. Build Frontend & Server
 console.log('[1/4] 🔨 جاري بناء وتجميع ملفات الويب والخادم (Vite + Esbuild)...');
 try {
-  const npmCmd = process.platform === 'win32' ? 'npm.cmd' : 'npm';
-  execSync(`"${npmCmd}" run build`, { stdio: 'inherit', cwd, shell: true });
+  const npmCmd = process.platform === 'win32' ? (fs.existsSync('C:\\Program Files\\nodejs\\npm.cmd') ? 'C:\\Program Files\\nodejs\\npm.cmd' : 'npm.cmd') : 'npm';
+  execSync(`"${npmCmd}" run build`, { stdio: 'inherit', cwd });
 } catch (err) {
   console.error('\n❌ فشل تجميع المشروع (Build Failed). يرجى مراجعة الأخطاء أعلاه.');
   process.exit(1);
@@ -85,6 +85,16 @@ try {
   const mobileHtmlSource = path.join(cwd, 'public', 'mobile.html');
   if (fs.existsSync(mobileHtmlSource)) {
     fs.copyFileSync(mobileHtmlSource, path.join(stagingDir, 'SmartPOS-Mobile.html'));
+    
+    // Also sync Final-Release folders
+    const smartAppDir = path.join(finalReleaseDir, 'Smartphone-App');
+    if (!fs.existsSync(smartAppDir)) fs.mkdirSync(smartAppDir, { recursive: true });
+    fs.copyFileSync(mobileHtmlSource, path.join(smartAppDir, 'SmartPOS-Mobile.html'));
+
+    const portableDir = path.join(finalReleaseDir, 'SmartPOS-Portable');
+    if (fs.existsSync(portableDir)) {
+      fs.copyFileSync(mobileHtmlSource, path.join(portableDir, 'SmartPOS-Mobile.html'));
+    }
   }
 
   // Include latest Android APK in the installation folder if present
@@ -97,6 +107,17 @@ try {
     if (fs.existsSync(apk)) {
       fs.copyFileSync(apk, path.join(stagingDir, 'SmartPOS-Mobile.apk'));
       fs.copyFileSync(apk, path.join(stagingDir, 'SmartPOS-Pro-Android.apk'));
+
+      const smartAppDir = path.join(finalReleaseDir, 'Smartphone-App');
+      if (!fs.existsSync(smartAppDir)) fs.mkdirSync(smartAppDir, { recursive: true });
+      fs.copyFileSync(apk, path.join(smartAppDir, 'SmartPOS-Mobile.apk'));
+      fs.copyFileSync(apk, path.join(smartAppDir, 'SmartPOS-Pro-Android.apk'));
+
+      const portableDir = path.join(finalReleaseDir, 'SmartPOS-Portable');
+      if (fs.existsSync(portableDir)) {
+        fs.copyFileSync(apk, path.join(portableDir, 'SmartPOS-Mobile.apk'));
+        fs.copyFileSync(apk, path.join(portableDir, 'SmartPOS-Pro-Android.apk'));
+      }
       break;
     }
   }
